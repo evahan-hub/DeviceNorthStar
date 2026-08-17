@@ -107,17 +107,21 @@
   <script>
     (function () {
       var ACCESS_PASSWORD = 'northstar'; // <-- change me
-      var KEY = 'ns-access-ok';
+      var KEY = 'ns-access-until';        // stores the expiry timestamp
+      var TTL = 12 * 60 * 60 * 1000;      // stay signed in for 12 hours
       var gate = document.getElementById('ns-gate');
-      if (sessionStorage.getItem(KEY) === '1') { gate.style.display = 'none'; return; }
+      var until = parseInt(localStorage.getItem(KEY) || '0', 10);
+      if (until && Date.now() < until) { gate.style.display = 'none'; return; }
       var form = document.getElementById('ns-gate-form');
       var input = document.getElementById('ns-gate-input');
       var err = document.getElementById('ns-gate-err');
       input.focus();
       form.addEventListener('submit', function (e) {
         e.preventDefault();
-        if (input.value === ACCESS_PASSWORD) { sessionStorage.setItem(KEY, '1'); gate.style.display = 'none'; }
-        else { err.style.display = 'block'; input.value = ''; input.focus(); }
+        if (input.value === ACCESS_PASSWORD) {
+          localStorage.setItem(KEY, String(Date.now() + TTL));
+          gate.style.display = 'none';
+        } else { err.style.display = 'block'; input.value = ''; input.focus(); }
       });
     })();
   </script>

@@ -1142,7 +1142,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
             <MenuButton variant="secondary" icon="plus" label="Add widget" align="right" condensed={false}
               items={available.length ? available.map(a => ({ value: a.id, label: a.name, icon: a.kind === 'chart' ? 'nav-analytics' : a.kind === 'grid' ? 'list' : 'grid' })) : [{ value: '_', label: 'All widgets added', disabled: true }]}
               onSelect={(v) => v !== '_' && addTile(v)} />
-            <Button variant="primary" iconLeft="grid" onClick={() => { setCustomize(false); notify('Layout saved'); }}>Save layout</Button>
+            <Button variant="primary" iconLeft="checkmark" onClick={() => { setCustomize(false); notify('Layout saved'); }}>Save layout</Button>
           </Row>
         </Row>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
@@ -2033,7 +2033,7 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify }) {
 
       {/* ====================== LIST VIEW ====================== */}
       {isListPage && (
-        <div style={{ maxWidth: inline ? T.maxW : 1500, margin: '0 auto', padding: inline ? `${T.s7}px ${T.s7}px 120px` : `${T.s7}px 24px 120px` }}>
+        <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px 120px` }}>
           <Row align="flex-start" style={{ marginBottom: T.s5, gap: 24 }}>
             <Col gap={4} style={{ flex: 1 }}>
               <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Locations</span>
@@ -2126,8 +2126,8 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify }) {
 
             </div>
           </div>
-          {/* pager — inline below the grid (full width, not part of the horizontal scroll) */}
-          <Row gap={16} style={{ borderTop: `1px solid ${T.sep}`, padding: '16px 4px', fontSize: 14, color: T.ink }}>
+          {/* pager — sticky to the bottom of the page (full width, not part of the horizontal scroll) */}
+          <Row gap={16} style={{ position: 'sticky', bottom: 0, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 4px', fontSize: 14, color: T.ink }}>
             <select value={s.pageSize} onChange={(e) => setState({ pageSize: parseInt(e.target.value, 10), page: 1 })}
               style={{ height: 32, border: '1px solid var(--b-color-outline-secondary)', borderRadius: T.radiusM, background: T.card, fontFamily: 'inherit', fontSize: 14, color: T.ink, padding: '0 8px', cursor: 'pointer' }}>
               <option>20</option><option>50</option><option>100</option>
@@ -2441,7 +2441,7 @@ function FilterChip({ label, options, selected, onChange, onClear }) {
   return (
     <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
       <div style={{ display: 'inline-flex', alignItems: 'stretch', height: 36, borderRadius: 8, background: active ? '#364553' : T.card, border: active ? 'none' : '1px solid #8C959D', boxSizing: 'border-box', overflow: 'hidden' }}>
-        <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: active ? '0 8px 0 10px' : '0 10px', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, color: active ? '#fff' : T.ink }}>
+        <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: active ? '0 8px 0 10px' : '0 10px', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 400, color: active ? '#fff' : T.ink }}>
           <span>{label}</span>
           {active
             ? <span style={{ minWidth: 16, height: 20, padding: '0 4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#001222', borderRadius: 4, color: '#fff', fontSize: 14, fontWeight: 500 }}>{n}</span>
@@ -2489,12 +2489,22 @@ function FilterChip({ label, options, selected, onChange, onClear }) {
 function DeviceGrid({ columns, rows }) {
   const [sel, setSel] = useState({});
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState({ key: null, dir: 'asc' });
   const pageSize = 20;
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const sorted = useMemo(() => {
+    if (!sort.key) return rows;
+    const col = columns.find(c => c.key === sort.key); if (!col) return rows;
+    const f = col.sortField || col.key;
+    const arr = [...rows].sort((a, b) => String(a[f] == null ? '' : a[f]).localeCompare(String(b[f] == null ? '' : b[f]), undefined, { numeric: true, sensitivity: 'base' }));
+    if (sort.dir === 'desc') arr.reverse();
+    return arr;
+  }, [rows, sort, columns]);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const pg = Math.min(page, totalPages);
-  const pageRows = rows.slice((pg - 1) * pageSize, pg * pageSize);
+  const pageRows = sorted.slice((pg - 1) * pageSize, pg * pageSize);
   const allOn = pageRows.length > 0 && pageRows.every(r => sel[r.id]);
   const toggleAll = () => { const n = { ...sel }; pageRows.forEach(r => { n[r.id] = !allOn; }); setSel(n); };
+  const toggleSort = (c) => setSort(s => s.key === c.key ? { key: c.key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: c.key, dir: 'asc' });
   const gridMin = 32 + 44 + columns.reduce((a, c) => a + c.w, 0) + 12 * (columns.length + 1) + 32;
   const stickyL = { position: 'sticky', left: 0, background: 'transparent', zIndex: 1, flexShrink: 0 };
   const stickyR = { position: 'sticky', right: 0, background: 'transparent', zIndex: 1, flexShrink: 0 };
@@ -2504,7 +2514,12 @@ function DeviceGrid({ columns, rows }) {
         <div style={{ minWidth: gridMin }}>
           <SMHead>
             <div style={{ ...stickyL, width: 32 }}><Checkbox checked={allOn} indeterminate={!allOn && pageRows.some(r => sel[r.id])} onChange={toggleAll} /></div>
-            {columns.map(c => <div key={c.key} style={{ width: c.w, flexShrink: 0, textAlign: c.align || 'left' }}>{c.label}</div>)}
+            {columns.map(c => (
+              <div key={c.key} onClick={() => toggleSort(c)} title="Sort" style={{ width: c.w, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', userSelect: 'none', justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start', color: sort.key === c.key ? T.ink : undefined }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
+                {sort.key === c.key && <Ico name={sort.dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} color={T.ink} />}
+              </div>
+            ))}
             <div style={{ ...stickyR, width: 44 }} />
           </SMHead>
           {pageRows.map(r => (
@@ -2517,8 +2532,8 @@ function DeviceGrid({ columns, rows }) {
           {rows.length === 0 && <div style={{ padding: '48px 24px', textAlign: 'center', color: T.sub, fontSize: 14 }}>No devices match your filters.</div>}
         </div>
       </div>
-      <Row gap={16} style={{ padding: '16px 4px', fontSize: 14, color: T.ink }}>
-        <span style={{ color: T.sub }}>{rows.length} items</span>
+      <Row gap={16} style={{ position: 'sticky', bottom: 0, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 4px', fontSize: 14, color: T.ink }}>
+        <span style={{ color: T.sub }}>{sorted.length} items</span>
         <Row gap={10} style={{ marginLeft: 'auto' }}>
           <span style={{ color: T.sub }}>Page</span>
           <span style={{ fontFamily: 'var(--b-font-family-secondary)', minWidth: 40, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${T.borderStrong}`, borderRadius: T.radiusM }}>{pg}</span>
@@ -2544,7 +2559,7 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, title, subtitle, acti
 
   const termList = useMemo(() => terminals.map(r => ({ ...r, _type: 'Terminal' })), [terminals]);
   const mobList = useMemo(() => mobiles.map(r => ({ ...r, _type: 'Mobile' })), [mobiles]);
-  const allList = useMemo(() => termList.concat(mobList), [termList, mobList]);
+  const allList = useMemo(() => { const out = []; const m = Math.max(termList.length, mobList.length); for (let i = 0; i < m; i++) { if (i < termList.length) out.push(termList[i]); if (i < mobList.length) out.push(mobList[i]); } return out; }, [termList, mobList]);
   const locOpts = useMemo(() => Array.from(new Set(allList.map(r => r.store))).map(c => ({ value: c, label: c })), [allList]);
   const merchOpts = useMemo(() => Array.from(new Set(allList.map(r => r.merchant))).map(m => ({ value: m, label: m })), [allList]);
 
@@ -2554,8 +2569,8 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, title, subtitle, acti
   const sub = (v) => <span style={{ color: T.sub, fontSize: 13 }}>{v}</span>;
   const allCols = [
     { key: 'model', label: 'Device model', w: 130, render: r => <span style={{ fontWeight: 500 }}>{r.model}</span> },
-    { key: 'type', label: 'Type', w: 110, render: r => <Tag label={r._type === 'Mobile' ? 'Mobile' : 'Terminal'} variant={r._type === 'Mobile' ? 'blue' : 'grey'} /> },
-    { key: 'act', label: 'Last activity', w: 170, render: dot },
+    { key: 'type', label: 'Type', w: 110, sortField: '_type', render: r => <Tag label={r._type === 'Mobile' ? 'Mobile' : 'Terminal'} variant={r._type === 'Mobile' ? 'blue' : 'grey'} /> },
+    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', render: dot },
     { key: 'country', label: 'Country/Region', w: 150, render: r => sub(r.country) },
     { key: 'store', label: storeLabel, w: 170, render: storeCell },
     { key: 'merchant', label: 'Merchant', w: 180, render: r => sub(r.merchant) },
@@ -2563,25 +2578,25 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, title, subtitle, acti
   const termCols = [
     { key: 'model', label: 'Device model', w: 120, render: r => <span style={{ fontWeight: 500 }}>{r.model}</span> },
     { key: 'serial', label: 'Serial number', w: 150, render: r => mono(r.serial) },
-    { key: 'act', label: 'Last activity', w: 170, render: dot },
+    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', render: dot },
     { key: 'assign', label: 'Assignment status', w: 150, render: r => <Tag label={r.assign} variant={r.assignV} /> },
     { key: 'store', label: storeLabel, w: 160, render: storeCell },
     { key: 'country', label: 'Country/Region', w: 140, render: r => sub(r.country) },
-    { key: 'addr', label: 'Location address', w: 200, render: r => sub(r.address) },
-    { key: 'ver', label: 'Software version', w: 140, render: r => mono(r.version) },
-    { key: 'tx', label: 'Last transaction', w: 160, render: r => sub(r.lastTx) },
+    { key: 'addr', label: 'Location address', w: 200, sortField: 'address', render: r => sub(r.address) },
+    { key: 'ver', label: 'Software version', w: 140, sortField: 'version', render: r => mono(r.version) },
+    { key: 'tx', label: 'Last transaction', w: 160, sortField: 'lastTx', render: r => sub(r.lastTx) },
   ];
   const mobileCols = [
     { key: 'model', label: 'Device model', w: 120, render: r => <span style={{ fontWeight: 500 }}>{r.model}</span> },
     { key: 'install', label: 'Installation ID', w: 240, render: r => mono(r.install) },
-    { key: 'act', label: 'Last activity', w: 170, render: dot },
+    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', render: dot },
     { key: 'country', label: 'Country/Region', w: 140, render: r => sub(r.country) },
-    { key: 'sdkv', label: 'SDK version', w: 110, render: r => mono(r.sdkVersion) },
+    { key: 'sdkv', label: 'SDK version', w: 110, sortField: 'sdkVersion', render: r => mono(r.sdkVersion) },
     { key: 'sdk', label: 'SDK status', w: 120, render: r => <Tag label={r.sdk} variant={r.sdkV} /> },
-    { key: 'exp', label: 'SDK expiry date', w: 150, render: r => sub(r.sdkExpiry) },
-    { key: 'osv', label: 'OS version', w: 110, render: r => mono(r.osVersion) },
-    { key: 'os', label: 'OS status', w: 120, render: r => <Tag label={r.osStatus} variant={r.osStatus === 'Supported' ? 'green' : 'red'} /> },
-    { key: 'plat', label: 'Platform', w: 100, render: r => sub(r.platform) },
+    { key: 'exp', label: 'SDK expiry date', w: 150, sortField: 'sdkExpiry', render: r => sub(r.sdkExpiry) },
+    { key: 'osv', label: 'OS version', w: 110, sortField: 'osVersion', render: r => mono(r.osVersion) },
+    { key: 'os', label: 'OS status', w: 120, sortField: 'osStatus', render: r => <Tag label={r.osStatus} variant={r.osStatus === 'Supported' ? 'green' : 'red'} /> },
+    { key: 'plat', label: 'Platform', w: 100, sortField: 'platform', render: r => sub(r.platform) },
     { key: 'store', label: storeLabel, w: 160, render: storeCell },
   ];
 
@@ -4612,8 +4627,8 @@ function App() {
   const openStore = (storeId) => push({ type: 'store', storeId });
   const openDevice = (deviceId) => push({ type: 'device', deviceId });
   const openStudio = (scope) => push({ type: 'studio', scope });
-  // Stores is a normal shell page (same layout as Fleet Intelligence), not an overlay.
-  const openAllStores = () => { reset(); setNav('stores'); };
+  // "All stores/locations" opens the full-screen Locations modal (same as the Devices & Locations page CTA).
+  const openAllStores = () => push({ type: 'allLocations' });
   const openAllDevices = () => push({ type: 'allDevices' });
   const openExplore = (tile) => push({ type: 'explore', tile });
 
@@ -4639,6 +4654,7 @@ function App() {
       </div>
 
       {top && top.type === 'allDevices' && <AllDevicesModal onBack={pop} onOpenDevice={openDevice} />}
+      {top && top.type === 'allLocations' && <AllStoresModal notify={notify} onBack={pop} onOpenStore={openStore} />}
       {top && top.type === 'store' && <StoreModal storeId={top.storeId} onBack={pop} onOpenDevice={openDevice} onOpenStudio={openStudio} notify={notify} />}
       {top && top.type === 'device' && <DeviceModal deviceId={top.deviceId} onBack={pop} onOpenStudio={openStudio} notify={notify} />}
       {top && top.type === 'studio' && <DeviceStudio scope={top.scope} onBack={pop} notify={notify} />}
