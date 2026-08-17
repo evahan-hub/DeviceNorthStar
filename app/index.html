@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Device North Star — Customer Area</title>
+
+  <!-- Bento design system: tokens + fonts + base -->
+  <link rel="stylesheet" href="_ds/px-design-system-25da7e27-3560-4727-ad22-c443a79dda21/tokens/fonts.css" />
+  <link rel="stylesheet" href="_ds/px-design-system-25da7e27-3560-4727-ad22-c443a79dda21/tokens/palette.css" />
+  <link rel="stylesheet" href="_ds/px-design-system-25da7e27-3560-4727-ad22-c443a79dda21/tokens/colors.css" />
+  <link rel="stylesheet" href="_ds/px-design-system-25da7e27-3560-4727-ad22-c443a79dda21/tokens/typography.css" />
+  <link rel="stylesheet" href="_ds/px-design-system-25da7e27-3560-4727-ad22-c443a79dda21/tokens/spacing.css" />
+  <link rel="stylesheet" href="_ds/px-design-system-25da7e27-3560-4727-ad22-c443a79dda21/tokens/base.css" />
+
+  <style>
+    /* Use Adyen UI across the whole website (titles, body, figures). */
+    :root {
+      --b-font-family-primary: 'Adyen UI', Roboto, Oxygen, 'Open Sans', 'Helvetica Neue', Arial, sans-serif;
+      --b-font-family-secondary: 'Adyen UI', var(--b-font-family-primary);
+      /* Adyen "lume" chart palette (Customer Area graphs) */
+      --lume-royalblue: #0066ff;
+      --lume-skyblue: #a9d6ff;
+      --lume-violet: #de98ff;
+      --lume-gold: #ffc226;
+      --lume-darkteal: #147d6a;
+      --lume-grid: #eef0f3;   /* grey-20 */
+      --lume-axis: #6f7988;   /* grey-70 */
+    }
+    html, body { margin: 0; height: 100%; background: var(--b-color-background-primary); }
+    * { box-sizing: border-box; }
+    body { font-family: 'Adyen UI', var(--b-font-family-primary); color: var(--b-color-label-primary); -webkit-font-smoothing: antialiased; }
+    #root { height: 100vh; overflow: hidden; }
+    a { color: var(--b-color-link-primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: var(--b-color-outline-secondary); border-radius: 6px; border: 2px solid var(--b-color-background-secondary); }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    /* Interaction helpers used across the prototype */
+    .ns-nav { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
+    .ns-nav:hover { background: var(--b-color-background-secondary-hover); }
+    .ns-nav.is-active { background: var(--b-color-background-navigation); }
+    .ns-nav.is-active:hover { background: var(--b-color-background-navigation-hover); }
+    .ns-hdrbtn { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
+    .ns-hdrbtn:hover { background: var(--b-color-background-secondary-hover) !important; }
+    .ns-hdricon { transition: color var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
+    .ns-hdricon:hover { color: var(--b-color-label-primary) !important; }
+    .ns-row { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
+    .ns-row:hover { background: var(--b-color-background-secondary); }
+    .ns-store-row { cursor: pointer; }
+    .ns-clickable { cursor: pointer; }
+    .ns-tile { transition: border-color var(--b-animation-duration-moderate) var(--b-animation-easing-standard), box-shadow var(--b-animation-duration-moderate) var(--b-animation-easing-standard); }
+    .ns-hoverline:hover { text-decoration: underline; cursor: pointer; }
+    .ns-kpi { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
+    .ns-kpi:hover { background: var(--b-color-background-secondary-hover) !important; }
+    /* Numerals: tabular, calm */
+    .ns-num { font-family: var(--b-font-family-secondary); font-feature-settings: 'tnum' 1; letter-spacing: -0.01em; }
+    button { font-family: inherit; }
+    /* Full-width segmented control (equal-width, centred segments inside the grey track) */
+    .ns-seg-full > button { flex: 1 1 0 !important; justify-content: center !important; text-align: center; }
+    .ns-fade { animation: nsFade var(--b-animation-duration-slow) var(--b-animation-easing-enter); }
+    @keyframes nsFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .ns-scrim { animation: nsScrim var(--b-animation-duration-moderate) ease; }
+    @keyframes nsScrim { from { opacity: 0; } to { opacity: 1; } }
+    .ns-sheet { animation: nsSheet var(--b-animation-duration-slow) var(--b-animation-easing-enter); }
+    @keyframes nsSheet { from { opacity: 0; transform: translateY(12px) scale(0.995); } to { opacity: 1; transform: none; } }
+    .ns-chip-btn { cursor: pointer; user-select: none; }
+    .ns-fab { transition: transform var(--b-animation-duration-fast) var(--b-animation-easing-standard), background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
+    .ns-fab:hover { transform: translateY(-1px); background: var(--b-color-background-inverse-primary-hover) !important; }
+    .ns-fab:active { transform: translateY(0); background: var(--b-color-background-inverse-primary-active) !important; }
+    .ns-suggest { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
+    .ns-suggest:hover { background: var(--b-color-background-secondary) !important; }
+    .ns-spin { animation: nsSpin 1s linear infinite; transform-origin: center; }
+    @keyframes nsSpin { to { transform: rotate(360deg); } }
+    .ns-pop { animation: nsPop 320ms var(--b-animation-easing-enter); }
+    @keyframes nsPop { 0% { opacity: 0; transform: scale(0.8); } 60% { transform: scale(1.04); } 100% { opacity: 1; transform: scale(1); } }
+    .ns-loading { text-align: center; padding-top: 40vh; color: var(--b-color-label-secondary); font-size: 14px; }
+
+    /* Store management (ported from the Stores prototype) */
+    .b-dg-row:hover { background: var(--b-color-background-primary-hover); }
+    .b-pill:hover { background: var(--b-color-background-secondary-hover); }
+    .b-menu-item:hover { background: var(--b-color-background-secondary-hover); }
+    .b-nav-item:hover { background: var(--b-color-background-secondary-hover); text-decoration: none; }
+    .b-pager-nav:hover { background: var(--b-color-background-secondary-hover); color: var(--b-color-label-primary); }
+    /* Device preview: 120% line-height on all labels (inline line-height still wins, e.g. the amount) */
+    .ns-txroot span, .ns-txroot div { line-height: 1.2; }
+    .ns-searchbar input::placeholder { color: #5C6874; opacity: 1; }
+    .ns-searchbar:focus-within { border-color: #001222; }
+    .b-col-resize::after { content: ''; position: absolute; top: 12px; right: 6px; width: 1px; height: calc(100% - 24px); background: transparent; transition: background 100ms linear; }
+    .b-col-resize:hover::after { background: var(--b-color-outline-secondary); }
+  </style>
+</head>
+<body>
+  <!-- Access gate (client-side, prototype only). Change ACCESS_PASSWORD below to set the shared password.
+       NOTE: this is a soft gate — the password lives in the page source, so it only deters casual visitors. -->
+  <div id="ns-gate" style="position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:#ffffff;">
+    <form id="ns-gate-form" style="width:320px;max-width:88vw;display:flex;flex-direction:column;gap:12px;font-family:'Adyen UI',system-ui,sans-serif;">
+      <div style="font-size:18px;font-weight:600;color:#001222;">Device North Star</div>
+      <div style="font-size:13px;color:#5C6874;">Enter the access password to continue.</div>
+      <input id="ns-gate-input" type="password" placeholder="Password" autocomplete="current-password"
+        style="height:40px;padding:0 12px;border:1px solid #8C959D;border-radius:8px;font-size:14px;outline:none;box-sizing:border-box;" />
+      <div id="ns-gate-err" style="display:none;font-size:12px;color:#DC3801;">Incorrect password — try again.</div>
+      <button type="submit" style="height:40px;border:0;border-radius:8px;background:#001222;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Enter</button>
+    </form>
+  </div>
+  <script>
+    (function () {
+      var ACCESS_PASSWORD = 'northstar'; // <-- change me
+      var KEY = 'ns-access-ok';
+      var gate = document.getElementById('ns-gate');
+      if (sessionStorage.getItem(KEY) === '1') { gate.style.display = 'none'; return; }
+      var form = document.getElementById('ns-gate-form');
+      var input = document.getElementById('ns-gate-input');
+      var err = document.getElementById('ns-gate-err');
+      input.focus();
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (input.value === ACCESS_PASSWORD) { sessionStorage.setItem(KEY, '1'); gate.style.display = 'none'; }
+        else { err.style.display = 'block'; input.value = ''; input.focus(); }
+      });
+    })();
+  </script>
+
+  <div id="root"><div class="ns-loading">Loading Device North Star…</div></div>
+
+  <!-- React (UMD) must load before the Bento bundle, which references a global `React`. -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+
+  <!-- Bento design-system components -> window.PXDesignSystem_25da7e -->
+  <script src="_ds/px-design-system-25da7e27-3560-4727-ad22-c443a79dda21/_ds_bundle.js"></script>
+
+  <!-- Mock data + Studio schema -->
+  <script src="data.js"></script>
+  <script src="schema.js"></script>
+
+  <!-- App (JSX, transpiled in-browser) -->
+  <script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+  <script type="text/babel" data-presets="react" src="app.jsx"></script>
+</body>
+</html>
