@@ -721,7 +721,7 @@ function Tag({
       color: v.fg,
       fontFamily: 'var(--b-text-caption-font-family)',
       fontSize: 'var(--b-text-caption-font-size)',
-      fontWeight: 'var(--b-text-caption-stronger-font-weight)',
+      fontWeight: 'var(--b-text-caption-font-weight)',
       lineHeight: 'var(--b-text-caption-line-height)',
       width: 'fit-content',
       ...style

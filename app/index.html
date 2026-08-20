@@ -54,6 +54,30 @@
     .ns-hoverline:hover { text-decoration: underline; cursor: pointer; }
     .ns-kpi { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
     .ns-kpi:hover { background: var(--b-color-background-secondary-hover) !important; }
+    /* Terminal-selector empty/loading animations */
+    @keyframes ns-float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
+    @keyframes ns-pulse { 0%,100% { opacity: .5; transform: scale(.97) } 50% { opacity: 1; transform: scale(1.02) } }
+    @keyframes ns-shimmer { 0% { background-position: -400px 0 } 100% { background-position: 400px 0 } }
+    .ns-float { animation: ns-float 3s ease-in-out infinite; }
+    .ns-pulse { animation: ns-pulse 1.6s ease-in-out infinite; }
+    .ns-shimmer { background: linear-gradient(90deg, var(--b-color-background-secondary) 25%, var(--b-color-background-secondary-hover) 37%, var(--b-color-background-secondary) 63%); background-size: 800px 100%; animation: ns-shimmer 1.4s linear infinite; }
+    @keyframes ns-gradient { 0% { background-position: 0% 50% } 50% { background-position: 100% 50% } 100% { background-position: 0% 50% } }
+    .ns-gradient { background-size: 220% 220%; animation: ns-gradient 7s ease infinite; }
+    @keyframes ns-float-a { 0%,100% { transform: translate(0,0) } 50% { transform: translate(6px,-12px) } }
+    @keyframes ns-float-b { 0%,100% { transform: translate(0,0) } 50% { transform: translate(-8px,-8px) } }
+    @keyframes ns-float-c { 0%,100% { transform: translate(0,0) } 50% { transform: translate(4px,10px) } }
+    .ns-float-a { animation: ns-float-a 4s ease-in-out infinite; }
+    .ns-float-b { animation: ns-float-b 5s ease-in-out infinite; }
+    .ns-float-c { animation: ns-float-c 4.5s ease-in-out infinite; }
+    
+    /* Scene animations */
+    @keyframes ns-spin { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
+    @keyframes ns-bounce { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+    @keyframes ns-pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(0,99,215,0.4) } 70% { box-shadow: 0 0 0 20px rgba(0,99,215,0) } 100% { box-shadow: 0 0 0 0 rgba(0,99,215,0) } }
+    .ns-anim-spin { animation: ns-spin 20s linear infinite; }
+    .ns-anim-bounce { animation: ns-bounce 2.5s ease-in-out infinite; }
+    .ns-anim-ring { animation: ns-pulse-ring 2s infinite; }
+    
     /* Numerals: tabular, calm */
     .ns-num { font-family: var(--b-font-family-secondary); font-feature-settings: 'tnum' 1; letter-spacing: -0.01em; }
     button { font-family: inherit; }
@@ -106,9 +130,9 @@
   </div>
   <script>
     (function () {
-      var ACCESS_PASSWORD = 'northstar'; // <-- change me
+      var ACCESS_PASSWORD = 'Devices2030'; // <-- change me
       var KEY = 'ns-access-until';        // stores the expiry timestamp
-      var TTL = 12 * 60 * 60 * 1000;      // stay signed in for 12 hours
+      var TTL = 24 * 60 * 60 * 1000;      // stay signed in for 24 hours
       var gate = document.getElementById('ns-gate');
       var until = parseInt(localStorage.getItem(KEY) || '0', 10);
       if (until && Date.now() < until) { gate.style.display = 'none'; return; }

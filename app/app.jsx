@@ -377,7 +377,7 @@ const NAV = [
     { id: 'stores', label: 'Devices & locations' },
     { id: 'device-studio', label: 'Device studio' },
   ] },
-  { id: 'settings', label: 'Settings', icon: 'nav-settings' },
+  { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
 function Header({ env, setEnv, crumb, onToggleNav }) {
@@ -414,9 +414,9 @@ function Header({ env, setEnv, crumb, onToggleNav }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 260, height: 36, padding: '0 12px', border: `1px solid ${T.borderStrong}`, borderRadius: 8, background: T.card, color: T.faint }}>
             <Ico name="search" size={16} color={T.faint} /><span style={{ fontSize: 14 }}>Search…</span>
           </div>
-          <button className="ns-hdricon" style={{ width: 32, height: 32, border: 0, background: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: T.sub, padding: 0 }} title="Notifications"><Ico name="notification" size={18} /></button>
-          <button className="ns-hdricon" style={{ width: 32, height: 32, border: 0, background: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: T.sub, padding: 0 }} title="Help"><Ico name="help-center" size={18} /></button>
-          <span style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--b-color-decorative-blue)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>JR</span>
+          <IconButton icon="notification" variant="tertiary" title="Notifications" />
+          <IconButton icon="help-center" variant="tertiary" title="Help" />
+          <span style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--b-color-background-inverse-primary)', color: 'var(--b-color-label-inverse-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>EV</span>
         </div>
       </div>
     </header>
@@ -424,6 +424,14 @@ function Header({ env, setEnv, crumb, onToggleNav }) {
 }
 
 function Sidebar({ active, onNav }) {
+  // Groups expand/collapse independently (Bento b-navigation-menu-group). Default: the group
+  // containing the active page starts open.
+  const [open, setOpen] = useState(() => {
+    const s = new Set();
+    NAV.forEach(it => { if (it.children && it.children.some(c => c.id === active)) s.add(it.id); });
+    return s;
+  });
+  const toggle = (id) => setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   return (
     <aside style={{ width: T.navW, flexShrink: 0, height: '100%', background: T.page, borderRight: `1px solid ${T.borderStrong}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 8px' }}>
@@ -434,23 +442,23 @@ function Sidebar({ active, onNav }) {
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           {NAV.map(item => {
             const isParentActive = item.children && item.children.some(c => c.id === active);
-            // Only a directly-selected leaf shows the active (green) pill. An expanded
-            // parent menu is merely emphasised — it reacts to hover, not the active state.
-            const pill = active === item.id;
-            const emphasised = pill || isParentActive;
+            const isOpen = item.children && open.has(item.id);
+            const pill = active === item.id; // active leaf pill (top-level pages only)
             return (
               <div key={item.id}>
-                <div className={`ns-nav ${pill ? 'is-active' : ''}`} onClick={() => onNav(item.children ? item.children[0].id : item.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 8, cursor: 'pointer', color: T.ink, fontWeight: emphasised ? 600 : 500, fontSize: 14 }}>
-                  <Ico name={item.icon} size={16} color={emphasised ? T.ink : T.sub} />
+                <div className={`ns-nav ${pill ? 'is-active' : ''}`}
+                  onClick={() => item.children ? toggle(item.id) : onNav(item.id)}
+                  aria-expanded={item.children ? isOpen : undefined}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 8, cursor: 'pointer', color: T.ink, fontWeight: (pill || isParentActive) ? 600 : 500, fontSize: 14 }}>
+                  <Ico name={item.icon} size={16} color={(pill || isParentActive) ? T.ink : T.sub} />
                   <span>{item.label}</span>
-                  {item.children && <span style={{ marginLeft: 'auto', lineHeight: 0 }}><Ico name={isParentActive ? 'chevron-up' : 'chevron-down'} size={16} color={T.faint} /></span>}
+                  {item.children && <span style={{ marginLeft: 'auto', lineHeight: 0, transition: 'transform 120ms' }}><Ico name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={T.faint} /></span>}
                 </div>
-                {item.children && isParentActive && (
+                {item.children && isOpen && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1, padding: '1px 0' }}>
                     {item.children.map(c => (
                       <div key={c.id} className={`ns-nav ${active === c.id ? 'is-active' : ''}`} onClick={() => onNav(c.id)}
-                        style={{ padding: '8px 8px 8px 36px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: active === c.id ? 600 : 400, color: active === c.id ? T.ink : T.sub }}>
+                        style={{ padding: '8px 8px 8px 40px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: active === c.id ? 600 : 500, color: active === c.id ? T.ink : T.sub }}>
                         {c.label}
                       </div>
                     ))}
@@ -468,21 +476,43 @@ function Sidebar({ active, onNav }) {
 /* ============================================================= DEVICE INTELLIGENCE */
 const ALL_TILES = [
   { id: 'kpis', name: 'Fleet overview', kind: 'kpi', w: 'full' },
-  { id: 'featureInsight', name: 'Feature insight', kind: 'featureInsight', w: 'full' },
+  { id: 'business', name: 'Business insight', kind: 'business', w: 'half' },
+  { id: 'featureInsight', name: 'Feature insight', kind: 'featureInsight', w: 'half' },
   { id: 'sdkHealth', name: 'SDK & OS health', kind: 'sdkHealth', w: 'half' },
   { id: 'firmware', name: 'Firmware health', kind: 'firmwareHealth', w: 'half' },
-  { id: 'volume', name: 'Volume trend (IPP vs Checkout)', kind: 'chart', chart: 'volumeTrend', w: 'half' },
   { id: 'auth', name: 'Authorisation-rate trend', kind: 'chart', chart: 'authTrend', w: 'half' },
   { id: 'notReady', name: 'Not-ready reasons', kind: 'grid', grid: 'notReadyReasons', topic: 'notReady', w: 'half' },
-  { id: 'featureModel', name: 'Feature usage by terminal model', kind: 'grid', grid: 'featureByModel', topic: 'featureModel', w: 'full' },
-  { id: 'storesAttention', name: 'Stores needing attention', kind: 'grid', grid: 'storesAttention', topic: 'storesAttention', w: 'full' },
   { id: 'compliance', name: 'Firmware & PCI compliance', kind: 'grid', grid: 'compliance', topic: 'compliance', w: 'half' },
+  { id: 'storesAttention', name: 'Stores needing attention', kind: 'grid', grid: 'storesAttention', topic: 'storesAttention', w: 'full' },
+  { id: 'notTransacting', name: 'Not-transacting reasons', kind: 'grid', grid: 'notTransacting', w: 'half' },
+  { id: 'featureByModel', name: 'Feature adoption by model', kind: 'grid', grid: 'featureByModel', w: 'half' },
 ];
-const DEFAULT_TILE_IDS = ['kpis', 'featureInsight', 'sdkHealth', 'firmware', 'volume', 'auth', 'notReady', 'storesAttention', 'featureModel'];
+// Business insight ↔ Getting started, and SDK & OS health ↔ Firmware health sit side-by-side.
+const DEFAULT_TILE_IDS = ['kpis', 'business', 'sdkHealth', 'firmware', 'featureInsight', 'auth', 'notReady'];
+
+/* ---- Dashboard layout persistence ----
+   The user's saved tile order survives reloads via localStorage. Bump LAYOUT_VERSION on any
+   push that changes the default layout — that invalidates old saves so the new default wins;
+   otherwise the user's own layout is always restored. */
+const LAYOUT_VERSION = 5;
+const LAYOUT_KEY = 'ns_fleet_layout';
+function loadLayout() {
+  try {
+    const o = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null');
+    if (o && o.v === LAYOUT_VERSION && Array.isArray(o.ids)) {
+      const ids = o.ids.filter(id => ALL_TILES.some(t => t.id === id));
+      if (ids.length) return ids;
+    }
+  } catch (e) { /* ignore malformed/blocked storage */ }
+  return null;
+}
+function saveLayout(ids) {
+  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify({ v: LAYOUT_VERSION, ids })); } catch (e) { /* ignore */ }
+}
 
 // Fleet overview = headline health; Feature insight = adoption + feature-level metrics.
 const FLEET_KPIS = ['active', 'transacting', 'auth', 'atv'];
-const FEATURE_KPIS = ['gap', 'dcc', 'offline'];
+const FEATURE_KPIS = ['dcc', 'offline'];
 const kpiById = (id) => D.kpis.find(k => k.id === id) || {};
 
 /* Bento summary-grid recreation: grey-filled metric cells (b-summary-grid-item-*),
@@ -510,16 +540,35 @@ function SummaryGrid({ items, cols = 4, style }) {
 function KPITile({ actions, onOpenStores, onOpenDevices }) {
   // Merchant-specific headline metrics (not Adyen-wide totals).
   const fleetItems = [
-    { id: 'stores', title: 'All stores', value: String(SM_STORES.length), hint: 'Stores in this account. Click to view all.', onClick: onOpenStores },
+    { id: 'stores', title: 'All locations', value: String(SM_STORES.length), hint: 'Locations in this account. Click to view all.', onClick: onOpenStores },
     { id: 'devices', title: 'All devices', value: D.fmt(D.devices.length), hint: 'Devices across all your stores. Click to view all.', onClick: onOpenDevices },
+    kpiById('gap'),
     kpiById('auth'),
     kpiById('atv'),
   ];
   return (
     <div>
       {actions && <Row style={{ justifyContent: 'flex-end', marginBottom: 8 }}>{actions}</Row>}
-      <SummaryGrid items={fleetItems} cols={4} />
+      <SummaryGrid items={fleetItems} cols={5} />
     </div>
+  );
+}
+
+/* Shared tile header — one title/subtitle style across the Fleet Intelligence page:
+   title 15/600 ink · subtitle 12/500 faint · info icon (ink) · optional right node & badge. */
+function TileHeader({ title, info, subtitle, right, badge }) {
+  return (
+    <Row align="flex-start" style={{ padding: `${T.s4}px ${T.s5}px`, gap: 12 }}>
+      <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
+        <Row gap={6}>
+          <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', color: T.ink }}>{title}</span>
+          {badge}
+          {info && <InfoTip content={info} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>}
+        </Row>
+        {subtitle && <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>{subtitle}</span>}
+      </Col>
+      {right}
+    </Row>
   );
 }
 
@@ -529,22 +578,12 @@ function FeatureInsightTile() {
   const data = D.featureAdoption;
   return (
     <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
-      <Row align="flex-start" style={{ padding: `${T.s4}px ${T.s5}px`, gap: 12 }}>
-        <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
-          <Row gap={6}>
-            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Feature insight</span>
-            <InfoTip content="Adoption of DCC, tipping and installments across your fleet over the last 12 months." placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
-          </Row>
-          <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>Feature adoption · last 12 months</span>
-        </Col>
-        <Legend series={data.series} />
-      </Row>
-      <Row gap={T.s6} align="stretch" style={{ padding: `0 ${T.s5}px ${T.s5}px`, flexWrap: 'wrap' }}>
-        <div style={{ flex: '2 1 340px', minWidth: 300, height: 200 }}>
-          <LineChart data={data} height={200} />
-        </div>
-        <SummaryGrid items={FEATURE_KPIS.map(kpiById)} cols={1} style={{ flex: '1 1 240px', minWidth: 220, maxWidth: 240, alignSelf: 'stretch', gridAutoRows: '1fr' }} />
-      </Row>
+      <TileHeader title="Feature insight" subtitle="Feature adoption · last 12 months"
+        info="Adoption of DCC, tipping and installments across your fleet over the last 12 months."
+        right={<Legend series={data.series} />} />
+      <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 220 }}>
+        <LineChart data={data} height={200} />
+      </div>
     </div>
   );
 }
@@ -566,17 +605,9 @@ function ChartCard({ t, actions, onExplore }) {
   const updated = t.updated || '4 min ago';
   return (
     <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
-      <Row align="flex-start" style={{ padding: `${T.s4}px ${T.s5}px`, gap: 12 }}>
-        <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
-          <Row gap={6}>
-            <span className={onExplore ? 'ns-hoverline' : undefined} onClick={onExplore}
-              style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', cursor: onExplore ? 'pointer' : 'default' }}>{t.name}</span>
-            <InfoTip content="How this metric is measured and the period it covers." placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
-          </Row>
-          <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>Last update: {updated}</span>
-        </Col>
-        {actions || <Legend series={data.series} />}
-      </Row>
+      <TileHeader title={t.name} subtitle={`Last update: ${updated}`}
+        info="How this metric is measured and the period it covers."
+        right={actions || <Legend series={data.series} />} />
       <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}>
         <LineChart data={data} height={200} />
       </div>
@@ -594,15 +625,68 @@ const NL_ADD_ITEMS = [
   { divider: true },
   { value: 'skills', label: 'Skills', icon: 'sparkles' },
 ];
-function PromptBox({ q, setQ, onSend, thinking, onAdd }) {
+/* ---- Ask contexts (JTBD) ----
+   Each page gets its own AI models (routed by the kind of data on that page) and a set of
+   grouped, job-to-be-done starter prompts. Keyed by page: fleet · devices · studio. */
+const DEFAULT_ASK_MODELS = [{ id: 'general', label: 'North Star 2.5', desc: 'General fleet assistant', icon: 'sparkles' }];
+const ASK_CONTEXTS = {
+  fleet: {
+    placeholder: 'Ask about fleet health, security or operations…',
+    intro: 'Ask across your whole fleet — analytics, security, operations and troubleshooting.',
+    models: [
+      { id: 'analytics', label: 'Fleet Analytics 2.5', desc: 'Aggregate metrics, trends & reporting', icon: 'nav-analytics' },
+      { id: 'security', label: 'Security Advisor', desc: 'Firmware & SDK compliance and risk', icon: 'settings' },
+      { id: 'ops', label: 'Operations Copilot', desc: 'Terminal distribution & scaling', icon: 'store' },
+    ],
+    groups: [
+      { label: 'Business enablement', icon: 'sparkles', prompts: ['Order new terminals for a store I\u2019m opening', 'Set up kitting and custom packaging for my next rollout', 'Create a new store and pre-configure its devices'] },
+      { label: 'Fleet security analysis', icon: 'settings', prompts: ['Show firmware and SDK version distribution across my fleet', 'Which devices fall short of our security baseline?', 'What should I update first to meet PCI requirements?'] },
+      { label: 'Operational intelligence', icon: 'store', prompts: ['Which terminals should I redistribute between stores?', 'Summarise fleet performance from the Management API', 'Where is device utilisation lowest across my locations?'] },
+      { label: 'Troubleshooting visibility', icon: 'search', prompts: ['Pull the latest terminal logs for a device', 'Show the configuration distribution overview', 'Open the audit log for recent changes'] },
+    ],
+  },
+  devices: {
+    placeholder: 'Ask about ordering, onboarding or fulfilment…',
+    intro: 'Ask about the device lifecycle — ordering, onboarding, supply chain and returns.',
+    models: [
+      { id: 'lifecycle', label: 'Lifecycle Assistant', desc: 'Order, replace, return, repair', icon: 'refresh' },
+      { id: 'onboarding', label: 'Onboarding Guide', desc: 'Get terminals transacting on arrival', icon: 'store' },
+      { id: 'supply', label: 'Supply Chain Copilot', desc: 'Fulfilment, stock & shipping', icon: 'grid' },
+    ],
+    groups: [
+      { label: 'Merchant lifecycle services', icon: 'refresh', prompts: ['Order a replacement for a damaged terminal', 'Start a return and generate the shipping label', 'Check warranty and insurance status for a device'] },
+      { label: 'Onboarding', icon: 'store', prompts: ['What\u2019s needed for this terminal to transact on arrival?', 'Pre-board a new device to a location', 'Show devices waiting to be activated'] },
+      { label: 'Supply chain & fulfilment', icon: 'grid', prompts: ['Track orders from approval to fulfilment', 'Register new stock into inventory', 'Show shipments and returns in progress'] },
+    ],
+  },
+  studio: {
+    placeholder: 'Ask AI to customise or configure devices…',
+    intro: 'Ask AI to customise devices and launch payment features — I\u2019ll update the preview.',
+    models: [
+      { id: 'custom', label: 'Customisation Studio', desc: 'Apps, media assets & configuration', icon: 'settings' },
+      { id: 'payments', label: 'Payments Copilot', desc: 'Payment methods, features & billing', icon: 'bank' },
+    ],
+    groups: [
+      { label: 'Customisation', icon: 'settings', prompts: ['Install an Android app on these devices', 'Upload a media asset to the home screen', 'Push a configuration update to this scope'] },
+      { label: 'Payment integration', icon: 'bank', prompts: ['Launch a new payment method for this configuration', 'Enable a new feature and confirm billing', 'Turn on DCC and set the margin'] },
+    ],
+  },
+};
+
+function PromptBox({ q, setQ, onSend, thinking, onAdd, models, placeholder = 'Ask your fleet anything…' }) {
   const [addOpen, setAddOpen] = useState(false);
   const addRef = useOutside(addOpen, () => setAddOpen(false));
+  const mList = models && models.length ? models : DEFAULT_ASK_MODELS;
+  const [modelOpen, setModelOpen] = useState(false);
+  const modelRef = useOutside(modelOpen, () => setModelOpen(false));
+  const [modelId, setModelId] = useState(mList[0].id);
+  const model = mList.find(m => m.id === modelId) || mList[0];
   return (
     <div style={{ border: `1px solid ${T.borderStrong}`, borderRadius: T.radiusL, background: T.card, boxShadow: 'var(--b-shadow-low)' }}>
       {/* free text */}
       <textarea value={q} onChange={(e) => setQ(e.target.value)} rows={2}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
-        placeholder="Ask your fleet anything…"
+        placeholder={placeholder}
         style={{ width: '100%', border: 0, outline: 'none', resize: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 14, lineHeight: '20px', color: T.ink, padding: '12px 12px 6px' }} />
       {/* action toolbar */}
       <Row gap={6} style={{ padding: '6px 8px 8px' }}>
@@ -614,10 +698,20 @@ function PromptBox({ q, setQ, onSend, thinking, onAdd }) {
             </div>
           )}
         </div>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 8px', borderRadius: 8, fontSize: 13, color: T.sub, cursor: 'pointer' }} className="ns-suggest">
-          AI model 2.5
-          <Ico name="chevron-down-small" size={16} color={T.faint} />
-        </span>
+        <div ref={modelRef} style={{ position: 'relative' }}>
+          <span onClick={() => setModelOpen(o => !o)} title="Choose AI model" className="ns-suggest"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 8px', borderRadius: 8, fontSize: 13, color: T.sub, cursor: 'pointer' }}>
+            <Ico name={model.icon || 'sparkles'} size={16} color={T.sub} />
+            {model.label}
+            <Ico name="chevron-down-small" size={16} color={T.faint} />
+          </span>
+          {modelOpen && mList.length > 1 && (
+            <div style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, zIndex: 600 }}>
+              <Menu items={mList.map(m => ({ value: m.id, label: m.label, icon: m.icon }))}
+                onSelect={(v) => { setModelId(v); setModelOpen(false); }} />
+            </div>
+          )}
+        </div>
         <div style={{ marginLeft: 'auto' }}>
           <IconButton icon="arrow-up" variant="primary" condensed onClick={onSend} disabled={thinking || !q.trim()} title="Send" />
         </div>
@@ -626,11 +720,11 @@ function PromptBox({ q, setQ, onSend, thinking, onAdd }) {
   );
 }
 
-function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded, notify }) {
+function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded, notify, context }) {
+  const ctx = context || ASK_CONTEXTS.fleet;
   const [q, setQ] = useState('');
   const [thinking, setThinking] = useState(false);
   const [ans, setAns] = useState(null);
-  const suggestions = D.nlAnswers.map((a, i) => ({ q: a.question, icon: NL_SUG_ICONS[i % NL_SUG_ICONS.length] }));
   const run = (text) => {
     const query = (text || q).toLowerCase();
     if (!query.trim()) return;
@@ -656,45 +750,64 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
       {/* scrollable conversation area */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4 }}>
         {!ans && !thinking && (
-          <Col gap={T.s3}>
-            <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Ask a question in plain language — get a number, chart or grid, then save it as a tile.</span>
-            <Col gap={1} style={{ marginTop: 4 }}>
-              {suggestions.map(s => (
-                <button key={s.q} className="ns-suggest" onClick={() => run(s.q)}
+          <Col gap={T.s4}>
+            <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{ctx.intro}</span>
+            {ctx.groups.map(g => (
+              <Col key={g.label} gap={1}>
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: T.faint, padding: '0 10px 4px' }}>{g.label}</span>
+                {g.prompts.map(p => (
+                  <button key={p} className="ns-suggest" onClick={() => run(p)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', border: 0, background: 'transparent', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: T.ink, fontSize: 14 }}>
+                    <Ico name={g.icon} size={16} color={T.sub} />
+                    <span style={{ flex: 1 }}>{p}</span>
+                    <Ico name="arrow-right" size={16} color={T.faint} />
+                  </button>
+                ))}
+              </Col>
+            ))}
+          </Col>
+        )}
+        {thinking && <Row gap={10} style={{ padding: '8px 2px' }}><LoadingIndicator size={18} /><span style={{ fontSize: 13, color: T.sub }}>Querying the fleet data model…</span></Row>}
+        {ans && (() => {
+          const followups = D.nlAnswers.filter(a => a !== ans).slice(0, 3);
+          return (
+          <div className="ns-fade">
+            {/* question + save */}
+            <Row style={{ marginBottom: 14 }}>
+              <Row gap={8} style={{ flex: 1, minWidth: 0 }}><Ico name="sparkles" size={16} color="var(--b-color-decorative-blue)" /><span style={{ fontSize: 13, color: T.sub }}>{ans.question}</span></Row>
+              {onSaveTile && <Button variant="secondary" condensed iconLeft="plus" onClick={() => onSaveTile(ans)}>Save as tile</Button>}
+            </Row>
+            {/* headline number + summary, stacked above the table */}
+            <Col gap={6} style={{ marginBottom: 16 }}>
+              <Row gap={10} align="baseline">
+                <span style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.02em', fontFamily: 'var(--b-font-family-secondary)' }}>{ans.metric.value}</span>
+                <TrendPill trend={ans.metric.trend} dir={ans.metric.dir} />
+              </Row>
+              <span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{ans.metric.label}</span>
+              <span style={{ fontSize: 14, color: T.ink, lineHeight: '20px', marginTop: 2 }}>{ans.answer}</span>
+            </Col>
+            {/* supporting table — full width */}
+            <Grid columns={ans.grid.columns} rows={ans.grid.rows.slice(0, 5)} dense />
+            {/* contextual follow-ups */}
+            <Col gap={2} style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.sepFaint}` }}>
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: T.faint, padding: '0 10px 2px' }}>You might also ask</span>
+              {followups.map(f => (
+                <button key={f.question} className="ns-suggest" onClick={() => run(f.question)}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', border: 0, background: 'transparent', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: T.ink, fontSize: 14 }}>
-                  <Ico name={s.icon} size={16} color={T.sub} />
-                  <span style={{ flex: 1 }}>{s.q}</span>
+                  <Ico name="sparkles" size={16} color={T.sub} />
+                  <span style={{ flex: 1 }}>{f.question}</span>
                   <Ico name="arrow-right" size={16} color={T.faint} />
                 </button>
               ))}
             </Col>
-          </Col>
-        )}
-        {thinking && <Row gap={10} style={{ padding: '8px 2px' }}><LoadingIndicator size={18} /><span style={{ fontSize: 13, color: T.sub }}>Querying the fleet data model…</span></Row>}
-        {ans && (
-          <div className="ns-fade" style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: T.radiusM, padding: 16 }}>
-            <Row style={{ marginBottom: 10 }}>
-              <Row gap={8}><Ico name="sparkles" size={16} color="var(--b-color-decorative-blue)" /><span style={{ fontSize: 13, color: T.sub }}>{ans.question}</span></Row>
-              <div style={{ marginLeft: 'auto' }}><Button variant="secondary" condensed iconLeft="plus" onClick={() => onSaveTile(ans)}>Save as tile</Button></div>
-            </Row>
-            <Row gap={20} align="flex-start" style={{ flexWrap: 'wrap' }}>
-              <Col gap={4} style={{ minWidth: 160 }}>
-                <span style={{ fontSize: 32, fontWeight: 600, fontFamily: 'var(--b-font-family-secondary)' }}>{ans.metric.value}</span>
-                <Row gap={8}><span style={{ fontSize: 12, color: T.sub }}>{ans.metric.label}</span><TrendPill trend={ans.metric.trend} dir={ans.metric.dir} /></Row>
-              </Col>
-              <div style={{ flex: 1, minWidth: 240 }}>
-                <Grid columns={ans.grid.columns} rows={ans.grid.rows.slice(0, 5)} dense />
-              </div>
-            </Row>
-            <div style={{ marginTop: 12, fontSize: 14, color: T.ink, lineHeight: '20px' }}>{ans.answer}</div>
-            <Row style={{ marginTop: 12 }}><span className="ns-chip-btn" onClick={() => { setAns(null); setQ(''); }} style={{ fontSize: 13, color: 'var(--b-color-link-primary)', fontWeight: 500 }}>Ask another question</span></Row>
           </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* pinned prompt */}
       <div style={{ flexShrink: 0, padding: T.s4, borderTop: `1px solid ${T.sep}` }}>
-        <PromptBox q={q} setQ={setQ} onSend={() => run()} thinking={thinking}
+        <PromptBox q={q} setQ={setQ} onSend={() => run()} thinking={thinking} models={ctx.models} placeholder={ctx.placeholder}
           onAdd={(v) => notify && notify((NL_ADD_ITEMS.find(i => i.value === v) || {}).label + ' — coming soon')} />
       </div>
     </div>
@@ -703,9 +816,10 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
 
 /* Floating "Ask" launcher — Bento action-bar-styled FAB opening the chat panel.
    Minimize (–) collapses back to the FAB; Expand blows it up to a full-page modal. */
-function FloatingAsk({ onSaveTile, onExplore, notify }) {
+function FloatingAsk({ onSaveTile, onExplore, notify, context = 'fleet' }) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const ctx = ASK_CONTEXTS[context] || ASK_CONTEXTS.fleet;
   useEffect(() => {
     if (!open) return;
     const onEsc = (e) => { if (e.key !== 'Escape') return; if (expanded) setExpanded(false); else setOpen(false); };
@@ -714,7 +828,7 @@ function FloatingAsk({ onSaveTile, onExplore, notify }) {
   }, [open, expanded]);
 
   const panel = (
-    <NLSearch onSaveTile={onSaveTile} onExplore={onExplore} notify={notify}
+    <NLSearch onSaveTile={onSaveTile} onExplore={onExplore} notify={notify} context={ctx}
       onMinimize={() => setOpen(false)} onToggleExpand={() => setExpanded(e => !e)} expanded={expanded} />
   );
 
@@ -770,16 +884,9 @@ function SdkHealthTile({ onExplore }) {
   );
   return (
     <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
-      <Row align="flex-start" style={{ padding: `${T.s4}px ${T.s5}px`, gap: 12 }}>
-        <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
-          <Row gap={6}>
-            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>SDK &amp; OS health</span>
-            <InfoTip content="SDK & OS versions across your Tap to Pay and card-reader fleet. Severity reflects the worst metric." placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
-          </Row>
-          <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>Tap to Pay &amp; card readers · {d.totalDevices} devices</span>
-        </Col>
-        <Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>Explore</Button>
-      </Row>
+      <TileHeader title="SDK & OS health" subtitle={`Tap to Pay & card readers · ${d.totalDevices} devices`}
+        info="SDK & OS versions across your Tap to Pay and card-reader fleet. Severity reflects the worst metric."
+        right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>Explore</Button>} />
       <Col gap={14} style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
         <Col gap={10}>
           {metric('var(--b-color-decorative-red)', 'Devices on expired SDKs', sdk.expired.count, `${sdk.expired.pct}%`, 'red')}
@@ -808,11 +915,11 @@ function SdkHealthTile({ onExplore }) {
 }
 
 /* Bento Summary (b-summary) — borderless label/value block used across explore detail pages. */
-function SdkKpi({ label, value }) {
+function SdkKpi({ label, value, onClick }) {
   return (
-    <div style={{ borderRadius: T.radiusM, padding: '14px 16px', background: 'var(--b-color-background-secondary)', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+    <div className={onClick ? 'ns-kpi' : undefined} onClick={onClick} style={{ borderRadius: T.radiusM, padding: '14px 16px', background: 'var(--b-color-background-secondary)', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, cursor: onClick ? 'pointer' : 'default' }}>
       <span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{label}</span>
-      <span className="ns-num" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em' }}>{value}</span>
+      <span className="ns-num" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em', color: onClick ? 'var(--b-color-link-primary)' : T.ink, textDecoration: onClick ? 'underline' : 'none', textUnderlineOffset: 3 }}>{value}</span>
     </div>
   );
 }
@@ -903,6 +1010,39 @@ function VersionTable({ rows, kind, notify }) {
   );
 }
 
+/* SDK releases — horizontal timeline (gantt) of installed vs newly-available versions. */
+function SdkReleasesChart() {
+  const months = ['July', 'August', 'September', 'October', 'November', 'December'];
+  const N = months.length;
+  const rows = [
+    { label: 'Android 1.8.4 (Current)', start: 0, end: 1.3, installed: true },
+    { label: 'Android 1.9.6 (Current)', start: 0, end: 2.3, installed: true },
+    { label: 'iOS 2.2.3', start: 0.6, end: 4.7, installed: false },
+    { label: 'iOS 2.3.3', start: 1.9, end: 6, installed: false },
+  ];
+  const pct = (v) => (v / N) * 100;
+  return (
+    <div>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* month gridlines */}
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', pointerEvents: 'none' }}>
+          {months.map((m, i) => <div key={i} style={{ flex: 1, borderRight: i < N - 1 ? `1px solid ${T.sepFaint}` : 'none' }} />)}
+        </div>
+        {rows.map(r => (
+          <div key={r.label} style={{ position: 'relative', height: 30 }}>
+            <div style={{ position: 'absolute', left: pct(r.start) + '%', width: pct(r.end - r.start) + '%', minWidth: 90, height: '100%', background: r.installed ? 'var(--b-color-decorative-blue)' : 'var(--lume-skyblue, #a9d6ff)', borderRadius: 8, display: 'flex', alignItems: 'center', padding: '0 12px', boxSizing: 'border-box' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: r.installed ? '#fff' : 'var(--b-color-label-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', marginTop: 14 }}>
+        {months.map((m, i) => <span key={i} style={{ flex: 1, fontSize: 11, fontWeight: i === 0 ? 700 : 400, color: i === 0 ? T.ink : T.faint, textTransform: 'uppercase', letterSpacing: '0.02em' }}>{m} 2024</span>)}
+      </div>
+    </div>
+  );
+}
+
 /* Explore → full-screen SDK & OS Health detail. */
 function SdkHealthDetail({ onBack, notify }) {
   const d = D.sdkHealth, sdk = d.sdk.kpis, os = d.os.kpis;
@@ -919,6 +1059,17 @@ function SdkHealthDetail({ onBack, notify }) {
             <SdkKpi label="Total devices in fleet" value={sdk.total} />
           </div>
         </DetailSection>
+        {/* SDK releases graph — outlined card */}
+        <div style={{ ...surface, overflow: 'hidden' }}>
+          <TileHeader title="SDK releases"
+            info="Installed SDK versions and newly-available releases across the timeline. Dark = installed on your fleet, light = available to adopt."
+            right={<Row gap={16}>
+              <Row gap={6}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--b-color-decorative-blue)' }} /><span style={{ fontSize: 12, color: T.sub }}>Installed</span></Row>
+              <Row gap={6}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--lume-skyblue, #a9d6ff)' }} /><span style={{ fontSize: 12, color: T.sub }}>New</span></Row>
+              <MenuButton icon="options-vertical" variant="tertiary" items={[{ value: 'export', label: 'Export' }, { value: 'notes', label: 'Release notes' }]} onSelect={() => notify && notify('SDK releases')} />
+            </Row>} />
+          <div style={{ padding: `0 ${T.s5}px ${T.s5}px` }}><SdkReleasesChart /></div>
+        </div>
         <DetailSection title="Installed SDKs" info="Every SDK version in use, with its expiry and the devices, stores and merchant accounts affected." description="Versions running across the fleet, with expiry and blast radius.">
           <VersionTable rows={d.sdk.installed} kind="sdk" notify={notify} />
         </DetailSection>
@@ -964,16 +1115,9 @@ function FirmwareHealthTile({ onExplore }) {
   );
   return (
     <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
-      <Row align="flex-start" style={{ padding: `${T.s4}px ${T.s5}px`, gap: 12 }}>
-        <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
-          <Row gap={6}>
-            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Firmware health</span>
-            <InfoTip content="Terminal software across your fleet — versions, scheduled updates and failures. Severity reflects the worst metric." placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
-          </Row>
-          <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>Terminal software · {d.totalDevices} devices</span>
-        </Col>
-        <Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>Explore</Button>
-      </Row>
+      <TileHeader title="Firmware health" subtitle={`Terminal software · ${d.totalDevices} devices`}
+        info="Terminal software across your fleet — versions, scheduled updates and failures. Severity reflects the worst metric."
+        right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>Explore</Button>} />
       <Col gap={14} style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
         <Col gap={10}>
           {metric('var(--b-color-decorative-red)', 'Failed updates', s.failed, s.failed > 0 ? 'Action' : 'OK', s.failed > 0 ? 'red' : 'green')}
@@ -1095,20 +1239,258 @@ function FirmwareDetail({ onBack, notify }) {
   );
 }
 
+/* ============================================================= BUSINESS INSIGHT (merchant lens)
+   Each card answers a real merchant question with a EUR consequence, a next action, and a
+   data-readiness tag. All euro figures are ILLUSTRATIVE MOCK (F&B demo · 74 stores · 117 devices). */
+function DeltaChip({ text, tone }) {
+  const color = tone === 'risk' ? 'var(--b-color-label-critical)' : 'var(--b-color-label-success)';
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12, fontWeight: 600, color }}><Ico name={tone === 'risk' ? 'arrow-down' : 'arrow-up'} size={14} color={color} />{text}</span>;
+}
+function MiniBar({ pct, color }) {
+  return <div style={{ height: 6, borderRadius: 3, background: T.page, overflow: 'hidden' }}><div style={{ width: Math.max(0, Math.min(100, pct)) + '%', height: '100%', background: color || 'var(--b-color-decorative-green)' }} /></div>;
+}
+/* Clean Stripe-style metric card: short title + info · big value · muted sub · top-right link. */
+function BizCard({ title, value, delta, tone, sub, info, action, onAction, children }) {
+  return (
+    <div style={{ ...surface, padding: `${T.s4}px ${T.s5}px`, height: '100%', display: 'flex', flexDirection: 'column', gap: 8 }} className="ns-tile">
+      <Row align="flex-start" style={{ gap: 8 }}>
+        <Row gap={6} style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>{title}</span>
+          {info && <InfoTip content={info} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>}
+        </Row>
+        {action && <Button variant="tertiary" condensed iconRight="arrow-right" onClick={onAction}>{action}</Button>}
+      </Row>
+      <Row gap={8} align="baseline">
+        <span className="ns-num" style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.01em' }}>{value}</span>
+        {delta && <DeltaChip text={delta} tone={tone} />}
+      </Row>
+      {sub && <span style={{ fontSize: 12, color: T.sub, lineHeight: '17px' }}>{sub}</span>}
+      {children}
+    </div>
+  );
+}
+function businessGroups({ say, onOpenStores, onOpenDevices, onFirmware }) {
+  return [
+    {
+      label: 'Revenue at risk', cards: [
+        <BizCard key="idle" title="Revenue at risk" value="~€340k/mo" delta="at risk" tone="risk" info="Where am I losing sales right now?" sub="12 idle devices should be trading." action="View" onAction={onOpenDevices} />,
+        <BizCard key="decl" title="Recoverable declines" value="~€48k/mo" delta="recoverable" tone="up" info="How much is being declined, and how much is recoverable?" sub="5.8% declined (~€265k/mo)." action="Recover" onAction={say('Decline recovery — coming soon')} />,
+        <BizCard key="stale" title="Stale-software risk" value="~€90k/mo" delta="at risk" tone="risk" info="Is stale software costing me volume?" sub="15 devices on expired SDK." action="Update" onAction={onFirmware} />,
+      ],
+    },
+    {
+      label: 'Revenue optimization', cards: [
+        <BizCard key="dcc" title="DCC uplift" value="+~€22k/mo" delta="uplift" tone="up" info="How many terminals have DCC enabled?" sub="58% enabled · 49 eligible off." action="Enable" onAction={say('DCC roll-out — 49 eligible terminals')}>
+          <MiniBar pct={58} color="var(--lume-royalblue, #0066ff)" />
+        </BizCard>,
+        <BizCard key="tip" title="Tipping uplift" value="+~€18k/mo" delta="uplift" tone="up" info="Am I capturing tips? (F&B)" sub="46% attach · 9 stores off." action="Enable" onAction={say('Enable tipping on 9 stores')}>
+          <MiniBar pct={46} color="var(--b-color-decorative-green)" />
+        </BizCard>,
+      ],
+    },
+    {
+      label: 'Benchmark & cross-channel', cards: [
+        <BizCard key="bench" title="Peer benchmark" value="+~€36k/mo" delta="vs sector" tone="up" info="How do I compare to F&B peers?" sub="94.2% auth vs sector ~95.0%." action="Compare" onAction={onOpenStores} />,
+        <BizCard key="cross" title="Cross-channel" value="~€151k/30d" delta="2.3× spend" tone="up" info="Cards stored online, settled in-store?" sub="3,140 online → in-store · omnichannel 2.3×." action="Explore" onAction={say('Cross-channel flow — coming soon')} />,
+        <BizCard key="next" title="Next best action" value="Enable DCC" delta="+~€22k/mo" tone="up" info="What should I do next, ranked by impact?" sub="49 eligible terminals." action="Apply" onAction={say('Applying recommendation…')} />,
+      ],
+    },
+  ];
+}
+
+/* Full-screen business-impact detail — trend over time + the categorised metric cards. */
+function BusinessInsightDetail({ onBack, notify, onOpenStores, onOpenDevices, onFirmware }) {
+  const say = (m) => () => notify && notify(m);
+  const RANGES = [
+    { value: 'today', label: 'Today' }, { value: '7d', label: 'Last 7 days' }, { value: '30d', label: 'Last 30 days' }, { value: '90d', label: 'Last 90 days' }, { value: '12m', label: 'Last 12 months' },
+  ];
+  const [range, setRange] = useState('30d');
+  const rangeLabel = (RANGES.find(r => r.value === range) || {}).label;
+  const groups = businessGroups({ say, onOpenStores, onOpenDevices, onFirmware });
+  const trend = {
+    labels: D.volumeTrend.labels, unit: '€k', min: 0, max: 800,
+    series: [
+      { name: 'Revenue at risk (€k)', color: 'var(--b-color-decorative-red)', points: [760, 748, 735, 722, 714, 708, 704, 700, 702, 698, 696, 695] },
+      { name: 'Opportunity (€k)', color: 'var(--b-color-decorative-green)', points: [58, 61, 63, 66, 68, 70, 72, 73, 74, 75, 76, 76] },
+    ],
+  };
+  return (
+    <FullPage title="Business insight" subtitle={rangeLabel} tone="nav-analytics"
+      onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+      actions={<Row gap={8}>
+        <RangeChip value={range} onChange={setRange} options={RANGES} />
+        <Button variant="secondary" iconLeft="download" onClick={say('Exporting business insight…')}>Export</Button>
+      </Row>}>
+      <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s6 }}>
+        <SummaryGrid cols={2} items={[
+          { title: 'Revenue at risk / month', value: '~€695k', hint: 'Idle devices, declines and stale software.' },
+          { title: 'Opportunity identified / month', value: '+~€76k', hint: 'DCC, tipping and benchmark gap.' },
+        ]} />
+        <div style={{ ...surface, overflow: 'hidden' }}>
+          <TileHeader title="Business impact over time" subtitle="Last 12 months · illustrative"
+            right={<Legend series={trend.series} />} />
+          <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}><LineChart data={trend} height={200} /></div>
+        </div>
+        {groups.map(g => (
+          <Col key={g.label} gap={T.s4}>
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{g.label}</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: T.s4 }}>{g.cards}</div>
+          </Col>
+        ))}
+      </div>
+    </FullPage>
+  );
+}
+
+/* Getting-started onboarding steps — each linked to a doc. */
+const ONBOARDING_STEPS = [
+  { done: true, title: 'Board your first device', desc: 'At least one device is active in a location.' },
+  { done: true, title: 'Add payment methods', desc: 'Visa, Mastercard, Maestro and local methods enabled.' },
+  { done: false, title: "Accept Apple's Terms & Conditions", desc: "Accept and manage Apple's Tap to Pay Terms & Conditions." },
+  { done: false, title: 'Generate SDK tokens', desc: 'Generate and manage the SDK tokens required for your mobile products.' },
+  { done: false, title: 'Add Google Play certificate', desc: 'Add your app certificate from the Google Play Console to verify authenticity.' },
+  { done: false, title: 'Add Apple Tap to Pay certificate', desc: 'Upload the Apple entitlement certificate to go live on iPhone.' },
+  { done: false, title: 'Enable Tap to Pay on iPhone', desc: 'Accept contactless on iPhone — no separate reader.' },
+  { done: false, title: 'Configure receipts & branding', desc: 'Set your logo, receipt header and footer.' },
+  { done: false, title: 'Complete PCI attestation', desc: 'Annual self-assessment questionnaire is due.' },
+  { done: false, title: 'Set default software versions', desc: 'Choose the firmware/SDK new devices receive on boarding.' },
+];
+/* Numbered step rows (Bento stepper look); each row opens its doc. */
+function OnboardingList({ steps, onDoc }) {
+  return (
+    <div>
+      {steps.map((st, i) => (
+        <button key={st.title} type="button" className="ns-row" onClick={() => onDoc(st.title)}
+          style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', padding: '14px 4px', border: 0, borderTop: i === 0 ? 'none' : `1px solid ${T.sepFaint}`, background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+          {st.done
+            ? <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--b-color-decorative-green)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ico name="checkmark" size={14} color="#fff" /></span>
+            : <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#001222', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 600 }}>{i + 1}</span>}
+          <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>{st.title}</span>
+            <span style={{ fontSize: 13, color: T.sub }}>{st.desc}</span>
+          </Col>
+          <Ico name="chevron-right" size={16} color={T.faint} />
+        </button>
+      ))}
+    </div>
+  );
+}
+function ProgressPill({ done, total }) {
+  const pct = Math.round((done / total) * 100);
+  return (
+    <Row gap={12} align="center">
+      <span className="ns-num" style={{ fontSize: 14, lineHeight: '18px', color: '#00112C' }}>{done}/{total}</span>
+      <div style={{ width: 120, height: 9, borderRadius: 100, background: '#F7F7F8', overflow: 'hidden' }}><div style={{ width: pct + '%', height: '100%', background: '#0063D7', borderRadius: 100 }} /></div>
+    </Row>
+  );
+}
+/* Full-screen — all onboarding tasks. */
+function OnboardingDetail({ onBack, notify }) {
+  const doc = (title) => notify && notify(`Opening guide: ${title}`);
+  const done = ONBOARDING_STEPS.filter(s => s.done).length;
+  return (
+    <FullPage title="Getting started" subtitle="Complete setup to go live" tone="nav-devices"
+      onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+      actions={<><ProgressPill done={done} total={ONBOARDING_STEPS.length} /><Button variant="secondary" iconRight="external-link" onClick={() => notify && notify('Opening documentation…')}>View docs</Button></>}>
+      <div style={{ maxWidth: 860, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px` }}>
+        <div style={{ ...surface, overflow: 'hidden', padding: `0 ${T.s5}px` }}>
+          <OnboardingList steps={ONBOARDING_STEPS} onDoc={doc} />
+        </div>
+      </div>
+    </FullPage>
+  );
+}
+/* Getting-started tile — first 4 steps + kebab (View all tasks · View docs). */
+function OnboardingTasks({ notify }) {
+  const [detail, setDetail] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useOutside(menuOpen, () => setMenuOpen(false));
+  const doc = (title) => notify && notify(`Opening guide: ${title}`);
+  const done = ONBOARDING_STEPS.filter(s => s.done).length;
+  const menuItem = { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', border: 0, background: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, color: T.ink, textAlign: 'left', whiteSpace: 'nowrap' };
+  const kebab = (
+    <div ref={menuRef} style={{ position: 'relative', display: 'inline-flex' }}>
+      <IconButton icon="options-vertical" variant="tertiary" title="More actions" onClick={() => setMenuOpen(o => !o)} />
+      {menuOpen && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 500, minWidth: 200, background: T.card, border: `1px solid ${T.sep}`, borderRadius: T.radiusL, boxShadow: 'var(--b-shadow-medium)', padding: 4 }}>
+          <button className="b-menu-item" style={menuItem} onClick={() => { setMenuOpen(false); setDetail(true); }}><Ico name="list" size={16} color={T.sub} />View all tasks</button>
+          <button className="b-menu-item" style={menuItem} onClick={() => { setMenuOpen(false); notify && notify('Opening documentation…'); }}><Ico name="external-link" size={16} color={T.sub} />View docs</button>
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <>
+      <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
+        <TileHeader title="Getting started"
+          info="Finish setup to go live — accept payment methods, enable Tap to Pay, add certificates and stay compliant."
+          right={<Row gap={16} align="center"><ProgressPill done={done} total={ONBOARDING_STEPS.length} />{kebab}</Row>} />
+        <div style={{ padding: `0 ${T.s5}px ${T.s3}px` }}>
+          <OnboardingList steps={ONBOARDING_STEPS.slice(0, 4)} onDoc={doc} />
+        </div>
+        <div style={{ padding: `0 ${T.s5}px ${T.s4}px` }}>
+          <Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => setDetail(true)}>View all tasks</Button>
+        </div>
+      </div>
+      {detail && <OnboardingDetail onBack={() => setDetail(false)} notify={notify} />}
+    </>
+  );
+}
+
+function BusinessInsight({ notify, onOpenStores, onOpenDevices, onFirmware }) {
+  const [detail, setDetail] = useState(false);
+  const open = () => setDetail(true);
+  return (
+    <>
+      <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
+        <TileHeader title="Business insight" subtitle="Last 30 days"
+          info={<span>What your fleet is <b>costing or making</b> you — and where to act. Explore for the trend and full breakdown.</span>}
+          right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={open}>Explore</Button>} />
+        <div style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
+          <SummaryGrid cols={2} style={{ gridAutoRows: '1fr' }} items={[
+            { title: 'Revenue at risk / month', value: '~€695k', hint: 'Idle devices, declines and stale software.', onClick: open },
+            { title: 'Opportunity identified / month', value: '+~€76k', hint: 'DCC, tipping and benchmark gap.', onClick: open },
+            kpiById('dcc'),
+            kpiById('offline'),
+          ]} />
+        </div>
+      </div>
+      {detail && <BusinessInsightDetail onBack={() => setDetail(false)} notify={notify} onOpenStores={onOpenStores} onOpenDevices={onOpenDevices} onFirmware={onFirmware} />}
+    </>
+  );
+}
+
 function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, onOpenStudio, notify }) {
-  const [tileIds, setTileIds] = useState(DEFAULT_TILE_IDS);
+  // Committed layout (drives the dashboard + persisted). Restored from the user's last save.
+  const [tileIds, setTileIds] = useState(() => loadLayout() || DEFAULT_TILE_IDS);
+  // Working copy while editing — Save commits it, Cancel discards it.
+  const [draftIds, setDraftIds] = useState(null);
   const [savedTiles, setSavedTiles] = useState([]);
   const [customize, setCustomize] = useState(false);
   const [dragId, setDragId] = useState(null);
+  // Luma / CA-analytics scope filter bar
+  const [dateRange, setDateRange] = useState('30d');
+  const [fScope, setFScope] = useState([]);
+  const [fPlatform, setFPlatform] = useState([]);
+  const [fStatus, setFStatus] = useState([]);
+  const [fModel, setFModel] = useState([]);
+  const fToggle = (setter) => (v) => setter(a => a.includes(v) ? a.filter(x => x !== v) : [...a, v]);
+  const filtersActive = fScope.length || fPlatform.length || fStatus.length || fModel.length || dateRange !== '30d';
+  const resetFilters = () => { setDateRange('30d'); setFScope([]); setFPlatform([]); setFStatus([]); setFModel([]); };
   const [sdkOpen, setSdkOpen] = useState(false);
   const [fwOpen, setFwOpen] = useState(false);
 
   const tiles = tileIds.map(id => ALL_TILES.find(t => t.id === id)).filter(Boolean);
-  const available = ALL_TILES.filter(t => !tileIds.includes(t.id));
+  const editIds = draftIds || tileIds;
+  const available = ALL_TILES.filter(t => !editIds.includes(t.id));
 
-  const removeTile = (id) => setTileIds(ids => ids.filter(x => x !== id));
-  const addTile = (id) => setTileIds(ids => [...ids, id]);
-  const moveTile = (fromId, toId) => setTileIds(ids => { const a = [...ids]; const fi = a.indexOf(fromId), ti = a.indexOf(toId); if (fi < 0 || ti < 0 || fi === ti) return ids; a.splice(ti, 0, a.splice(fi, 1)[0]); return a; });
+  // Edit-mode mutations operate on the draft only.
+  const removeTile = (id) => setDraftIds(ids => ids.filter(x => x !== id));
+  const addTile = (id) => setDraftIds(ids => [...ids, id]);
+  const moveTile = (fromId, toId) => setDraftIds(ids => { const a = [...ids]; const fi = a.indexOf(fromId), ti = a.indexOf(toId); if (fi < 0 || ti < 0 || fi === ti) return ids; a.splice(ti, 0, a.splice(fi, 1)[0]); return a; });
+  const startEdit = () => { setDraftIds(tileIds); setCustomize(true); };
+  const cancelEdit = () => { setCustomize(false); setDraftIds(null); };
+  const saveEdit = () => { setTileIds(draftIds); saveLayout(draftIds); setCustomize(false); setDraftIds(null); notify('Layout saved'); };
   const saveNLTile = (ans) => { setSavedTiles(t => [...t, { id: 'nl-' + Date.now(), ans }]); notify('Saved to your dashboard'); };
 
   const renderTileBody = (t) => {
@@ -1133,20 +1515,22 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
     );
     return (
       <div style={{ padding: `${T.s7}px ${T.s7}px ${T.s7}px`, maxWidth: T.maxW, margin: '0 auto' }}>
+        <div style={{ marginBottom: T.s3 }}><Button variant="tertiary" condensed iconLeft="chevron-left" onClick={cancelEdit}>Fleet Intelligence</Button></div>
         <Row align="flex-start" style={{ marginBottom: T.s6 }}>
           <Col gap={4} style={{ flex: 1 }}>
             <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Customise dashboard</span>
-            <span style={{ fontSize: 13, color: T.sub }}>Drag widgets to re-order</span>
+            <span style={{ fontSize: 13, color: T.sub }}>Drag widgets to re-order · your saved layout is remembered on this device</span>
           </Col>
           <Row gap={8}>
+            <Button variant="tertiary" onClick={() => setDraftIds(DEFAULT_TILE_IDS)}>Reset to default</Button>
             <MenuButton variant="secondary" icon="plus" label="Add widget" align="right" condensed={false}
               items={available.length ? available.map(a => ({ value: a.id, label: a.name, icon: a.kind === 'chart' ? 'nav-analytics' : a.kind === 'grid' ? 'list' : 'grid' })) : [{ value: '_', label: 'All widgets added', disabled: true }]}
               onSelect={(v) => v !== '_' && addTile(v)} />
-            <Button variant="primary" iconLeft="checkmark" onClick={() => { setCustomize(false); notify('Layout saved'); }}>Save layout</Button>
+            <Button variant="primary" iconLeft="checkmark" onClick={saveEdit}>Save</Button>
           </Row>
         </Row>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
-          {tileIds.map(id => {
+          {editIds.map(id => {
             const t = ALL_TILES.find(x => x.id === id); if (!t) return null;
             return (
               <div key={id} draggable onDragStart={() => setDragId(id)} onDragEnd={() => setDragId(null)}
@@ -1176,7 +1560,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
         </Col>
         <Row gap={T.s2}>
           <Button variant="secondary" iconLeft="download" onClick={() => notify('Exporting dashboard to CSV…')}>Export</Button>
-          <Button variant="secondary" iconLeft="grid" onClick={() => setCustomize(true)}>Edit layout</Button>
+          <Button variant="secondary" iconLeft="grid" onClick={startEdit}>Edit layout</Button>
         </Row>
       </Row>
 
@@ -1204,6 +1588,10 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
                 ? <KPITile actions={tileActions(t)} onOpenStores={onOpenAllStores} onOpenDevices={onOpenAllDevices} />
                 : t.kind === 'featureInsight'
                   ? <FeatureInsightTile />
+                : t.kind === 'business'
+                  ? <BusinessInsight notify={notify} onOpenStores={onOpenAllStores} onOpenDevices={onOpenAllDevices} onFirmware={() => setFwOpen(true)} />
+                : t.kind === 'onboarding'
+                  ? <OnboardingTasks notify={notify} onOpenStores={onOpenAllStores} />
                 : t.kind === 'sdkHealth'
                   ? <SdkHealthTile onExplore={() => setSdkOpen(true)} />
                 : t.kind === 'firmwareHealth'
@@ -1227,7 +1615,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
         </div>
       </Col>
 
-      <FloatingAsk onSaveTile={saveNLTile} onExplore={onOpenExplore} notify={notify} />
+      <FloatingAsk onSaveTile={saveNLTile} onExplore={onOpenExplore} notify={notify} context="fleet" />
       {sdkOpen && <SdkHealthDetail onBack={() => setSdkOpen(false)} notify={notify} />}
       {fwOpen && <FirmwareDetail onBack={() => setFwOpen(false)} notify={notify} />}
     </div>
@@ -1303,7 +1691,7 @@ function ExploreModal({ tile, onBack }) {
    merchant accounts, with status/country filters, selection + bulk status
    changes, an edit side-panel, a store detail page, a payment-devices page,
    and a multi-step add-stores wizard. Rendered inside the app's FullPage shell. */
-const SM_MERCHANTS = ['AdyenTechSupport_NL', 'AdyenTechSupport_FR', 'AtelierEva_ECOM', 'NordRetail_POS'];
+const SM_MERCHANTS = ['Lightspeed F&B'];
 const SM_COUNTRIES = ['Netherlands', 'France', 'Germany', 'Belgium', 'United Kingdom', 'Jersey'];
 const SM_CITY = {
   Netherlands: ['Amsterdam', 'Rotterdam', 'Utrecht', 'Groningen', 'Eindhoven'],
@@ -1378,7 +1766,7 @@ function smBuildStores() {
 }
 const SM_ATELIER = [['AT', 'Ringstrasse 1', '1010', 'Vienna', 'Austria'], ['BE', 'Rue Neuve 1', '1000', 'Brussels', 'Belgium'], ['DE', 'Alexanderplatz 1', '10178', 'Berlin', 'Germany'], ['DK', 'Kobmagergade 1', '1150', 'Copenhagen', 'Denmark'], ['ES', 'Gran Via 1', '28013', 'Madrid', 'Spain'], ['FI', 'Mannerheimintie 1', '00100', 'Helsinki', 'Finland'], ['FR', 'Rue de Rivoli 1', '75001', 'Paris', 'France'], ['IE', 'Grafton Street 1', 'D02X285', 'Dublin', 'Ireland'], ['IT', 'Via del Corso 1', '00186', 'Rome', 'Italy'], ['NL', 'De Pijp', '1075NS', 'Amsterdam', 'Netherlands'], ['PT', 'Rua Augusta 1', '1100148', 'Lisbon', 'Portugal']].map(function (a, i) {
   const cc = a[0]; const t = [5, 0, 3, 10, 0, 3, 5, 3, 10, 5, 0][i]; const b = smBreak(t);
-  return { id: 'ae' + i, code: 'Atelier_Eva_' + cc, name: 'Atelier_Eva_' + cc, status: 'Active', country: a[4], city: a[3], street: a[1], zip: a[2], phone: '+00 000 000 ' + (1000 + i), merchant: 'AdyenSupportTest', terminals: t, termOnline: b.termOnline, termWeek: b.termWeek, termOff: b.termOff, storeId: 'ST' + (30000 + i * 137) + 'D22322BD5PPM' + (6000 + i) + 'ZKW' };
+  return { id: 'ae' + i, code: 'Atelier_Eva_' + cc, name: 'Atelier_Eva_' + cc, status: 'Active', country: a[4], city: a[3], street: a[1], zip: a[2], phone: '+00 000 000 ' + (1000 + i), merchant: 'Lightspeed F&B', terminals: t, termOnline: b.termOnline, termWeek: b.termWeek, termOff: b.termOff, storeId: 'ST' + (30000 + i * 137) + 'D22322BD5PPM' + (6000 + i) + 'ZKW' };
 });
 const SM_STORES = SM_ATELIER.concat(smBuildStores());
 const SM_SV = { Active: 'green', Inactive: 'orange', Closed: 'grey' };
@@ -1490,11 +1878,11 @@ function SMStepper({ steps }) {
   );
 }
 /* Data-grid header/row helpers (fixed-width columns, matching the prototype) */
-function SMHead({ children }) {
-  return <div className="b-dg-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: `1px solid ${T.sep}`, borderBottom: `1px solid ${T.sep}`, fontSize: 14, fontWeight: 600, color: T.ink }}>{children}</div>;
+function SMHead({ children, noTop }) {
+  return <div className="b-dg-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: noTop ? 'none' : `1px solid ${T.sep}`, borderBottom: `1px solid ${T.sep}`, fontSize: 14, fontWeight: 600, color: T.ink, background: T.card }}>{children}</div>;
 }
-function SMRowEl({ children, onClick }) {
-  return <div className="b-dg-row" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: `1px solid ${T.sep}`, fontSize: 14 }}>{children}</div>;
+function SMRowEl({ children, onClick, style }) {
+  return <div className="b-dg-row" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: `1px solid ${T.sep}`, fontSize: 14, ...style }}>{children}</div>;
 }
 
 /* ============================================================= STORE SETTINGS (unified modal)
@@ -1518,7 +1906,7 @@ function storeFleet(store) {
   return out;
 }
 /* Store detail — default insights dashboard (before switching to Settings mode). */
-function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevices, onOpenSettings }) {
+function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevices, onOpenSettings, onEditStore, onOpenStudio, notify }) {
   const seed = parseInt((store.id.match(/\d+/) || ['1'])[0], 10) || 1;
   const online = store.termOnline;
   const uptime = store.terminals ? Math.round((online / store.terminals) * 100) : 0;
@@ -1527,6 +1915,18 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
   const atv = store.terminals ? '€' + (34 + (seed % 26)) + '.' + String(10 + (seed % 80)).slice(0, 2) : '—';
   const statusBar = termRows.map(([label, value, c]) => ({ label, n: value, c }));
   const data = D.volumeTrend;
+
+  // Devices in this store (mixed terminals + SoftPOS), for the table below.
+  const devRows = useMemo(() => makeTerminals(store.terminals, { seed, store: store.code, country: store.country, address: store.street }).map(r => ({ ...r, _type: 'Terminal' }))
+    .concat(makeMobiles(Math.max(0, Math.round(store.terminals / 4)), { seed: seed + 5, store: store.code, country: store.country }).map(r => ({ ...r, _type: 'Mobile' }))), [store.id, store.terminals]);
+  const openDev = (r) => onOpenStudio && onOpenStudio({ type: 'device', deviceIds: [r.id], model: r.model, name: r.model, deviceType: r._type === 'Mobile' ? 'SoftPOS' : 'Terminal', storeId: store.id });
+  const devCols = [
+    { key: 'model', label: 'Device model', w: 200, info: 'The hardware model of the payment device. Click to open its details.', render: r => <button type="button" onClick={() => openDev(r)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: 'var(--b-color-label-primary)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{r.model}</button> },
+    { key: 'type', label: 'Type', w: 100, sortField: '_type', info: 'Whether the device is a dedicated Terminal or a Mobile (SoftPOS) device.', render: r => <Tag label={r._type} variant={r._type === 'Mobile' ? 'blue' : 'grey'} /> },
+    { key: 'ident', label: 'Identifier', w: 220, sortField: 'serial', info: 'The device serial number (Terminal) or install ID (SoftPOS) used to identify it.', render: r => <span style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 13 }}>{r._type === 'Mobile' ? r.install : r.serial}</span> },
+    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', info: 'When the device last processed a transaction. The dot shows online (green), idle (orange) or offline (red).', render: r => <Row gap={8}><span style={{ width: 10, height: 10, borderRadius: '50%', background: r.dot, flexShrink: 0 }} /><span style={{ fontSize: 13, color: T.sub }}>{r.lastActivity}</span></Row> },
+    { key: 'ver', label: 'Software', w: 130, sortField: 'version', info: 'The firmware version (Terminal) or SDK version (SoftPOS) currently installed.', render: r => <span style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 13 }}>{r._type === 'Mobile' ? r.sdkVersion : r.version}</span> },
+  ];
   return (
     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', background: T.page }}>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s6 }}>
@@ -1541,9 +1941,9 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
           <SdkKpi label="Authorisation rate" value={authRate} />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: T.s5, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: T.s5, alignItems: 'stretch' }}>
           {/* device status */}
-          <Section title="Device status" actions={store.terminals > 0 ? <Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => onOpenDevices(store.id)}>View devices</Button> : null}>
+          <Section title="Device status">
             <Col gap={14}>
               <Row gap={12} align="baseline">
                 <span className="ns-num" style={{ fontSize: 26, fontWeight: 600 }}>{uptime}%</span>
@@ -1575,12 +1975,91 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
         <Section title="Transaction volume · last 12 months" actions={<Legend series={data.series} />}>
           <div style={{ height: 220 }}><LineChart data={data} height={200} /></div>
         </Section>
+
+        {/* store information — below the graph, with an Edit action */}
+        <Section title="Store information" actions={<Button variant="secondary" condensed iconLeft="edit-1" onClick={() => onEditStore && onEditStore()}>Edit</Button>}>
+          <StructuredList labelWidth={160} items={[
+            { label: 'Store reference', value: store.code, copy: true },
+            { label: 'Store ID', value: store.storeId, copy: true },
+            { label: 'Address', value: store.street },
+            { label: 'Zip code', value: store.zip },
+            { label: 'City', value: store.city },
+            { label: 'Country/Region', value: store.country },
+          ]} />
+        </Section>
+
+        {/* devices — data table below store information */}
+        <Col gap={12}>
+          <Row style={{ minHeight: 28 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', flex: 1 }}>Devices</span>
+          </Row>
+          {devRows.length > 0
+            ? <DeviceGrid columns={devCols} rows={devRows} notify={notify} bordered />
+            : <EmptyState icon="terminal-2" title="No devices" description="This location has no payment devices yet." />}
+        </Col>
       </div>
     </div>
   );
 }
 
-function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, notify }) {
+/* Flatten SCHEMA into a per-setting audit list (Setting · value · config level · changed by · category). */
+function buildSettingsRows(store) {
+  const defs = SCHEMA.defaults();
+  const users = ['accounttool-test-vs@Psp.AdyenPspService', 'nicclap@Psp.AdyenPspService', 'sanden@Psp.AdyenPspService', 'maarams@Psp.AdyenPspService', 'jorde@Psp.AdyenPspService'];
+  const dates = ['Mar 8, 2021, 21:31', 'May 6, 2026, 10:55', 'Aug 7, 2024, 10:50', 'Dec 12, 2016, 11:41', 'Apr 17, 2020, 09:14'];
+  const rows = [];
+  SCHEMA.groups.forEach((g, gi) => g.fields.forEach((f, fi) => {
+    const v = (defs[g.id] || {})[f.id];
+    const k = gi * 7 + fi * 3;
+    rows.push({
+      setting: `${g.id}.${f.id}`,
+      value: Array.isArray(v) ? v.join(', ') : (v === true ? 'true' : v === false ? 'false' : String(v == null ? '' : v)),
+      level: k % 3 === 0 ? store.code : 'AdyenPspService',
+      user: users[k % users.length], date: dates[k % dates.length],
+      category: g.title,
+    });
+  }));
+  return rows;
+}
+
+/* "View all settings" — full-screen audit table (matches Adyen's All terminal settings). */
+function AllSettingsModal({ store, onBack, notify }) {
+  const [q, setQ] = useState('');
+  const rows = useMemo(() => buildSettingsRows(store), [store]);
+  const filtered = rows.filter(r => !q || (r.setting + ' ' + r.value + ' ' + r.category).toLowerCase().includes(q.toLowerCase()));
+  return (
+    <FullPage title={store.code} subtitle="All terminal settings" tone="store" onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+      actions={<>
+        <Button variant="secondary" iconLeft="eye" onClick={() => notify && notify('Showing decrypted settings…')}>View decrypted settings</Button>
+        <Button variant="primary" iconLeft="plus" onClick={() => notify && notify('Add setting…')}>Add setting</Button>
+      </>}>
+      <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px` }}>
+        <Row style={{ marginBottom: 16 }} gap={8}>
+          <SearchBar value={q} onChange={setQ} placeholder="Search setting or value" width={280} />
+          <span style={{ marginLeft: 'auto', fontSize: 13, color: T.sub }}>{filtered.length} settings</span>
+        </Row>
+        <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: T.radiusM, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
+            <thead><tr>{['Setting', 'Setting value', 'Config level', 'Last changed by', 'Category'].map((c, i) => <th key={i} style={dtTh()}>{c}</th>)}</tr></thead>
+            <tbody>
+              {filtered.map((r, ri) => { const last = ri === filtered.length - 1; return (
+                <tr key={ri} className="ns-row">
+                  <td style={{ ...dtTd(last), fontFamily: 'var(--b-font-family-secondary)', fontWeight: 500 }}>{r.setting}</td>
+                  <td style={{ ...dtTd(last), color: T.sub, fontFamily: 'var(--b-font-family-secondary)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.value || '–'}</td>
+                  <td style={dtTd(last)}><a href="#" onClick={(e) => e.preventDefault()} style={{ color: r.level === store.code ? 'var(--b-color-decorative-orange)' : 'var(--b-color-decorative-red)', textDecoration: 'none', fontFamily: 'var(--b-font-family-secondary)' }}>{r.level}</a></td>
+                  <td style={{ ...dtTd(last), color: T.sub }}>{r.user} · {r.date}</td>
+                  <td style={{ ...dtTd(last), color: T.sub }}>{r.category}</td>
+                </tr>
+              ); })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </FullPage>
+  );
+}
+
+function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpenStudio, notify }) {
   const store = SM_STORES.find(x => x.id === storeId);
   const [vals, setVals] = useState(() => SCHEMA.defaults());
   const [initial] = useState(() => JSON.parse(JSON.stringify(SCHEMA.defaults())));
@@ -1591,6 +2070,8 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, notif
   const [reviewOpen, setReviewOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true); // control-panel collapse (matches Device Studio)
   const [mode, setMode] = useState('insights'); // 'insights' (default) → 'settings'
+  const [studioOpen, setStudioOpen] = useState(false); // Device configuration → Device Studio overlay
+  const [settingsListOpen, setSettingsListOpen] = useState(false); // View all settings → audit table
   const [chatMode, setChatMode] = useState('manual'); // manual settings vs agent chat
   const [selModel, setSelModel] = useState('S1F2'); // which device type to preview in the canvas
   const [infoOpen, setInfoOpen] = useState(false);  // store-info (view mode) modal
@@ -1677,6 +2158,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, notif
   const previewDevice = selDev.preview, deviceType = selDev.deviceType;
 
   return (
+    <>
     <FullPage title={store.name} subtitle={`${store.code} · ${store.city}, ${store.country}`} tone="store"
       badge={mode === 'settings'
         ? <InfoTip width={300} content={<span>You're editing <b>store settings</b> — the policy that applies to <b>every device</b> in this location: receipts, payments, tax, language and branding. Device‑only settings (connectivity, hardware, passcodes) are managed on each device.</span>}><Ico name="info" size={16} color={T.ink} /></InfoTip>
@@ -1687,54 +2169,33 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, notif
             <Button variant="secondary" onClick={() => setMode('insights')}>Cancel</Button>
             <Button variant="primary" iconLeft="checkmark" disabled={diff.length === 0} onClick={() => setReviewOpen(true)}>Review{diff.length ? ` (${diff.length})` : ''}</Button>
           </>
-        : <>
-            <Button variant="secondary" iconLeft="edit-1" onClick={() => onEditStore && onEditStore()}>Edit store</Button>
-            <Button variant="primary" iconLeft="settings" onClick={() => setMode('settings')}>Settings</Button>
-          </>}>
+        : null}>
       {mode === 'insights' ? (
-        <StoreInsights store={store} fleet={fleet} methods={methods} currency={currency} termRows={termRows}
-          onOpenDevices={onOpenDevices} onOpenSettings={() => setMode('settings')} />
+        <StoreInsights store={store} fleet={fleet} methods={methods} currency={currency} termRows={termRows} notify={notify}
+          onOpenDevices={onOpenDevices} onOpenSettings={() => setMode('settings')} onEditStore={onEditStore}
+          onOpenStudio={(scope) => (onOpenStudio ? onOpenStudio(scope) : setStudioOpen(true))} />
       ) : (
-      <div style={{ display: 'flex', flexDirection: 'row-reverse', height: '100%', minHeight: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'row', height: '100%', minHeight: 0 }}>
         {/* collapsed rail */}
         {!panelOpen && (
-          <div style={{ width: 48, flexShrink: 0, borderLeft: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0' }}>
-            <GlyphButton title="Show control panel" onClick={() => setPanelOpen(true)}><PanelToggleIcon flip /></GlyphButton>
+          <div style={{ width: 48, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0' }}>
+            <GlyphButton title="Show control panel" onClick={() => setPanelOpen(true)}><PanelToggleIcon /></GlyphButton>
           </div>
         )}
 
-        {/* control panel (docked right) — nav folded in as section accordions, AI composer at bottom */}
+        {/* control panel (docked left) — nav folded in as section accordions, AI composer at bottom */}
         {panelOpen && (
-          <div style={{ width: 440, flexShrink: 0, borderLeft: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ width: 440, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <Row style={{ padding: '8px 12px 8px 20px', borderBottom: `1px solid ${T.sepFaint}`, gap: 8, flexShrink: 0 }}>
               <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>Store settings</span>
               <ModeSwitch mode={chatMode} setMode={setChatMode} />
-              <GlyphButton title="Hide control panel" onClick={() => setPanelOpen(false)}><PanelToggleIcon /></GlyphButton>
+              <GlyphButton title="Hide control panel" onClick={() => setPanelOpen(false)}><PanelToggleIcon flip /></GlyphButton>
             </Row>
             {chatMode === 'agent' ? (
               <DockedAsk expanded messages={messages} draft={draft} setDraft={setDraft} onSend={sendChat} />
             ) : (<>
-            {/* About this store — modelled on Device Studio's "Scope" block */}
-            <div style={{ flexShrink: 0, padding: '12px 16px', borderBottom: `1px solid ${T.sep}`, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--b-color-background-secondary)' }}>
-              <Row style={{ justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: T.faint }}>About this store</span>
-                <span style={{ fontSize: 11, color: T.faint }}>Applies to all settings below</span>
-              </Row>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: `1px solid ${T.border}`, borderRadius: T.radiusM, background: T.card }}>
-                <span style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--b-color-background-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Ico name="store" size={16} color={T.sub} />
-                </span>
-                <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{store.name}</span>
-                  <span style={{ fontSize: 12, color: T.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{store.code} · {fleet.length} devices</span>
-                </Col>
-                <IconButton icon="info" variant="tertiary" title="View store information" onClick={() => setInfoOpen(true)} />
-                <IconButton icon="edit-1" variant="tertiary" title="Edit store" onClick={() => onEditStore && onEditStore()} />
-              </div>
-            </div>
-
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 20px' }}>
-              {/* Store-level policy groups only — device-only categories live on the Device screen. */}
+              {/* Device-related settings only — store identity lives on the overview page. */}
               {SCHEMA.groups.filter(g => !g.market && g.level !== 'device').map(g => (
                 <Accordion key={g.id} open={openGroups.has(g.id)} onToggle={() => toggleGroup(g.id)}
                   title={g.title} desc={g.desc}>
@@ -1752,9 +2213,9 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, notif
           </div>
         )}
 
-        {/* canvas (left) — left controls (vertically centered) · device centered both axes */}
+        {/* canvas (left) — left controls pinned to the top · device centered both axes */}
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', alignItems: 'stretch', gap: 32, padding: '32px 32px 40px', background: T.page }}>
-          <div style={{ width: 300, flexShrink: 0, alignSelf: 'center', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ width: 300, flexShrink: 0, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 20 }}>
             <Col gap={8}><span style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>Screen</span>
               <ChipPicker value={screen} onChange={setScreen} options={PAGE_TYPES} />
             </Col>
@@ -1763,7 +2224,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, notif
             </Col>
             {screen === 'transaction' && (
               <Col gap={8}><span style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>Transaction state</span>
-                <SegmentedControl className="ns-seg-full" style={{ display: 'flex', width: '100%' }} value={txAmountVar ? 'amt' : 'noamt'} onChange={(v) => setTxAmountVar(v === 'amt')} options={[{ value: 'amt', label: 'Amount entered' }, { value: 'noamt', label: 'Awaiting card' }]} />
+                <ChipPicker value={txAmountVar ? 'amt' : 'noamt'} onChange={(v) => setTxAmountVar(v === 'amt')} options={[{ value: 'amt', label: 'Amount entered' }, { value: 'noamt', label: 'Awaiting card' }]} />
               </Col>
             )}
           </div>
@@ -1771,6 +2232,8 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, notif
             <Simulator vals={vals} screen={screen} deviceId={previewDevice} txAmount={txAmountVar} deviceType={deviceType}
               tx={{ base: 100, tip, tipValue, total: 100 + tipValue, setTip }} />
           </div>
+          {/* right spacer balances the 300px control column so the device sits in the true center */}
+          <div style={{ width: 300, flexShrink: 0 }} aria-hidden />
         </div>
       </div>
       )}
@@ -1837,15 +2300,20 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, notif
         </Col>
       </Modal>
     </FullPage>
+    {studioOpen && <DeviceStudio scope={{ type: 'store', storeId: store.id, name: store.name, deviceType: 'Terminal' }} onBack={() => setStudioOpen(false)} notify={notify} />}
+    {settingsListOpen && <AllSettingsModal store={store} onBack={() => setSettingsListOpen(false)} notify={notify} />}
+    </>
   );
 }
 
-function AllStoresModal({ onBack, onOpenStore, inline, notify }) {
+function AllStoresModal({ onBack, onOpenStore, inline, notify, initialStore, onOpenStudio }) {
   const [S, setRaw] = useState({
     query: '', statusFilter: {}, country: 'All countries', page: 1, pageSize: 20,
     selected: {}, menuRow: null, menuTop: 0, menuLeft: 0, statusMenuOpen: false,
     countryMenuOpen: false, storeMenuOpen: false, dd: null, pendingStores: [],
-    efStatusMenuOpen: false, pageStore: null, devicesStore: null,
+    efStatusMenuOpen: false, pageStore: initialStore || null, devicesStore: null,
+    // true once a store is opened FROM the list; false when we deep-linked straight to a store.
+    storeFromList: false,
     bulkOpen: false, bulkStep: 0, bulkTarget: null, ack: false, typed: '', outcome: null,
     editId: null, editVals: {}, addOpen: false, addStep: 0, addMode: 'Single store', addDone: false,
     payMode: 'copy', payOff: {}, amexRoute: null, amexMidValue: '', newCountry: 'Netherlands',
@@ -1963,8 +2431,10 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify }) {
   const isStorePage = !!s.pageStore && !s.devicesStore;
   const isDevicesPage = !!s.devicesStore;
 
-  const openStorePage = (id) => setState({ pageStore: id, menuRow: null });
+  const openStorePage = (id) => setState({ pageStore: id, menuRow: null, storeFromList: true });
   const backToList = () => setState({ pageStore: null });
+  // Back from a store: return to the list if we came from it, else to the previous page.
+  const storeBack = () => (s.storeFromList ? backToList() : onBack());
   const openDevices = (id) => setState({ devicesStore: id || s.pageStore });
   const backToStorePage = () => setState({ devicesStore: null });
 
@@ -2014,7 +2484,7 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify }) {
       if (s.editId) return closeEdit();
       if (s.menuRow) return setState({ menuRow: null });
       if (s.devicesStore) return backToStorePage();
-      if (s.pageStore) return backToList();
+      if (s.pageStore) return storeBack();
       if (!inline) onBack(); // inline is a normal page — Escape shouldn't navigate away
     };
     document.addEventListener('keydown', onEsc);
@@ -2023,7 +2493,7 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify }) {
 
   // FullPage chrome is context-aware: back returns to the previous view.
   const pageTitle = isDevicesPage ? 'Payment devices' : isStorePage ? 'Store settings' : 'Locations';
-  const pageBack = isDevicesPage ? backToStorePage : isStorePage ? backToList : onBack;
+  const pageBack = isDevicesPage ? backToStorePage : isStorePage ? storeBack : onBack;
   const pageBackLabel = isDevicesPage ? 'Store' : isStorePage ? 'All stores' : 'Dashboard';
 
   const showActionBar = selCount > 0 && isListPage;
@@ -2093,7 +2563,7 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify }) {
                   <div style={{ width: 32, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}><Checkbox checked={!!s.selected[st.id]} onChange={() => setState({ selected: Object.assign({}, s.selected, { [st.id]: !s.selected[st.id] }) })} /></div>
                   <div style={{ width: colW.code, flexShrink: 0 }}><a href="#" onClick={(e) => { e.preventDefault(); openStorePage(st.id); }} style={{ fontFamily: 'inherit', fontSize: 13, color: T.ink, textDecoration: 'underline', textUnderlineOffset: 2 }}>{st.code}</a></div>
                   <div style={{ width: colW.status, flexShrink: 0 }}><Tag label={st.status} variant={SM_TV[st.status] || 'grey'} /></div>
-                  <div style={{ width: colW.devices, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>{st.terminals > 0 ? <a href="#" onClick={(e) => { e.preventDefault(); openDevices(st.id); }} style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 13, color: T.ink, textDecoration: 'underline', textUnderlineOffset: 2 }}>{st.terminals}</a> : <span style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 13, color: T.faint }}>0</span>}</div>
+                  <div style={{ width: colW.devices, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>{st.terminals > 0 ? <button type="button" onClick={() => openDevices(st.id)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--b-font-family-secondary)', fontSize: 13, color: 'var(--b-color-link-primary)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{st.terminals}</button> : <span style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 13, color: T.faint }}>0</span>}</div>
                   <div style={{ width: colW.devstatus, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 14 }}>
                     {[['var(--b-color-decorative-green)', st.termOnline, 'Online today'], ['var(--b-color-decorative-orange)', st.termWeek, 'Online last 7 days'], ['var(--b-color-decorative-red)', st.termOff, 'Switched off']].map(([c, n, tt], i) => (
                       <span key={i} title={tt} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: c }} /><span style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 13 }}>{n}</span></span>
@@ -2127,7 +2597,7 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify }) {
             </div>
           </div>
           {/* pager — sticky to the bottom of the page (full width, not part of the horizontal scroll) */}
-          <Row gap={16} style={{ position: 'sticky', bottom: 0, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 4px', fontSize: 14, color: T.ink }}>
+          <Row gap={16} style={{ position: 'sticky', bottom: 0, zIndex: 3, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 16px', fontSize: 14, color: T.ink }}>
             <select value={s.pageSize} onChange={(e) => setState({ pageSize: parseInt(e.target.value, 10), page: 1 })}
               style={{ height: 32, border: '1px solid var(--b-color-outline-secondary)', borderRadius: T.radiusM, background: T.card, fontFamily: 'inherit', fontSize: 14, color: T.ink, padding: '0 8px', cursor: 'pointer' }}>
               <option>20</option><option>50</option><option>100</option>
@@ -2148,9 +2618,9 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify }) {
       )}
 
       {/* ====================== STORE SETTINGS (unified full-page modal) ====================== */}
-      {s.pageStore && <StoreSettingsModal storeId={s.pageStore} onBack={backToList}
+      {s.pageStore && <StoreSettingsModal storeId={s.pageStore} onBack={storeBack}
         onOpenDevices={(id) => setState({ devicesStore: id || s.pageStore })}
-        onEditStore={() => openEdit(s.pageStore)} notify={notify} />}
+        onEditStore={() => openEdit(s.pageStore)} onOpenStudio={onOpenStudio} notify={notify} />}
 
       {/* ====================== PAYMENT DEVICES (full-page modal, over settings) ====================== */}
       {s.devicesStore && (
@@ -2372,6 +2842,7 @@ const DEV_COUNTRIES = ['Netherlands', 'United Kingdom', 'United States', 'France
 const DEV_DATES = ['Oct 18, 2025, 09:07', 'May 7, 2026, 15:17', 'Aug 4, 2026, 02:01', 'Jul 25, 2024, 06:07', 'Nov 25, 2025, 19:19', 'Aug 13, 2026, 07:31', 'Apr 1, 2025, 12:59', 'Feb 9, 2024, 23:45', 'Mar 17, 2026, 00:12', '—'];
 const DEV_DOTS = ['var(--b-color-decorative-green)', 'var(--b-color-decorative-orange)', 'var(--b-color-decorative-red)'];
 const SDK_STATUS = { Supported: 'green', Expiring: 'orange', Expired: 'red' };
+const DEV_INTEGRATION = ['Standalone', 'SDK', 'Cloud'];
 function makeTerminals(count, opts) {
   const o = opts || {}; const rows = [];
   for (let i = 0; i < count; i++) {
@@ -2384,7 +2855,7 @@ function makeTerminals(count, opts) {
       dot: DEV_DOTS[s % 3], lastActivity: DEV_DATES[s % DEV_DATES.length],
       assign: a.label, assignV: a.variant,
       store: loc ? loc.code : (o.store || ('Store_' + (1000 + (s % 8999)))), storeId: loc ? loc.id : null,
-      merchant: loc ? loc.merchant : (o.merchant || 'AdyenSupportTest'),
+      merchant: loc ? loc.merchant : (o.merchant || 'Lightspeed F&B'),
       country: loc ? loc.country : (o.country || DEV_COUNTRIES[s % DEV_COUNTRIES.length]),
       address: loc ? loc.street : (o.address || (['Prinsengracht ' + (10 + s % 80), 'Oxford St ' + (10 + s % 80), 'Rue de Rivoli ' + (10 + s % 80), '—'][s % 4])),
       version: '1.' + (110 + s % 30) + '.' + (s % 12), lastTx: DEV_DATES[(s + 3) % DEV_DATES.length],
@@ -2400,21 +2871,46 @@ function makeMobiles(count, opts) {
     const model = DEV_MOBILE_MODELS[s % DEV_MOBILE_MODELS.length];
     const ios = model.indexOf('iPhone') === 0;
     const sdk = sdkStates[s % sdkStates.length];
+    const a = DEV_ASSIGN[s % DEV_ASSIGN.length];
     const loc = o.stores ? o.stores[i % o.stores.length] : null;
     rows.push({
       id: 'm' + (o.seed || 0) + '_' + i, model,
       install: (s.toString(16).toUpperCase().padStart(6, '0')) + '-' + ((s * 31).toString(16).toUpperCase().slice(0, 4)) + '-' + ((s * 7) % 9999),
+      assign: a.label, assignV: a.variant,
       dot: DEV_DOTS[s % 3], lastActivity: DEV_DATES[s % DEV_DATES.length],
       country: loc ? loc.country : (o.country || DEV_COUNTRIES[s % DEV_COUNTRIES.length]),
       sdkVersion: (ios ? '3.1' : '2.1') + (s % 9) + '.0', sdk, sdkV: SDK_STATUS[sdk],
       sdkExpiry: DEV_DATES[(s + 2) % DEV_DATES.length],
       osVersion: ios ? '1' + (7 + s % 2) + '.' + (s % 6) : '1' + (3 + s % 4),
       osStatus: (s % 5 === 0 ? 'Unsupported' : 'Supported'), platform: ios ? 'iOS' : 'Android',
+      integration: DEV_INTEGRATION[s % DEV_INTEGRATION.length],
       store: loc ? loc.code : (o.store || ('Store_' + (1000 + (s % 8999)))), storeId: loc ? loc.id : null,
-      merchant: loc ? loc.merchant : (o.merchant || 'AdyenSupportTest'),
+      merchant: loc ? loc.merchant : (o.merchant || 'Lightspeed F&B'),
+      lastTx: DEV_DATES[(s + 3) % DEV_DATES.length],
     });
   }
   return rows;
+}
+
+/* Single-select filter chip (e.g. date range) — 36px bordered button + popover, Luma filter-bar style. */
+function RangeChip({ value, onChange, options, icon = 'timer' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useOutside(open, () => setOpen(false));
+  const cur = options.find(o => o.value === value) || options[0];
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 10px 0 12px', border: '1px solid #8C959D', borderRadius: 8, background: T.card, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, color: T.ink, boxSizing: 'border-box' }}>
+        <Ico name={icon} size={16} color={T.sub} /><span>{cur.label}</span><Ico name="chevron-down-small" size={16} color={T.faint} />
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 600, minWidth: 200, background: '#fff', boxShadow: '0px 6px 12px rgba(0,18,34,0.08), 0px 2px 4px rgba(0,18,34,0.04), 0px 0px 0px 1px #DADDDF', borderRadius: 8, padding: 4 }}>
+          {options.map(o => (
+            <button key={o.value} className="b-menu-item" onClick={() => { onChange(o.value); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 12px', border: 0, background: o.value === value ? 'var(--b-color-background-secondary)' : 'transparent', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, color: T.ink, textAlign: 'left' }}>{o.label}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* Bento search bar — 36px, matches b-search-bar spec (border #8C959D · radius 8 · leading icon). */
@@ -2485,8 +2981,24 @@ function FilterChip({ label, options, selected, onChange, onClear }) {
   );
 }
 
+/* Device row actions — shared by the row 3-dots menu and the selection action bar. */
+const DEVICE_ACTIONS = [
+  { value: 'configure', label: 'Configure', icon: 'settings' },
+  { value: 'reassign', label: 'Reassign', icon: 'store' },
+  { value: 'return', label: 'Return', icon: 'arrow-right' },
+  { value: 'replace', label: 'Replace', icon: 'refresh' },
+];
+const deviceActionMsg = (v, n) => {
+  const who = n && n > 1 ? `${n} devices` : 'device';
+  return v === 'assign' ? `Assigning ${who}…`
+    : v === 'return' ? `Return label generated for ${who}`
+    : v === 'reassign' ? `Reassigning ${who}…`
+    : v === 'configure' ? `Opening settings for ${who}…`
+    : `Replacement ordered for ${who}`;
+};
+
 /* Selectable, horizontally-scrollable data grid — Store-list table style. columns: {key,label,w,render,align} */
-function DeviceGrid({ columns, rows }) {
+function DeviceGrid({ columns, rows, notify, bordered, onReassign, onConfigure }) {
   const [sel, setSel] = useState({});
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
@@ -2508,31 +3020,59 @@ function DeviceGrid({ columns, rows }) {
   const gridMin = 32 + 44 + columns.reduce((a, c) => a + c.w, 0) + 12 * (columns.length + 1) + 32;
   const stickyL = { position: 'sticky', left: 0, background: 'transparent', zIndex: 1, flexShrink: 0 };
   const stickyR = { position: 'sticky', right: 0, background: 'transparent', zIndex: 1, flexShrink: 0 };
+  const selCount = Object.keys(sel).filter(k => sel[k]).length;
+  const selectedRows = useMemo(() => rows.filter(r => sel[r.id]), [rows, sel]);
+  const clearSel = () => setSel({});
+  // Route reassign/configure to the parent (modal / studio); everything else toasts.
+  const dispatch = (v, list) => {
+    if (v === 'reassign' && onReassign) return onReassign(list);
+    if (v === 'configure' && onConfigure) return onConfigure(list);
+    notify && notify(deviceActionMsg(v, list.length || 1));
+  };
+  const runAction = (v) => dispatch(v, selectedRows);
   return (
-    <div>
+    <div style={bordered ? { border: `1px solid ${T.border}`, borderRadius: T.radiusM, overflow: 'hidden', background: T.card } : undefined}>
       <div style={{ background: T.card, overflow: 'auto' }}>
         <div style={{ minWidth: gridMin }}>
-          <SMHead>
+          <SMHead noTop={bordered}>
             <div style={{ ...stickyL, width: 32 }}><Checkbox checked={allOn} indeterminate={!allOn && pageRows.some(r => sel[r.id])} onChange={toggleAll} /></div>
             {columns.map(c => (
-              <div key={c.key} onClick={() => toggleSort(c)} title="Sort" style={{ width: c.w, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', userSelect: 'none', justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start', color: sort.key === c.key ? T.ink : undefined }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
+              <div key={c.key} style={{ width: c.w, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4, userSelect: 'none', justifyContent: c.align === 'right' ? 'flex-end' : 'flex-start', color: sort.key === c.key ? T.ink : undefined, paddingRight: c.padRight || undefined, boxSizing: c.padRight ? 'border-box' : undefined }}>
+                <span onClick={() => toggleSort(c)} title="Sort" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>{c.label}</span>
                 {sort.key === c.key && <Ico name={sort.dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} color={T.ink} />}
+                {c.info && <span onClick={(e) => e.stopPropagation()} style={{ lineHeight: 0 }}><InfoTip content={c.info} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip></span>}
               </div>
             ))}
             <div style={{ ...stickyR, width: 44 }} />
           </SMHead>
           {pageRows.map(r => (
-            <SMRowEl key={r.id}>
-              <div style={{ ...stickyL, width: 32 }} onClick={(e) => e.stopPropagation()}><Checkbox checked={!!sel[r.id]} onChange={() => setSel(s => ({ ...s, [r.id]: !s[r.id] }))} /></div>
+            <SMRowEl key={r.id} onClick={() => setSel(s => ({ ...s, [r.id]: !s[r.id] }))} style={{ cursor: 'pointer', background: sel[r.id] ? 'var(--b-color-background-selected)' : undefined }}>
+              <div style={{ ...stickyL, width: 32, background: sel[r.id] ? 'var(--b-color-background-selected)' : 'transparent' }} onClick={(e) => e.stopPropagation()}><Checkbox checked={!!sel[r.id]} onChange={() => setSel(s => ({ ...s, [r.id]: !s[r.id] }))} /></div>
               {columns.map(c => <div key={c.key} style={{ width: c.w, flexShrink: 0, textAlign: c.align || 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.render(r)}</div>)}
-              <div style={{ ...stickyR, width: 44, display: 'flex', justifyContent: 'flex-end' }}><IconButton icon="options-vertical" variant="secondary" condensed title="More actions" /></div>
+              <div style={{ ...stickyR, width: 44, display: 'flex', justifyContent: 'flex-end', background: sel[r.id] ? 'var(--b-color-background-selected)' : 'transparent' }} onClick={(e) => e.stopPropagation()}>
+                <MenuButton icon="options-vertical" variant="tertiary" items={DEVICE_ACTIONS} onSelect={(v) => dispatch(v, [r])} />
+              </div>
             </SMRowEl>
           ))}
           {rows.length === 0 && <div style={{ padding: '48px 24px', textAlign: 'center', color: T.sub, fontSize: 14 }}>No devices match your filters.</div>}
         </div>
       </div>
-      <Row gap={16} style={{ position: 'sticky', bottom: 0, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 4px', fontSize: 14, color: T.ink }}>
+
+      {/* selection action bar — floating, matches Bento multi-select bar */}
+      {selCount > 0 && (
+        <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 390, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px 8px 16px', background: 'var(--b-color-background-inverse-primary)', color: 'var(--b-color-label-inverse-primary)', borderRadius: 999, boxShadow: 'var(--b-shadow-high)' }}>
+          <button onClick={clearSel} title="Clear selection" style={{ display: 'inline-flex', border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: 4, lineHeight: 0 }}><Ico name="cross" size={16} color="currentColor" /></button>
+          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>{selCount} selected</span>
+          <span style={{ width: 1, height: 20, background: 'var(--b-color-separator-inverse-primary)', margin: '0 4px' }} />
+          {DEVICE_ACTIONS.map(a => (
+            <button key={a.value} onClick={() => runAction(a.value)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '6px 10px', borderRadius: 8 }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--b-color-background-inverse-primary-hover)'} onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+              <Ico name={a.icon} size={16} color="currentColor" />{a.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <Row gap={16} style={{ position: 'sticky', bottom: 0, zIndex: 3, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 16px', fontSize: 14, color: T.ink }}>
         <span style={{ color: T.sub }}>{sorted.length} items</span>
         <Row gap={10} style={{ marginLeft: 'auto' }}>
           <span style={{ color: T.sub }}>Page</span>
@@ -2549,12 +3089,29 @@ function DeviceGrid({ columns, rows }) {
   );
 }
 
-function DeviceExplorer({ terminals, mobiles, onOpenStore, title, subtitle, actions, storeLabel = 'Store', info }) {
+/* Bento-style segmented control (single-select pill row). */
+function SegControl({ value, onChange, options }) {
+  return (
+    <div style={{ display: 'inline-flex', gap: 2, padding: 3, borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)' }}>
+      {options.map(o => {
+        const on = value === o.value;
+        return (
+          <button key={o.value} onClick={() => onChange(o.value)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 0, cursor: 'pointer', padding: '6px 14px', borderRadius: T.radiusS, background: on ? T.card : 'transparent', boxShadow: on ? 'var(--b-shadow-low)' : 'none', color: on ? T.ink : T.sub, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, transition: 'background 100ms linear, color 100ms linear' }}>
+            {o.icon && <Ico name={o.icon} size={16} color={on ? T.ink : T.sub} />}{o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DeviceExplorer({ terminals, mobiles, onOpenStore, onOpenDevice, title, subtitle, actions, storeLabel = 'Store', info, notify, view, onView, locationView, onReassign, onConfigure }) {
   const [tab, setTab] = useState('all');
   const [q, setQ] = useState('');
   const [fType, setFType] = useState([]);
   const [fLoc, setFLoc] = useState([]);
   const [fMerch, setFMerch] = useState([]);
+  const [fAssign, setFAssign] = useState([]);
   const toggle = (setter) => (v) => setter(a => a.includes(v) ? a.filter(x => x !== v) : [...a, v]);
 
   const termList = useMemo(() => terminals.map(r => ({ ...r, _type: 'Terminal' })), [terminals]);
@@ -2562,42 +3119,53 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, title, subtitle, acti
   const allList = useMemo(() => { const out = []; const m = Math.max(termList.length, mobList.length); for (let i = 0; i < m; i++) { if (i < termList.length) out.push(termList[i]); if (i < mobList.length) out.push(mobList[i]); } return out; }, [termList, mobList]);
   const locOpts = useMemo(() => Array.from(new Set(allList.map(r => r.store))).map(c => ({ value: c, label: c })), [allList]);
   const merchOpts = useMemo(() => Array.from(new Set(allList.map(r => r.merchant))).map(m => ({ value: m, label: m })), [allList]);
+  const assignOpts = useMemo(() => Array.from(new Set(allList.map(r => r.assign).filter(Boolean))).map(a => ({ value: a, label: a })), [allList]);
 
   const dot = (r) => <Row gap={8}><span style={{ width: 10, height: 10, borderRadius: '50%', background: r.dot, flexShrink: 0 }} /><span style={{ fontSize: 13, color: T.sub }}>{r.lastActivity}</span></Row>;
   const storeCell = (r) => r.store === '—' ? <span style={{ color: T.faint }}>—</span> : <a href="#" onClick={(e) => { e.preventDefault(); onOpenStore && onOpenStore(r.storeId || r.store); }} style={{ color: T.ink, textDecoration: 'underline', textUnderlineOffset: 2, fontSize: 13 }}>{r.store}</a>;
   const mono = (v) => <span style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 13 }}>{v}</span>;
   const sub = (v) => <span style={{ color: T.sub, fontSize: 13 }}>{v}</span>;
+  const modelCell = (r) => onOpenDevice
+    ? <button type="button" onClick={() => onOpenDevice(r)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: 'var(--b-color-label-primary)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{r.model}</button>
+    : <span style={{ fontWeight: 500 }}>{r.model}</span>;
+  const ACT_INFO = 'When the device last processed a transaction. The dot shows online (green), idle (orange) or offline (red).';
+  const ASSIGN_INFO = 'Where the device is in its lifecycle: Inventory (not yet assigned), Deployed (assigned to a store), Boarded (live and transacting) or Reassigning (moving to another store).';
+  const assignCell = (r) => r.assign ? <Tag label={r.assign} variant={r.assignV} /> : <span style={{ color: T.faint }}>—</span>;
   const allCols = [
-    { key: 'model', label: 'Device model', w: 130, render: r => <span style={{ fontWeight: 500 }}>{r.model}</span> },
+    { key: 'model', label: 'Device model', w: 130, render: modelCell },
     { key: 'type', label: 'Type', w: 110, sortField: '_type', render: r => <Tag label={r._type === 'Mobile' ? 'Mobile' : 'Terminal'} variant={r._type === 'Mobile' ? 'blue' : 'grey'} /> },
-    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', render: dot },
-    { key: 'country', label: 'Country/Region', w: 150, render: r => sub(r.country) },
+    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', info: ACT_INFO, render: dot },
+    { key: 'tx', label: 'Last transaction', w: 160, sortField: 'lastTx', render: r => sub(r.lastTx) },
+    { key: 'assign', label: 'Assignment status', w: 150, padRight: 16, sortField: 'assign', info: ASSIGN_INFO, render: assignCell },
     { key: 'store', label: storeLabel, w: 170, render: storeCell },
+    { key: 'country', label: 'Country/Region', w: 150, render: r => sub(r.country) },
     { key: 'merchant', label: 'Merchant', w: 180, render: r => sub(r.merchant) },
   ];
   const termCols = [
-    { key: 'model', label: 'Device model', w: 120, render: r => <span style={{ fontWeight: 500 }}>{r.model}</span> },
+    { key: 'model', label: 'Device model', w: 120, render: modelCell },
     { key: 'serial', label: 'Serial number', w: 150, render: r => mono(r.serial) },
-    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', render: dot },
-    { key: 'assign', label: 'Assignment status', w: 150, render: r => <Tag label={r.assign} variant={r.assignV} /> },
+    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', info: ACT_INFO, render: dot },
+    { key: 'tx', label: 'Last transaction', w: 160, sortField: 'lastTx', render: r => sub(r.lastTx) },
+    { key: 'assign', label: 'Assignment status', w: 150, padRight: 16, sortField: 'assign', info: ASSIGN_INFO, render: assignCell },
     { key: 'store', label: storeLabel, w: 160, render: storeCell },
     { key: 'country', label: 'Country/Region', w: 140, render: r => sub(r.country) },
     { key: 'addr', label: 'Location address', w: 200, sortField: 'address', render: r => sub(r.address) },
     { key: 'ver', label: 'Software version', w: 140, sortField: 'version', render: r => mono(r.version) },
-    { key: 'tx', label: 'Last transaction', w: 160, sortField: 'lastTx', render: r => sub(r.lastTx) },
   ];
   const mobileCols = [
-    { key: 'model', label: 'Device model', w: 120, render: r => <span style={{ fontWeight: 500 }}>{r.model}</span> },
+    { key: 'model', label: 'Device model', w: 120, render: modelCell },
     { key: 'install', label: 'Installation ID', w: 240, render: r => mono(r.install) },
-    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', render: dot },
+    { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', info: ACT_INFO, render: dot },
+    { key: 'assign', label: 'Assignment status', w: 150, padRight: 16, sortField: 'assign', info: ASSIGN_INFO, render: assignCell },
+    { key: 'store', label: storeLabel, w: 160, render: storeCell },
     { key: 'country', label: 'Country/Region', w: 140, render: r => sub(r.country) },
     { key: 'sdkv', label: 'SDK version', w: 110, sortField: 'sdkVersion', render: r => mono(r.sdkVersion) },
     { key: 'sdk', label: 'SDK status', w: 120, render: r => <Tag label={r.sdk} variant={r.sdkV} /> },
     { key: 'exp', label: 'SDK expiry date', w: 150, sortField: 'sdkExpiry', render: r => sub(r.sdkExpiry) },
     { key: 'osv', label: 'OS version', w: 110, sortField: 'osVersion', render: r => mono(r.osVersion) },
     { key: 'os', label: 'OS status', w: 120, sortField: 'osStatus', render: r => <Tag label={r.osStatus} variant={r.osStatus === 'Supported' ? 'green' : 'red'} /> },
+    { key: 'integration', label: 'Integration type', w: 140, sortField: 'integration', render: r => sub(r.integration) },
     { key: 'plat', label: 'Platform', w: 100, sortField: 'platform', render: r => sub(r.platform) },
-    { key: 'store', label: storeLabel, w: 160, render: storeCell },
   ];
 
   const base = tab === 'terminals' ? termList : tab === 'mobiles' ? mobList : allList;
@@ -2606,10 +3174,11 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, title, subtitle, acti
     if (fType.length && !fType.includes(r._type)) return false;
     if (fLoc.length && !fLoc.includes(r.store)) return false;
     if (fMerch.length && !fMerch.includes(r.merchant)) return false;
+    if (fAssign.length && !fAssign.includes(r.assign)) return false;
     if (q && !Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
-  const hasFilters = fType.length || fLoc.length || fMerch.length || q;
+  const hasFilters = fType.length || fLoc.length || fMerch.length || fAssign.length || q;
 
   return (
     <div style={{ maxWidth: title ? T.maxW : 1500, margin: '0 auto', padding: title ? `${T.s7}px ${T.s7}px ${T.s7}px` : '16px 24px 40px' }}>
@@ -2625,64 +3194,559 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, title, subtitle, acti
           {actions && <Row gap={8} style={{ flexShrink: 0 }}>{actions}</Row>}
         </Row>
       )}
-      <div style={{ marginBottom: 16 }}>
-        <Tabs value={tab} onChange={setTab} tabs={[{ value: 'all', label: `All (${allList.length})` }, { value: 'terminals', label: `Terminals (${terminals.length})` }, { value: 'mobiles', label: `Mobile devices (${mobiles.length})` }]} />
-      </div>
-      {/* search + Bento filters — persist across tabs */}
-      <Row gap={8} style={{ flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
-        <SearchBar value={q} onChange={setQ} placeholder="Search…" width={260} />
-        <FilterChip label="Device type" options={[{ value: 'Terminal', label: 'Terminals', count: terminals.length }, { value: 'Mobile', label: 'Mobile devices', count: mobiles.length }]} selected={fType} onChange={toggle(setFType)} onClear={() => setFType([])} />
-        <FilterChip label="Location" options={locOpts} selected={fLoc} onChange={toggle(setFLoc)} onClear={() => setFLoc([])} />
-        <FilterChip label="Merchant" options={merchOpts} selected={fMerch} onChange={toggle(setFMerch)} onClear={() => setFMerch([])} />
-        {hasFilters && <button onClick={() => { setFType([]); setFLoc([]); setFMerch([]); setQ(''); }} style={{ border: 0, background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, color: '#0F75DC', padding: '0 4px' }}>Clear filters</button>}
-      </Row>
-      <DeviceGrid key={tab} columns={columns} rows={rows} />
+      {onView && (
+        <div style={{ marginBottom: 16 }}>
+          <SegControl value={view} onChange={onView} options={[{ value: 'byLocation', label: 'By location', icon: 'store' }, { value: 'devices', label: 'All devices', icon: 'terminal-1' }]} />
+        </div>
+      )}
+      {view === 'byLocation' && locationView ? locationView : (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <Tabs value={tab} onChange={setTab} tabs={[{ value: 'all', label: `All (${allList.length})` }, { value: 'terminals', label: `Terminals (${terminals.length})` }, { value: 'mobiles', label: `Mobile devices (${mobiles.length})` }]} />
+          </div>
+          {/* search + Bento filters — persist across tabs */}
+          <Row gap={8} style={{ flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
+            <SearchBar value={q} onChange={setQ} placeholder="Search…" width={260} />
+            <FilterChip label="Device type" options={[{ value: 'Terminal', label: 'Terminals', count: terminals.length }, { value: 'Mobile', label: 'Mobile devices', count: mobiles.length }]} selected={fType} onChange={toggle(setFType)} onClear={() => setFType([])} />
+            <FilterChip label="Location" options={locOpts} selected={fLoc} onChange={toggle(setFLoc)} onClear={() => setFLoc([])} />
+            <FilterChip label="Assignment status" options={assignOpts} selected={fAssign} onChange={toggle(setFAssign)} onClear={() => setFAssign([])} />
+            <FilterChip label="Merchant" options={merchOpts} selected={fMerch} onChange={toggle(setFMerch)} onClear={() => setFMerch([])} />
+            {hasFilters && <button onClick={() => { setFType([]); setFLoc([]); setFMerch([]); setFAssign([]); setQ(''); }} style={{ border: 0, background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, color: '#0F75DC', padding: '0 4px' }}>Clear filters</button>}
+          </Row>
+          <DeviceGrid key={tab} columns={columns} rows={rows} notify={notify} onReassign={onReassign} onConfigure={onConfigure} />
+        </>
+      )}
     </div>
+  );
+}
+
+/* Location-first lens — each location with its device counts, health and performance;
+   rows expand to reveal that location's devices. Answers "which location has which devices". */
+function LocationDeviceTable({ stores, onOpenLocation, onOpenDevice, onConfigureStore, onCloseLocation, notify }) {
+  const [q, setQ] = useState('');
+  const [expanded, setExpanded] = useState({});
+  const [sort, setSort] = useState({ key: 'code', dir: 'asc' });
+  const [page, setPage] = useState(1);
+  const pageSize = 12;
+  const rows = useMemo(() => stores.map(s => {
+    const seed = parseInt((s.id.match(/\d+/) || ['1'])[0], 10) || 1;
+    return {
+      ...s, devices: s.terminals || 0, online: s.termOnline || 0, idle: s.termWeek || 0, off: s.termOff || 0,
+      auth: s.terminals ? 91 + (seed % 80) / 10 : null,
+      atv: s.terminals ? 30 + (seed % 40) : null,
+      lastTx: DEV_DATES[seed % DEV_DATES.length],
+    };
+  }), [stores]);
+  const filtered = rows.filter(r => !q || (r.code + ' ' + r.city + ' ' + r.country).toLowerCase().includes(q.toLowerCase()));
+  const sorted = useMemo(() => {
+    const f = sort.key; const arr = [...filtered].sort((a, b) => {
+      const av = a[f], bv = b[f];
+      if (typeof av === 'number' || typeof bv === 'number') return (av || 0) - (bv || 0);
+      return String(av == null ? '' : av).localeCompare(String(bv == null ? '' : bv), undefined, { numeric: true });
+    });
+    if (sort.dir === 'desc') arr.reverse();
+    return arr;
+  }, [filtered, sort]);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const pg = Math.min(page, totalPages);
+  const pageRows = sorted.slice((pg - 1) * pageSize, pg * pageSize);
+  const toggleSort = (k) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' });
+
+  // widths hug content and include a 16px right padding (border-box); all left-aligned
+  const cols = [
+    { key: 'code', label: 'Location', w: 260 },
+    { key: 'devices', label: 'Devices', w: 88 },
+    { key: 'status', label: 'Device status', w: 190, nosort: true },
+    { key: 'auth', label: 'Auth rate', w: 96 },
+    { key: 'atv', label: 'ATV', w: 72 },
+    { key: 'lastTx', label: 'Last transaction', w: 170 },
+  ];
+  const gridMin = 32 + 44 + cols.reduce((a, c) => a + c.w, 0) + 12 * (cols.length + 1) + 32;
+  const stickyL = { position: 'sticky', left: 0, background: 'transparent', zIndex: 1, flexShrink: 0 };
+  const stickyR = { position: 'sticky', right: 0, background: 'transparent', zIndex: 1, flexShrink: 0 };
+  const statusChip = (color, n) => n > 0 ? <Row gap={4} key={color}><span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} /><span style={{ fontSize: 12, color: T.sub }}>{n}</span></Row> : null;
+  const genDevices = (s) => {
+    const seed = parseInt((s.id.match(/\d+/) || ['1'])[0], 10) || 1;
+    return makeTerminals(s.terminals || 0, { seed, store: s.code, country: s.country, address: s.street }).map(r => ({ ...r, _type: 'Terminal' }))
+      .concat(makeMobiles(Math.max(0, Math.round((s.terminals || 0) / 4)), { seed: seed + 5, store: s.code, country: s.country }).map(r => ({ ...r, _type: 'Mobile' })));
+  };
+  const cell = (c, r) => {
+    if (c.key === 'code') return <a href="#" onClick={(e) => { e.preventDefault(); onOpenLocation(r.id); }} style={{ color: T.ink, fontWeight: 500, textDecoration: 'none' }}>{r.code}<span style={{ color: T.sub, fontWeight: 400 }}> · {r.city}, {r.country}</span></a>;
+    if (c.key === 'devices') return <span className="ns-num">{r.devices}</span>;
+    if (c.key === 'status') return r.devices ? <Row gap={12}>{[statusChip('var(--b-color-decorative-green)', r.online), statusChip('var(--b-color-decorative-orange)', r.idle), statusChip('var(--b-color-decorative-red)', r.off)].filter(Boolean)}</Row> : <span style={{ color: T.faint }}>No devices</span>;
+    if (c.key === 'auth') return r.auth ? <span>{r.auth.toFixed(1)}%</span> : <span style={{ color: T.faint }}>—</span>;
+    if (c.key === 'atv') return r.atv ? <span>€{r.atv}</span> : <span style={{ color: T.faint }}>—</span>;
+    if (c.key === 'lastTx') return <span style={{ color: T.sub, fontSize: 13 }}>{r.lastTx}</span>;
+    return null;
+  };
+  return (
+    <div>
+      <Row style={{ marginBottom: 16 }} gap={8}>
+        <span style={{ marginLeft: 'auto', fontSize: 13, color: T.sub, alignSelf: 'center' }}>{filtered.length} locations · {filtered.reduce((a, r) => a + r.devices, 0)} devices</span>
+      </Row>
+      <div style={{ background: T.card, overflow: 'auto' }}>
+        <div style={{ minWidth: gridMin }}>
+          <SMHead>
+            <div style={{ ...stickyL, width: 32 }} />
+            {cols.map(c => (
+              <div key={c.key} onClick={() => !c.nosort && toggleSort(c.key)} title={c.nosort ? undefined : 'Sort'} style={{ width: c.w, flexShrink: 0, boxSizing: 'border-box', paddingRight: 16, display: 'flex', alignItems: 'center', gap: 4, cursor: c.nosort ? 'default' : 'pointer', userSelect: 'none', justifyContent: 'flex-start', color: sort.key === c.key ? T.ink : undefined }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
+                {sort.key === c.key && <Ico name={sort.dir === 'asc' ? 'arrow-up' : 'arrow-down'} size={14} color={T.ink} />}
+              </div>
+            ))}
+            <div style={{ ...stickyR, width: 44 }} />
+          </SMHead>
+          {pageRows.map(r => {
+            const open = !!expanded[r.id];
+            return (
+              <div key={r.id}>
+                <SMRowEl onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))} style={{ cursor: 'pointer' }}>
+                  <div style={{ ...stickyL, width: 32, display: 'flex', justifyContent: 'center' }}><Ico name={open ? 'chevron-down-small' : 'chevron-right'} size={16} color={T.sub} /></div>
+                  {cols.map(c => <div key={c.key} style={{ width: c.w, flexShrink: 0, boxSizing: 'border-box', paddingRight: 16, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={c.key === 'code' ? (e) => e.stopPropagation() : undefined}>{cell(c, r)}</div>)}
+                  <div style={{ ...stickyR, width: 44, display: 'flex', justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
+                    <MenuButton icon="options-vertical" variant="tertiary" items={[
+                      { value: 'edit', label: 'Edit location', icon: 'edit-1' },
+                      { value: 'configure', label: 'Configure devices', icon: 'settings' },
+                      { value: 'close', label: 'Close location', icon: 'cross' },
+                    ]} onSelect={(v) => v === 'edit' ? onOpenLocation(r.id) : v === 'configure' ? onConfigureStore(r) : onCloseLocation ? onCloseLocation(r) : notify && notify(`Closing ${r.code}…`)} />
+                  </div>
+                </SMRowEl>
+                {open && (
+                  <div style={{ background: 'var(--b-color-background-secondary)', padding: '4px 16px 12px 60px' }}>
+                    {r.devices === 0
+                      ? <span style={{ fontSize: 13, color: T.sub }}>This location has no devices yet.</span>
+                      : genDevices(r).map((d, di) => (
+                        <Row key={d.id} gap={12} style={{ padding: '10px 0', borderBottom: `1px solid ${T.sepFaint}` }}>
+                          <button type="button" onClick={() => onOpenDevice(d)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink, textDecoration: 'underline', textUnderlineOffset: 2, width: 150, textAlign: 'left', flexShrink: 0 }}>{d.model}</button>
+                          <span style={{ width: 90, flexShrink: 0 }}><Tag label={d._type} variant={d._type === 'Mobile' ? 'blue' : 'grey'} /></span>
+                          <Row gap={6} style={{ width: 170, flexShrink: 0 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: d.dot }} /><span style={{ fontSize: 13, color: T.sub }}>{d.lastActivity}</span></Row>
+                          <span style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 13, color: T.sub }}>{d._type === 'Mobile' ? d.sdkVersion : d.version}</span>
+                        </Row>
+                      ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {sorted.length === 0 && <div style={{ padding: '48px 24px', textAlign: 'center', color: T.sub, fontSize: 14 }}>No locations match your search.</div>}
+        </div>
+      </div>
+      <Row gap={16} style={{ position: 'sticky', bottom: 0, zIndex: 3, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 16px', fontSize: 14, color: T.ink }}>
+        <span style={{ color: T.sub }}>{sorted.length} locations</span>
+        <Row gap={10} style={{ marginLeft: 'auto' }}>
+          <span style={{ color: T.sub }}>Page</span>
+          <span style={{ fontFamily: 'var(--b-font-family-secondary)', minWidth: 40, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${T.borderStrong}`, borderRadius: T.radiusM }}>{pg}</span>
+          <span style={{ color: T.sub }}>of {totalPages}</span>
+          <Row gap={4} style={{ marginLeft: 6 }}>
+            {[['chevron-left', () => setPage(p => Math.max(1, p - 1))], ['chevron-right', () => setPage(p => Math.min(totalPages, p + 1))]].map(([ic, fn]) => (
+              <button key={ic} className="b-pager-nav" onClick={fn} style={{ width: 28, height: 28, border: 0, background: 'none', color: T.sub, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, borderRadius: T.radiusM }}><Ico name={ic} size={16} /></button>
+            ))}
+          </Row>
+        </Row>
+      </Row>
+    </div>
+  );
+}
+
+/* ============================================================= TERMINAL SELECTOR
+   Device-Studio-styled "Order devices" popup: a left control panel of guided questions,
+   a right canvas that shows an animated empty/loading state until enough is answered, then a
+   device recommendation. Mock rules map answers → an Adyen terminal. */
+const SELECTOR_QUESTIONS = [
+  { id: 'country', label: 'Which country will the devices operate in?', ph: 'Select a country', opts: ['Netherlands', 'United Kingdom', 'United States', 'Germany', 'France', 'Spain', 'Australia', 'Japan'].map(c => [c, c]) },
+  { id: 'industry', label: 'In which industry does the client operate?', ph: 'Select an industry', opts: [['large_retail', 'Large format retail'], ['small_retail', 'Small format retail'], ['fnb', 'Food & Beverage'], ['hospitality', 'Hospitality'], ['luxury', 'Luxury retail']] },
+  { id: 'use_case', label: 'Where will the payment take place?', ph: 'Select an environment', opts: [['countertop', 'At a fixed counter / checkout'], ['mobile', 'On the move, next to the customer'], ['unattended', 'In a self-service kiosk'], ['smartphone', "On the seller's smartphone"]] },
+  { id: 'card_read', label: 'What are the card acceptance requirements?', ph: 'Select an option', opts: [['all', 'Chip / swipe + contactless'], ['contactless_only', 'Contactless payments only']] },
+  { id: 'input_type', label: 'Is a physical keypad required?', ph: 'Select an option', opts: [['physical', 'Yes, a physical keypad is necessary'], ['touchscreen', 'No, touchscreen only is ideal']] },
+  { id: 'os_type', label: 'Does it need to run other business apps (all-in-one)?', ph: 'Select a requirement', opts: [['payment_only', 'No, payments only (Linux OS)'], ['all_in_one', 'Yes, other apps (Android OS)']] },
+  { id: 'offline', label: 'Must it work if the internet connection fails?', ph: 'Select a requirement', opts: [['no', 'No, internet is reliable'], ['yes', 'Yes, offline processing is critical']] },
+  { id: 'intl', label: 'Does the business serve many international tourists?', ph: 'Select an audience', opts: [['no', 'No, mainly local customers'], ['yes', 'Yes, frequently (needs DCC)']] },
+  { id: 'printer', label: 'Is a built-in printer required?', ph: 'Select a feature', opts: [['yes', 'Yes, a printer is required'], ['no', 'No, a printer is not needed']] },
+];
+/* Playful per-question scenes for the right canvas. Using placeholder image per request. */
+const SELECTOR_VISUALS = {
+  country: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'We ship the right power supply & certifications for each country.' },
+  industry: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Every industry has a sweet-spot device mix.' },
+  use_case: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Counter, handheld, kiosk or phone — placement drives the form factor.' },
+  card_read: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Tap, chip and swipe — pick what the client needs to accept.' },
+  input_type: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Physical keypad or full touchscreen?' },
+  os_type: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Payments-only Linux, or all-in-one Android for business apps.' },
+  offline: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Keep trading even when the connection drops.' },
+  intl: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'International shoppers? DCC lets them pay in their own currency.' },
+  printer: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Print paper receipts, or keep it digital.' },
+};
+
+function SelectorScene({ qid }) {
+  const v = SELECTOR_VISUALS[qid] || SELECTOR_VISUALS.industry;
+  return (
+    <Col gap={20} style={{ alignItems: 'center', textAlign: 'center', maxWidth: 420 }} className="ns-fade" key={qid}>
+      <div style={{ position: 'relative', width: 300, height: 300, borderRadius: 32, overflow: 'hidden', boxShadow: 'var(--b-shadow-high)' }}>
+        <img src={v.bg} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      </div>
+      <span style={{ fontSize: 14, color: T.sub, lineHeight: '20px' }}>{v.caption}</span>
+    </Col>
+  );
+}
+function recommendTerminals(a) {
+  const common = [];
+  if (a.country) common.push(`Certified and shipped for ${a.country}`);
+  if (a.intl === 'yes') common.push('Supports Dynamic Currency Conversion for international shoppers');
+  if (a.offline === 'yes') common.push('Store-and-forward keeps you trading if the internet drops');
+  if (a.card_read === 'contactless_only') common.push('Contactless-first acceptance');
+  const mk = (o) => ({ price: 0, ...o, reasons: [...(o.reasons || []), ...common] });
+  if (a.use_case === 'smartphone') return [mk({ model: 'Tap to Pay', type: 'SoftPOS', icon: 'mobile', price: 0, blurb: 'Accept contactless right on the seller’s own phone — no extra hardware.', specs: ['SoftPOS', 'Contactless', 'iOS & Android'], reasons: ['Runs on the seller’s smartphone', 'Zero hardware to ship'] })];
+  if (a.use_case === 'unattended') return [mk({ model: 'NYC1', type: 'Unattended', icon: 'terminal-1', price: 249, blurb: 'Rugged contactless reader built for self-service kiosks.', specs: ['Unattended', 'Contactless', 'Vandal-resistant'], reasons: ['Designed for self-service kiosks', 'Contactless-only acceptance'] })];
+  if (a.use_case === 'mobile') {
+    if (a.os_type === 'all_in_one') return a.printer === 'yes'
+      ? [mk({ model: 'S1F2', type: 'Android · portable', icon: 'mobile', price: 395, blurb: 'All-in-one Android handheld with a built-in printer.', specs: ['Android', 'Portable', '4G', 'Printer'], reasons: ['Android for other business apps', 'Built-in receipt printer', 'Portable, use next to the customer'] })]
+      : [mk({ model: 'S1EL', type: 'Android · portable', icon: 'mobile', price: 349, blurb: 'Sleek Android handheld, big screen, no printer.', specs: ['Android', 'Portable', '4G'], reasons: ['Android for other business apps', 'Lightweight, no printer needed'] })];
+    return a.printer === 'yes'
+      ? [mk({ model: 'V400m', type: 'Portable', icon: 'mobile', price: 289, blurb: 'Portable Linux terminal with a built-in printer.', specs: ['Portable', 'Wi-Fi + 4G', 'Printer'], reasons: ['Payments-only, secure Linux OS', 'Built-in receipt printer', 'Portable'] })]
+      : [mk({ model: 'e285p', type: 'Portable', icon: 'mobile', price: 199, blurb: 'Compact handheld card reader for payments only.', specs: ['Portable', 'Wi-Fi', 'Compact'], reasons: ['Payments-only, secure Linux OS', 'Compact and lightweight'] })];
+  }
+  // countertop (default)
+  if (a.os_type === 'all_in_one') return [mk({ model: 'AMS1', type: 'Android · countertop', icon: 'terminal-2', price: 329, blurb: 'Android countertop terminal for the checkout.', specs: ['Android', 'Countertop', 'Ethernet + Wi-Fi'], reasons: ['Android for other business apps', 'Fixed counter placement', a.input_type === 'physical' ? 'Physical PIN pad' : 'Touchscreen entry'].filter(Boolean) })];
+  return [mk({ model: 'P400 Plus', type: 'Countertop', icon: 'terminal-2', price: 299, blurb: 'Reliable Linux countertop terminal with PIN pad.', specs: ['Countertop', 'Ethernet + Wi-Fi', 'PIN pad'], reasons: ['Payments-only, secure Linux OS', 'Fixed counter placement', 'Physical PIN pad'] })];
+}
+function getMatches(vals) {
+  return ORDER_PRODUCTS.filter(p => {
+    if (vals.use_case && !p.filter.use.includes(vals.use_case)) return false;
+    if (vals.card_read === 'contactless_only' && p.filter.card !== 'contactless_only') return false;
+    if (vals.input_type && p.filter.input !== vals.input_type) return false;
+    if (vals.os_type && p.filter.os !== vals.os_type) return false;
+    if (vals.offline === 'yes' && p.filter.offline === 'no') return false;
+    if (vals.printer && p.filter.print !== vals.printer) return false;
+    return true;
+  });
+}
+
+function TerminalSelector({ onBack, onOrder, notify }) {
+  const [vals, setVals] = useState({});
+  const [phase, setPhase] = useState('empty'); // empty · loading · done
+  const answeredKey = SELECTOR_QUESTIONS.map(q => vals[q.id] || '').join('|');
+  const complete = SELECTOR_QUESTIONS.every(q => vals[q.id]);
+  const answeredCount = SELECTOR_QUESTIONS.filter(q => vals[q.id]).length;
+  const matches = getMatches(vals);
+  
+  const setVal = (id, v) => setVals(s => ({ ...s, [id]: v }));
+  const reset = () => { setVals({}); };
+
+  // progressive reveal — show a question once the previous one is answered
+  const visibleCount = Math.min(SELECTOR_QUESTIONS.length, answeredCount + 1);
+
+  return (
+    <FullPage title="Order devices" subtitle="Terminal selector · find the right device" tone="nav-devices"
+      onBack={onBack} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+      actions={<Button variant="secondary" iconLeft="refresh" onClick={reset} disabled={answeredCount === 0}>Start over</Button>}>
+      <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+        {/* control panel */}
+        <div style={{ width: 400, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.sepFaint}` }}>
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Tell us about the client</span>
+            <div style={{ marginTop: 8, height: 6, borderRadius: 100, background: T.page, overflow: 'hidden' }}><div style={{ width: `${(answeredCount / SELECTOR_QUESTIONS.length) * 100}%`, height: '100%', background: 'var(--b-color-decorative-blue)', borderRadius: 100, transition: 'width 200ms' }} /></div>
+            <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>{answeredCount} of {SELECTOR_QUESTIONS.length} answered</span>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {SELECTOR_QUESTIONS.slice(0, visibleCount).map((q, i) => (
+              <Col key={q.id} gap={6} className="ns-fade">
+                <span style={{ fontSize: 13, color: T.sub }}>{i + 1}. {q.label}</span>
+                <Dropdown value={vals[q.id] || ''} placeholder={`— ${q.ph} —`} onChange={(v) => setVal(q.id, v)} options={q.opts.map(([value, label]) => ({ value, label }))} />
+              </Col>
+            ))}
+          </div>
+        </div>
+        {/* canvas — matching devices grid */}
+        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 40, background: T.page }}>
+          <div style={{ maxWidth: 840, margin: '0 auto' }}>
+            <Row style={{ marginBottom: 24, justifyContent: 'space-between' }}>
+               <span style={{ fontSize: 18, fontWeight: 600 }}>{matches.length} matching device{matches.length === 1 ? '' : 's'}</span>
+               {answeredCount > 0 && <span style={{ fontSize: 13, color: T.sub }}>Filters applied</span>}
+            </Row>
+            {matches.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: T.s4 }}>
+                {matches.map(p => (
+                  <div key={p.id} className="ns-fade" style={{ ...surface, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <OrderProductImg p={p} />
+                    <Col gap={2}>
+                      <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{p.name}</span>
+                      <span style={{ fontSize: 13, color: T.sub }}>{p.type}</span>
+                    </Col>
+                    <Button variant="secondary" condensed onClick={() => onOrder && onOrder(p)}>Select</Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState icon="search" title="No matching devices" description="Try removing or changing some of your answers on the left." />
+            )}
+          </div>
+        </div>
+      </div>
+    </FullPage>
+  );
+}
+
+/* ============================================================= ORDER FLOW
+   Full-page "Add devices" purchasing flow (matches Adyen Orders & returns):
+   region → product catalogue → product detail → checkout. All mock data. */
+const ORDER_COUNTRIES = ['Netherlands', 'United Kingdom', 'United States', 'Germany', 'France', 'Spain', 'Australia', 'Japan'];
+const ORDER_PRODUCTS = [
+  { id: 's1f2', name: 'S1F2', type: 'Mobile', acc: 12, price: 395, blurb: 'An all-in-one Android device with printing power', specs: ['Portable', '2.4 and 5 GHz', '4G'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2ZpbGVcL01hNHR4a3Fib29xbThtZ1VmY3JXLnBuZyJ9:adyen:0fcuuj2UrJ36lqGND2gZAKWNaTUWzI6sHcSO-iawPJU?format=webp&width=624&height=832',
+    filter: { use: ['mobile'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'yes' } },
+  { id: 'ams1', name: 'AMS1', type: 'Mobile', acc: 5, price: 249, blurb: 'Designed by Adyen; your all-in-one terminal running on Android.', specs: ['Portable', 'Wi-Fi', '4G'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL3Q1Y2VySmpjV1B0UkpEZUR4a21SLnBuZyJ9:adyen:Kxr1RJJmlEr_VW--jzZVrMXBbA9jeCcRU6mQQNcP9KA?format=webp&width=624&height=832',
+    filter: { use: ['mobile'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'no' } },
+  { id: 'nyc1', name: 'NYC1', type: 'Mobile', acc: 0, price: 79, blurb: 'Designed by us, inspired by you; a card reader for businesses on the move.', specs: ['Portable', 'Bluetooth'], icon: 'terminal-1', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2IzREdwSzRzMmpSV0NYZFJteHo5LnBuZyJ9:adyen:PItds0nupqldFNFSHXLFJvhoGof3pmEmtuxz-1lEsu4?format=webp&width=624&height=832',
+    filter: { use: ['mobile', 'unattended'], card: 'contactless_only', input: 'touchscreen', os: 'payment_only', offline: 'no', print: 'no' } },
+  { id: 'sfo1', name: 'Adyen SFO1', type: 'Countertop', acc: 10, price: 329, blurb: 'Payment, branding, and customer engagement — all in one terminal.', specs: ['Countertop', 'Ethernet', 'Wi-Fi'], icon: 'terminal-2', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2lRTnNmMkpZbXlpRHNZU3p3dmdOLnBuZyJ9:adyen:_IvTntqAuPTeu_ZpRw2fA7TdLa_vOz1SyMVixX0xI_c?format=webp&width=624&height=832',
+    filter: { use: ['countertop'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'yes' } },
+  { id: 'v400m', name: 'V400m', type: 'Mobile', acc: 6, price: 289, blurb: 'Go-to portable, with fast printing and many connections.', specs: ['Portable', 'Wi-Fi', '4G'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2dBcTZlZ3FidW00OUUzemVFa0ppLnBuZyJ9:adyen:a5trkKg2W6H4lcxWjeNC1WuKCNvcBJeV-fOhxqYxGk8?format=webp&width=624&height=832',
+    filter: { use: ['mobile'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'yes' } },
+  { id: 'v400c', name: 'V400c Plus', type: 'Countertop', acc: 6, price: 309, blurb: 'Standalone countertop, with added printer.', specs: ['Countertop', 'Wi-Fi', 'Ethernet'], icon: 'terminal-2', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL0VNYXRkbTdEdzJqNjRrdGZIc05zLnBuZyJ9:adyen:TPUta3nY4UxF6mJpsba9NX4Yzu8QluRflLQ7caGBhRc?format=webp&width=624&height=832',
+    filter: { use: ['countertop'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'yes' } },
+  { id: 'e285p', name: 'e285', type: 'Mobile', acc: 2, price: 199, blurb: 'Pocket-sized and mobile, for personal shopping.', specs: ['Portable', 'Wi-Fi'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2lkaHdZU3VyTEphZ0pIWk10dFdBLnBuZyJ9:adyen:6sMtm8DqITQstuVuLP9fURW1MscS4hfmAzfHl-D9Ipc?format=webp&width=624&height=832',
+    filter: { use: ['mobile'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'no' } },
+  { id: 'm450', name: 'M450', type: 'Countertop', acc: 5, price: 299, blurb: 'Impact, insights and two-way interactions.', specs: ['Countertop', 'Ethernet'], icon: 'terminal-2', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL0pQTWd1RDZlQXc1eXpWeTh1UEdjLnBuZyJ9:adyen:rECF9hGvC_4XwKal-lAuUlQVca5R9A-1JymbVyGXoE8?format=webp&width=624&height=832',
+    filter: { use: ['countertop'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'no' } },
+  { id: 's1u2', name: 'S1U2', type: 'Unattended', acc: 3, price: 399, blurb: 'All-in-one unattended Android device.', specs: ['Unattended', 'Android'], icon: 'terminal-1', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL0FnNnVVNzV6a1g0RWpGTEhoUW9XLnBuZyJ9:adyen:l0WdmQ66XAeQJKIjL0Nyrw_J-PsNH4hTXjCi6C35q8k?format=webp&width=624&height=832',
+    filter: { use: ['unattended'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'no' } },
+  { id: 'p630', name: 'P630', type: 'Countertop', acc: 5, price: 349, blurb: 'Premium design, full of features and ultra-reliable.', specs: ['Countertop', 'Ethernet'], icon: 'terminal-2', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL280NGNoMTQ5R2lNbTRlYWJIZFFDLnBuZyJ9:adyen:FZLbWs22rLP6LDkPk9dAV4hu70NZQf9GhDZIpwO22Kc?format=webp&width=624&height=832',
+    filter: { use: ['countertop'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'no' } },
+  { id: 'ttp', name: 'Tap to Pay', type: 'SoftPOS', acc: 0, price: 0, blurb: 'Accept contactless right on the seller’s own phone.', specs: ['SoftPOS', 'iOS & Android'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2ZpbGVcL0V1UmVFa0JnTXRGVkV1b2FRdDVoLnBuZyJ9:adyen:tQaYhK5XULpw88hLg-inj7a13EvSCDYRL2jYfAJ5hAQ?format=webp&width=624&height=832',
+    filter: { use: ['smartphone'], card: 'contactless_only', input: 'touchscreen', os: 'all_in_one', offline: 'no', print: 'no' } },
+];
+/* Delivered-but-not-yet-assigned devices awaiting activation (mock). */
+const ACTIVATE_PENDING = [
+  { model: 'S1F2', icon: 'mobile', type: 'Mobile', spec: 'Android · portable · 4G · built-in printer', serial: '0000CC-18B4-2231' },
+  { model: 'V400m', icon: 'mobile', type: 'Mobile', spec: 'Portable · Wi-Fi + 4G · colour touchscreen', serial: '0001682249-1057' },
+  { model: 'P400 Plus', icon: 'terminal-2', type: 'Countertop', spec: 'Countertop · Ethernet + Wi-Fi · PIN pad', serial: '0001682221-7781' },
+  { model: 'AMS 1', icon: 'mobile', type: 'Mobile', spec: 'Android · portable · Wi-Fi', serial: '0000CC-18B4-9942' },
+  { model: 'NYC 1', icon: 'terminal-1', type: 'Mobile', spec: 'Pocket reader · Bluetooth · pairs with phone', serial: '0000CC-22A1-3380' },
+];
+function OrderProductImg({ p, size = 48, h = 140 }) {
+  if (p.img) return <div style={{ height: h, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}><img src={p.img} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken' }} /></div>;
+  return <div style={{ height: h, borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ico name={p.icon || 'terminal-2'} size={size} color={T.sub} /></div>;
+}
+function OrderFlow({ onBack, notify }) {
+  const [step, setStep] = useState('region'); // region · products · detail · checkout
+  const [region, setRegion] = useState('');
+  const [ptab, setPtab] = useState('terminals');
+  const [product, setProduct] = useState(null);
+  const [qty, setQty] = useState(1);
+  const [cart, setCart] = useState(0);
+  const openDetail = (p) => { setProduct(p); setQty(1); setStep('detail'); };
+  const cartBtn = <Button variant={cart ? 'primary' : 'secondary'} iconLeft="package" onClick={() => cart ? setStep('checkout') : notify && notify('Your cart is empty')}>Cart{cart ? ` (${cart})` : ''}</Button>;
+  const back = () => step === 'products' ? setStep('region') : step === 'detail' ? setStep('products') : step === 'checkout' ? setStep('detail') : onBack();
+  const backLabel = step === 'region' ? 'Devices & locations' : step === 'products' ? 'Region' : 'All products';
+
+  const region1 = (
+    <div style={{ maxWidth: 640, margin: '0 auto', padding: '80px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, textAlign: 'center' }}>
+      <span style={{ width: 96, height: 96, borderRadius: '50%', background: 'var(--b-color-background-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Ico name="globe" size={44} color="var(--b-color-decorative-green)" /></span>
+      <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: '-0.01em' }}>Where will you be using these terminals?</span>
+      <span style={{ fontSize: 13, color: T.sub }}>We need this information to send the right power supply for your country or region.</span>
+      <div style={{ width: 320, marginTop: 8 }}>
+        <Dropdown value={region} onChange={(v) => { setRegion(v); setStep('products'); }} placeholder="Select" options={ORDER_COUNTRIES.map(c => ({ value: c, label: c }))} />
+      </div>
+    </div>
+  );
+
+  const catalogue = ORDER_PRODUCTS.filter(p => ptab === 'terminals');
+  const products = (
+    <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px` }}>
+      <Row align="flex-start" style={{ marginBottom: T.s5 }}>
+        <span style={{ flex: 1, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>Products in {region}</span>
+        <Row gap={8}>
+          <Button variant="secondary" iconLeft="settings" onClick={() => notify && notify('Spare parts catalogue — coming soon')}>I need a spare part</Button>
+          {cartBtn}
+        </Row>
+      </Row>
+      <div style={{ marginBottom: T.s5 }}>
+        <Tabs value={ptab} onChange={setPtab} tabs={[{ value: 'terminals', label: 'Terminals & Card readers' }, { value: 'kits', label: 'Hardware kits' }]} />
+      </div>
+      {ptab === 'kits' ? (
+        <EmptyState icon="grid" title="No hardware kits" description="Pre-bundled kits will appear here." />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: T.s4 }}>
+          {catalogue.map(p => (
+            <button key={p.id} type="button" onClick={() => openDetail(p)} className="ns-tile"
+              style={{ textAlign: 'left', border: `1px solid ${T.border}`, borderRadius: T.radiusL, background: T.card, padding: 16, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <OrderProductImg p={p} />
+              <Col gap={2}>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{p.name}</span>
+                <span style={{ fontSize: 12, color: T.sub }}>{p.acc ? `${p.acc} accessories` : 'No accessories'}</span>
+              </Col>
+              <Tag label={p.type} variant={p.type === 'Countertop' ? 'grey' : 'blue'} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const p = product || ORDER_PRODUCTS[0];
+  const detail = (
+    <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px` }}>
+      <Row style={{ marginBottom: T.s5 }}>
+        <div style={{ flex: 1 }} />
+        <Row gap={8}>
+          <Button variant="secondary" iconLeft="settings" onClick={() => notify && notify('Replacement parts — coming soon')}>I need a replacement part</Button>
+          {cartBtn}
+        </Row>
+      </Row>
+      <Row gap={T.s7} align="flex-start" style={{ flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 380px', minWidth: 320 }}>
+          <OrderProductImg p={p} size={140} h={420} />
+        </div>
+        <Col gap={14} style={{ flex: '1 1 360px', minWidth: 320 }}>
+          <span style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em' }}>{p.name} package</span>
+          <span className="ns-num" style={{ fontSize: 24, fontWeight: 600 }}>USD {p.price.toFixed(2)}</span>
+          <span style={{ fontSize: 13, color: T.sub }}>{p.blurb}</span>
+          <Row gap={6} style={{ flexWrap: 'wrap' }}>{p.specs.map(s => <Tag key={s} label={s} variant="grey" />)}</Row>
+          <Accordion open title="Package includes" desc={`Terminal device, power adapter, USB-C cable${p.type === 'Mobile' ? ', receipt roll' : ''}`} onToggle={() => {}} />
+          <Row gap={12} align="center" style={{ marginTop: 4 }}>
+            <div style={{ width: 90 }}><Dropdown value={String(qty)} onChange={(v) => setQty(parseInt(v, 10))} options={[1, 2, 5, 10, 25, 50, 100, 500].map(n => ({ value: String(n), label: String(n) }))} /></div>
+            <Button variant="primary" iconLeft="package" onClick={() => { setCart(c => c + qty); notify && notify(`Added ${qty} × ${p.name} package to cart`); }}>Add to cart</Button>
+          </Row>
+        </Col>
+      </Row>
+    </div>
+  );
+
+  const lineTotal = (p.price * qty);
+  const chargeBase = Math.round(p.price * 0.5 * qty);
+  const checkout = (
+    <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px` }}>
+      <Row gap={T.s7} align="flex-start" style={{ flexWrap: 'wrap' }}>
+        <Col gap={T.s6} style={{ flex: '1 1 460px', minWidth: 340 }}>
+          <Col gap={4}>
+            <span style={{ fontSize: 18, fontWeight: 600 }}>Shipping address</span>
+            <span style={{ fontSize: 13, color: T.sub }}>Your order will be delivered to this address.</span>
+          </Col>
+          <div style={{ ...surface, padding: 20 }}>
+            <Row style={{ marginBottom: 12 }}><span style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>Amsterdam flagship store</span><Button variant="secondary" condensed onClick={() => notify && notify('Edit shipping address')}>Edit</Button></Row>
+            <StructuredList items={[{ label: 'Contact', value: 'Yi-ning' }, { label: 'Email', value: 'yining.chuang@adyen.com' }, { label: 'Phone', value: '+31615333740' }, { label: 'Street address', value: 'Simon Carmiggeltstraat 6-50, 1011DK' }, { label: 'City', value: 'Amsterdam' }, { label: 'Country/Region', value: region || 'Netherlands' }]} />
+          </div>
+          <Col gap={4} style={{ marginTop: 4 }}>
+            <span style={{ fontSize: 18, fontWeight: 600 }}>Order reference <span style={{ fontSize: 13, color: T.faint, fontWeight: 400 }}>(optional)</span></span>
+          </Col>
+          <InputField placeholder="Add a reference for your records" />
+          <div><Button variant="primary" onClick={() => { setCart(0); onBack(); notify && notify('Order placed — you\u2019ll get a confirmation email'); }}>Place order</Button></div>
+        </Col>
+        <div style={{ ...surface, padding: 20, flex: '1 1 320px', minWidth: 300, background: 'var(--b-color-background-secondary)' }}>
+          <Row style={{ marginBottom: 4 }}><span style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>Order summary</span><Button variant="secondary" condensed onClick={() => setStep('detail')}>Edit</Button></Row>
+          <span style={{ fontSize: 12, color: T.sub }}>Expected shipment by Dec 28, 2023</span>
+          <div style={{ height: 1, background: T.sep, margin: '14px 0' }} />
+          <Row style={{ marginBottom: 8 }}><span style={{ flex: 1, fontSize: 12, color: T.sub }}>Item</span><span style={{ width: 60, textAlign: 'right', fontSize: 12, color: T.sub }}>Qty</span><span style={{ width: 90, textAlign: 'right', fontSize: 12, color: T.sub }}>Subtotal</span></Row>
+          <Row align="flex-start" style={{ marginBottom: 12 }}>
+            <Col gap={2} style={{ flex: 1 }}><span style={{ fontSize: 13, fontWeight: 500 }}>{p.name} package</span><span style={{ fontSize: 12, color: T.faint }}>Terminal · power adapter · USB-C cable</span></Col>
+            <span style={{ width: 60, textAlign: 'right', fontSize: 13 }}>{qty}</span>
+            <span style={{ width: 90, textAlign: 'right', fontSize: 13 }} className="ns-num">USD {lineTotal.toFixed(2)}</span>
+          </Row>
+          <div style={{ height: 1, background: T.sep, margin: '4px 0 12px' }} />
+          <Row><span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>Subtotal</span><span className="ns-num" style={{ fontSize: 14, fontWeight: 600 }}>USD {lineTotal.toFixed(2)}</span></Row>
+        </div>
+      </Row>
+    </div>
+  );
+
+  return (
+    <FullPage title="Order devices" subtitle={region ? `Shipping to ${region}` : 'Adyen Orders & returns'} tone="nav-devices"
+      onBack={back} backLabel={backLabel} backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+      actions={step === 'region' ? null : cartBtn}>
+      {step === 'region' ? region1 : step === 'products' ? products : step === 'detail' ? detail : checkout}
+    </FullPage>
   );
 }
 
 /* Device-first "Device locations" page — the full device list with Location as a column.
    "View all locations" flips to the store (location) list. */
-function DeviceLocationsPage({ notify, onOpenStore }) {
-  const [showLocations, setShowLocations] = useState(false);
+function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
+  const [locations, setLocations] = useState(null); // null = closed; { store: id|undefined } opens the Locations modal
   const [addOpen, setAddOpen] = useState(false);
   const [addStore, setAddStore] = useState((SM_STORES[0] || {}).id);
   const [addModel, setAddModel] = useState('S1F2');
   const [addQty, setAddQty] = useState('1');
+  const [selectorOpen, setSelectorOpen] = useState(false); // "Add devices" (By location) → terminal selector
+  const [orderOpen, setOrderOpen] = useState(false); // recommendation → full-page order flow
+  const [view, setView] = useState('byLocation'); // byLocation | devices
+  const [reassign, setReassign] = useState(null); // { rows } while the reassign modal is open
+  const [reassignTarget, setReassignTarget] = useState((SM_STORES[0] || {}).id);
   const terminals = useMemo(() => makeTerminals(60, { seed: 2, stores: SM_STORES }), []);
   const mobiles = useMemo(() => makeMobiles(25, { seed: 9, stores: SM_STORES }), []);
   const st = SM_STORES.find(x => x.id === addStore);
   const qty = Math.max(0, parseInt(addQty, 10) || 0);
+  const rt = SM_STORES.find(x => x.id === reassignTarget);
+  // Open the Locations modal, optionally deep-linked to a single location's detail (where Edit store lives).
+  const openLocation = (id) => setLocations({ store: SM_STORES.find(x => x.id === id) ? id : undefined });
+  const openDeviceStudio = (r) => onOpenStudio && onOpenStudio({ type: 'device', deviceIds: [r.id], model: r.model, name: r.model, deviceType: r._type === 'Mobile' ? 'SoftPOS' : 'Terminal', storeId: r.storeId });
+  // Configure one/many devices → Device Studio scoped to the selection.
+  const configureDevices = (rows) => {
+    if (!onOpenStudio || !rows || !rows.length) return;
+    const one = rows.length === 1;
+    onOpenStudio({ type: 'device', deviceIds: rows.map(r => r.id), model: one ? rows[0].model : `${rows.length} devices`, name: one ? rows[0].model : `${rows.length} devices`, deviceType: rows[0]._type === 'Mobile' ? 'SoftPOS' : 'Terminal', storeId: rows[0].storeId });
+  };
+  const configureStore = (s) => onOpenStudio && onOpenStudio({ type: 'store', storeId: s.id, name: s.name, deviceType: 'Terminal' });
   return (
     <>
-      <DeviceExplorer terminals={terminals} mobiles={mobiles} onOpenStore={() => setShowLocations(true)} storeLabel="Location"
-        title="Devices & locations" subtitle="Every payment device across your fleet, with the location it operates in."
+      <DeviceExplorer terminals={terminals} mobiles={mobiles} onOpenStore={openLocation} storeLabel="Location" notify={notify}
+        view={view} onView={setView} onReassign={(rows) => setReassign({ rows })} onConfigure={configureDevices}
+        locationView={<LocationDeviceTable stores={SM_STORES} onOpenLocation={openLocation} onOpenDevice={openDeviceStudio} onConfigureStore={configureStore} onCloseLocation={(s) => notify && notify(`Closing ${s.code}…`)} notify={notify} />}
+        onOpenDevice={openDeviceStudio}
+        title="Devices & locations" subtitle={`${SM_STORES.length} locations · ${terminals.length + mobiles.length} devices across your fleet`}
         info={<span>“<b>Location</b>” replaces the old “Store” concept so it can represent any level of your Adyen account structure — a <b>business line</b>, a <b>merchant account</b> acting as a single shop, or a physical store. One umbrella term for wherever a device operates.</span>}
         actions={<>
           <Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting devices to CSV…')}>Export</Button>
-          <Button variant="secondary" iconLeft="store" onClick={() => setShowLocations(true)}>All locations</Button>
-          <Button variant="primary" iconLeft="plus" onClick={() => setAddOpen(true)}>Add devices</Button>
+          {view === 'byLocation'
+            ? <Button variant="primary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Add devices</Button>
+            : <Button variant="primary" iconLeft="checkmark-circle" onClick={() => setAddOpen(true)}>Activate devices</Button>}
         </>} />
-      {showLocations && <AllStoresModal notify={notify} onBack={() => setShowLocations(false)} onOpenStore={onOpenStore} />}
-      {addOpen && (
-        <Modal open onClose={() => setAddOpen(false)} title="Add devices" width={460}
-          description="Assign new payment devices to a location. Every device belongs to exactly one location."
+      {reassign && (
+        <Modal open onClose={() => setReassign(null)} title="Reassign devices" width={460}
+          description={`Move ${reassign.rows.length} device${reassign.rows.length === 1 ? '' : 's'} to a different location. Each device always belongs to exactly one location.`}
           footer={<Row gap={8} style={{ justifyContent: 'flex-end' }}>
-            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button variant="primary" disabled={qty < 1 || !st} onClick={() => { if (st) { st.terminals += qty; st.termOnline += qty; } setAddOpen(false); notify && notify(`Added ${qty} ${addModel} to ${st ? st.code : 'location'}`); }}>Add {qty > 0 ? qty + ' ' : ''}device{qty === 1 ? '' : 's'}</Button>
+            <Button variant="secondary" onClick={() => setReassign(null)}>Cancel</Button>
+            <Button variant="primary" disabled={!rt} onClick={() => { const n = reassign.rows.length; setReassign(null); notify && notify(`Reassigned ${n} device${n === 1 ? '' : 's'} to ${rt ? rt.code : 'location'}`); }}>Reassign</Button>
           </Row>}>
-          <Col gap={16}>
-            <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Assign to location</span>
-              <Dropdown value={addStore} onChange={setAddStore} options={SM_STORES.map(x => ({ value: x.id, label: `${x.code} · ${x.city}, ${x.country}` }))} />
-            </Col>
-            <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Device model</span>
-              <Dropdown value={addModel} onChange={setAddModel} options={['S1F2', 'AMS1', 'V400m', 'e355', 'S1E2', 'SFO1'].map(m => ({ value: m, label: m }))} />
-            </Col>
-            <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Quantity</span>
-              <InputField value={addQty} onChange={(e) => setAddQty((e.target ? e.target.value : e).replace(/[^0-9]/g, ''))} placeholder="1" />
-            </Col>
+          <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Move to location</span>
+            <Dropdown value={reassignTarget} onChange={setReassignTarget} options={SM_STORES.map(x => ({ value: x.id, label: `${x.code} · ${x.city}, ${x.country}` }))} />
           </Col>
         </Modal>
+      )}
+      {locations && <AllStoresModal key={locations.store || 'list'} initialStore={locations.store} notify={notify} onBack={() => setLocations(null)} onOpenStore={onOpenStore} onOpenStudio={onOpenStudio} />}
+      {selectorOpen && <TerminalSelector onBack={() => setSelectorOpen(false)} notify={notify} onOrder={() => { setSelectorOpen(false); setOrderOpen(true); }} />}
+      {orderOpen && <OrderFlow onBack={() => setOrderOpen(false)} notify={notify} />}
+      {addOpen && (
+        <FullPage title="Activate devices" subtitle="Assign devices to a location and finish your setup"
+          onBack={() => setAddOpen(false)} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={() => setAddOpen(false)} bodyBg={T.page}
+          actions={<>
+            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="primary" iconLeft="checkmark" onClick={() => { setAddOpen(false); notify && notify(`Activating ${ACTIVATE_PENDING.length} devices…`); }}>Activate {ACTIVATE_PENDING.length} devices</Button>
+          </>}>
+          <div style={{ maxWidth: 900, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s6 }}>
+            <div style={{ ...surface, overflow: 'hidden' }}>
+              <TileHeader title="Devices to activate" subtitle="Delivered devices not yet assigned to a location"
+                right={<Tag label={`${ACTIVATE_PENDING.length} not assigned`} variant="orange" />} />
+              <div style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
+                {ACTIVATE_PENDING.map((d, i) => (
+                  <Row key={d.serial} gap={12} align="center" style={{ padding: '12px 0', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+                    <span style={{ width: 40, height: 40, borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ico name={d.icon} size={20} color={T.sub} /></span>
+                    <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                      <Row gap={8} align="center"><span style={{ fontSize: 14, fontWeight: 600 }}>{d.model}</span><Tag label={d.type} variant={d.type === 'Countertop' ? 'grey' : 'blue'} /></Row>
+                      <span style={{ fontSize: 12, color: T.sub }}>{d.spec}</span>
+                    </Col>
+                    <span style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 12, color: T.faint, flexShrink: 0 }}>{d.serial}</span>
+                    <Button variant="secondary" condensed onClick={() => notify && notify(`Assign ${d.model} to a location`)}>Assign</Button>
+                  </Row>
+                ))}
+              </div>
+            </div>
+            <div style={{ ...surface, overflow: 'hidden' }}>
+              <TileHeader title="Getting started" info="Finish these steps to get your new devices live."
+                right={<ProgressPill done={ONBOARDING_STEPS.filter(x => x.done).length} total={ONBOARDING_STEPS.length} />} />
+              <div style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
+                <OnboardingList steps={ONBOARDING_STEPS} onDoc={(t) => notify && notify(`Opening guide: ${t}`)} />
+              </div>
+            </div>
+          </div>
+        </FullPage>
       )}
     </>
   );
@@ -3200,14 +4264,53 @@ function SMAddWizard({ s, setState, single, addLabels, addStep, d, zipBad, noPro
   );
 }
 
-/* ============================================================= ALL DEVICES */
-const ALL_TERMINALS = makeTerminals(42, { seed: 2 });
-const ALL_MOBILES = makeMobiles(25, { seed: 9 });
-function AllDevicesModal({ onBack, onOpenDevice }) {
+/* ============================================================= ALL DEVICES
+   Fleet Intelligence › All devices — the same device list as the "Devices & locations"
+   page (same data tied to SM_STORES, same columns, Location links + Add devices). */
+function AllDevicesModal({ onBack, onOpenDevice, onOpenStore, onOpenStudio, notify }) {
+  const [locations, setLocations] = useState(null); // null = closed; { store: id|undefined } opens the Locations modal
+  const [addOpen, setAddOpen] = useState(false);
+  const [addStore, setAddStore] = useState((SM_STORES[0] || {}).id);
+  const [addModel, setAddModel] = useState('S1F2');
+  const [addQty, setAddQty] = useState('1');
+  const terminals = useMemo(() => makeTerminals(60, { seed: 2, stores: SM_STORES }), []);
+  const mobiles = useMemo(() => makeMobiles(25, { seed: 9, stores: SM_STORES }), []);
+  const st = SM_STORES.find(x => x.id === addStore);
+  const qty = Math.max(0, parseInt(addQty, 10) || 0);
+  const openLocation = (id) => setLocations({ store: SM_STORES.find(x => x.id === id) ? id : undefined });
+  const openDev = (r) => onOpenStudio
+    ? onOpenStudio({ type: 'device', deviceIds: [r.id], model: r.model, name: r.model, deviceType: r._type === 'Mobile' ? 'SoftPOS' : 'Terminal', storeId: r.storeId })
+    : (onOpenDevice && onOpenDevice(r.id));
   return (
-    <FullPage title="All devices" subtitle={`${ALL_TERMINALS.length + ALL_MOBILES.length} devices across your fleet`} tone="terminal-1" onBack={onBack} backLabel="Dashboard" bodyBg={T.card}
-      actions={<Button variant="secondary" iconLeft="download">Export</Button>}>
-      <DeviceExplorer terminals={ALL_TERMINALS} mobiles={ALL_MOBILES} />
+    <FullPage title="All devices" subtitle={`${terminals.length + mobiles.length} devices across your fleet`} tone="terminal-1" onBack={onBack} backLabel="Dashboard" bodyBg={T.card}
+      actions={<>
+        <Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting devices to CSV…')}>Export</Button>
+        <Button variant="secondary" iconLeft="store" onClick={() => setLocations({ store: undefined })}>All locations</Button>
+        <Button variant="primary" iconLeft="plus" onClick={() => setAddOpen(true)}>Add devices</Button>
+      </>}>
+      <DeviceExplorer terminals={terminals} mobiles={mobiles} storeLabel="Location" notify={notify}
+        onOpenStore={openLocation} onOpenDevice={openDev} />
+      {locations && <AllStoresModal key={locations.store || 'list'} initialStore={locations.store} notify={notify} onBack={() => setLocations(null)} onOpenStore={onOpenStore} onOpenStudio={onOpenStudio} />}
+      {addOpen && (
+        <Modal open onClose={() => setAddOpen(false)} title="Add devices" width={460}
+          description="Assign new payment devices to a location. Every device belongs to exactly one location."
+          footer={<Row gap={8} style={{ justifyContent: 'flex-end' }}>
+            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="primary" disabled={qty < 1 || !st} onClick={() => { if (st) { st.terminals += qty; st.termOnline += qty; } setAddOpen(false); notify && notify(`Added ${qty} ${addModel} to ${st ? st.code : 'location'}`); }}>Add {qty > 0 ? qty + ' ' : ''}device{qty === 1 ? '' : 's'}</Button>
+          </Row>}>
+          <Col gap={16}>
+            <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Assign to location</span>
+              <Dropdown value={addStore} onChange={setAddStore} options={SM_STORES.map(x => ({ value: x.id, label: `${x.code} · ${x.city}, ${x.country}` }))} />
+            </Col>
+            <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Device model</span>
+              <Dropdown value={addModel} onChange={setAddModel} options={['S1F2', 'AMS1', 'V400m', 'e355', 'S1E2', 'SFO1'].map(m => ({ value: m, label: m }))} />
+            </Col>
+            <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Quantity</span>
+              <InputField value={addQty} onChange={(e) => setAddQty((e.target ? e.target.value : e).replace(/[^0-9]/g, ''))} placeholder="1" />
+            </Col>
+          </Col>
+        </Modal>
+      )}
     </FullPage>
   );
 }
@@ -3898,7 +5001,9 @@ function LegacyScreen({ screen, vals, printable }) {
   const subFg = theme === 'Light' ? '#6f6f6f' : 'rgba(255,255,255,0.72)';
   if (screen === 'home') return (
     <Col style={{ height: '100%', background: bg, color: fg, padding: 20, alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontFamily: TX_FONT }}>
-      {home.showLogo && <div style={{ width: 60, height: 60, borderRadius: 16, background: theme === 'Light' ? '#eceef0' : 'rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}><img src="assets/tx/adyen.svg" alt="" style={{ width: 40 }} /></div>}
+      {home.showLogo && (home.logoSrc
+        ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}><img src={home.logoSrc} alt="" style={{ height: 72, display: 'block' }} /></div>
+        : <div style={{ width: 60, height: 60, borderRadius: 16, background: theme === 'Light' ? '#eceef0' : 'rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}><img src="assets/tx/adyen.svg" alt="" style={{ width: 40 }} /></div>)}
       <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.2, marginBottom: 6 }}>{home.greeting || lang.welcome}</div>
       <div style={{ fontSize: 13, color: subFg }}>{lang.present}</div>
       <div style={{ marginTop: 'auto', fontSize: 11, color: subFg }}>{loc.language}{loc.secondary && loc.secondary !== 'None' ? ' · ' + loc.secondary : ''}</div>
@@ -3986,8 +5091,9 @@ function Accordion({ open, onToggle, title, desc, icon, right, disabled, childre
 /* AI assistant. Manual mode = docked composer under the settings (typing updates them live).
    Agent mode (expanded) = the whole panel becomes a chat: message thread + composer. */
 function DockedAsk({ messages, draft, setDraft, onSend, expanded }) {
-  const suggestions = ['Set up F&B Japan configuration', 'Dark home screen', 'Enable DCC at 3%'];
-  const suggIcons = ['sparkles', 'image', 'percent'];
+  // Studio JTBD: customisation + payment integration. First = scripted market-setup scenario.
+  const suggestions = ['Enable devices for international clients in Japan', 'Install an Android app on these devices', 'Upload a media asset to the home screen', 'Enable DCC and set the margin'];
+  const suggIcons = ['sparkles', 'settings', 'image', 'percent'];
   const last = messages[messages.length - 1];
   const showReply = messages.length > 1 && last && last.role === 'assistant';
   const firstTurn = messages.length <= 1;
@@ -4029,14 +5135,24 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded }) {
               {messages.map((m, i) => (
                 <Row key={i} align="flex-start" gap={8} style={{ flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
                   {m.role === 'assistant' && <span style={{ lineHeight: 0, flexShrink: 0, paddingTop: 6 }}><Ico name="sparkles" size={16} color="var(--b-color-label-primary)" /></span>}
-                  <div style={{ maxWidth: '84%', background: m.role === 'user' ? 'var(--b-color-background-inverse-primary)' : 'var(--b-color-background-secondary)', color: m.role === 'user' ? 'var(--b-color-label-inverse-primary)' : T.ink, borderRadius: 12, padding: '8px 12px', fontSize: 13, lineHeight: 1.45 }}>{m.text}</div>
+                  <div style={{ maxWidth: '84%', background: m.role === 'user' ? 'var(--b-color-background-inverse-primary)' : 'var(--b-color-background-secondary)', color: m.role === 'user' ? 'var(--b-color-label-inverse-primary)' : T.ink, borderRadius: 12, padding: '8px 12px', fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{m.text}</div>
                 </Row>
               ))}
+              {last && last.role === 'assistant' && last.quick && last.quick.length > 0 && (
+                <Row gap={6} style={{ flexWrap: 'wrap', paddingLeft: 24 }}>
+                  {last.quick.map(qr => (
+                    <button key={qr} onClick={() => onSend(qr)} className="ns-chip-btn"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${T.borderStrong}`, background: T.card, borderRadius: 999, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: 'var(--b-color-link-primary)' }}>
+                      {qr}
+                    </button>
+                  ))}
+                </Row>
+              )}
             </Col>
           )}
         </div>
         <div style={{ flexShrink: 0, padding: T.s4, borderTop: `1px solid ${T.sep}` }}>
-          <PromptBox q={draft} setQ={setDraft} onSend={() => onSend()} thinking={false} />
+          <PromptBox q={draft} setQ={setDraft} onSend={() => onSend()} thinking={false} models={ASK_CONTEXTS.studio.models} placeholder="Ask AI to change settings…" />
         </div>
       </div>
     );
@@ -4071,12 +5187,12 @@ function ModeSwitch({ mode, setMode }) {
       {opts.map(o => {
         const on = mode === o.v;
         const ai = o.v === 'agent';
-        const fg = on ? (ai ? 'var(--b-color-label-highlight)' : T.ink) : T.sub;
+        const fg = on ? T.ink : T.sub;
         return (
           <button key={o.v} onClick={() => setMode(o.v)} title={ai ? 'Ask AI (Agent)' : 'Edit settings manually'}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 0, cursor: 'pointer', padding: '5px 12px', borderRadius: T.radiusS,
-              background: on ? (ai ? 'var(--b-color-background-highlight-weak)' : T.card) : 'transparent',
-              boxShadow: on && !ai ? 'var(--b-shadow-low)' : 'none',
+              background: on ? T.card : 'transparent',
+              boxShadow: on ? 'var(--b-shadow-low)' : 'none',
               color: fg, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, transition: 'background 100ms linear, color 100ms linear' }}>
             <Ico name={o.icon} size={16} color={fg} />{o.label}
           </button>
@@ -4086,7 +5202,7 @@ function ModeSwitch({ mode, setMode }) {
   );
 }
 
-function DeviceStudio({ scope: initialScope, onBack, notify }) {
+function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
   const [scope, setScope] = useState(() => ({
     type: initialScope.type || 'store',
     deviceTypes: [initialScope.deviceType || 'Terminal'],
@@ -4131,6 +5247,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify }) {
   const isDeviceScreen = (initialScope.type || scope.type) === 'device';
   const [messages, setMessages] = useState([{ role: 'assistant', text: "Describe the change you want and I'll configure the selected devices." }]);
   const [draft, setDraft] = useState('');
+  const [flow, setFlow] = useState(null); // scripted market-setup scenario: { step, name, device }
 
   const deviceClass = useMemo(() => {
     if (scope.model) return (D.models.find(m => m.id === scope.model) || {}).className || 'portable';
@@ -4185,14 +5302,80 @@ function DeviceStudio({ scope: initialScope, onBack, notify }) {
     if (previewGroup) setScreen(previewGroup);
     return changes;
   };
+  // Scripted "market setup" scenario — AI enables the right settings, then asks for the
+  // inputs it needs (profile name · devices · logo · app · updates) as an interactive chat.
+  const startJapanScenario = () => {
+    setScope(s => ({ ...s, markets: Array.from(new Set([...(s.markets || []), 'Japan'])) }));
+    setOpenGroups(prev => new Set([...prev, 'dcc', 'gratuities', 'localization', 'homeScreen', 'japan']));
+    setField('dcc', 'enabled', true);
+    setField('dcc', 'markup', 3);
+    setField('gratuities', 'enabled', true);
+    setField('localization', 'language', 'Japanese');
+    setField('japan', 'jcb', true);
+    setField('japan', 'emoney', true);
+    setField('japan', 'qrWallets', true);
+    setScreen('transaction');
+  };
   const sendChat = (text) => {
     const q = (text != null ? text : draft).trim(); if (!q) return;
-    const changes = applyFromText(q);
-    const reply = changes.length
-      ? `Done — I ${changes.join(', ')}. The preview and the change list are updated; review and apply when ready.`
-      : "I couldn't map that to a setting yet. Try mentioning theme, tipping, DCC, contactless, language, logo, greeting, or receipt header.";
-    setMessages(m => [...m, { role: 'user', text: q }, { role: 'assistant', text: reply }]);
     setDraft('');
+    setMessages(m => [...m, { role: 'user', text: q }]);
+    const reply = (t, quick) => setMessages(m => [...m, { role: 'assistant', text: t, quick }]);
+    const t = q.toLowerCase();
+    const step = flow && flow.step;
+
+    // kick off the scripted scenario
+    if (!step && /international|japan|日本|market[- ]?specific/.test(t)) {
+      startJapanScenario();
+      setFlow({ step: 'name' });
+      reply("Setting this up for international shoppers in Japan. I've enabled DCC (3% margin) and tipping, turned on JCB, e-money (iD/QUICPay) and QR wallets, and set the language to Japanese — the preview is updated.\n\nWhat should I name this configuration profile?", ['Japan retail profile']);
+      return;
+    }
+    if (step === 'name') {
+      setScopeName(q);
+      setFlow({ step: 'device', name: q });
+      reply(`Named it “${q}”. Which devices should this configuration apply to?`, ['S1F2 · Android handheld', 'All Japan terminals']);
+      return;
+    }
+    if (step === 'device') {
+      setFlow({ ...flow, step: 'logo', device: q });
+      reply(`Scoped to ${q}. Want me to upload the United Arrows logo to the home screen and switch to a branded theme?`, ['Yes, upload the logo', 'Skip']);
+      return;
+    }
+    if (step === 'logo') {
+      if (/yes|logo|upload|brand/.test(t)) {
+        setField('homeScreen', 'showLogo', true);
+        setField('homeScreen', 'logoSrc', 'assets/tx/united-arrows.svg');
+        setField('homeScreen', 'theme', 'Brand');
+        setField('homeScreen', 'brandColor', '#C8860F');
+        setField('homeScreen', 'greeting', 'いらっしゃいませ');
+        setScreen('home');
+        reply('Uploaded the United Arrows logo, applied their brand colour and set a Japanese welcome greeting on the home screen. Shall I install the United Arrows retail Android app on these devices?', ['Install the app', 'Not now']);
+      } else {
+        reply('Skipped the logo. Shall I install the United Arrows retail Android app on these devices?', ['Install the app', 'Not now']);
+      }
+      setFlow({ ...flow, step: 'app' });
+      return;
+    }
+    if (step === 'app') {
+      reply(/install|yes|app/.test(t)
+        ? 'Queued the United Arrows retail app (v3.4) to install on next sync. Apply the latest media & configuration updates too?'
+        : 'No app install. Apply the latest media & configuration updates?', ['Apply updates', 'Skip']);
+      setFlow({ ...flow, step: 'updates' });
+      return;
+    }
+    if (step === 'updates') {
+      const name = (flow && flow.name) || scopeName;
+      setFlow(null);
+      reply(`All set — I've prepared “${name}”: DCC + tipping, Japanese localization, JCB / e-money / QR wallets${/apply|updates|yes/.test(t) ? ', the branded home screen, the retail app and the latest media & config updates' : ' and the branded home screen'}. Review the change list on the left and save to roll it out.`);
+      return;
+    }
+
+    // free-form fallback
+    const changes = applyFromText(q);
+    reply(changes.length
+      ? `Done — I ${changes.join(', ')}. The preview and the change list are updated; review and apply when ready.`
+      : "I couldn't map that to a setting yet. Try the “Enable devices for international clients in Japan” scenario, or mention theme, tipping, DCC, contactless, language, logo, greeting, or receipt header.");
   };
 
   // affected count
@@ -4235,6 +5418,14 @@ function DeviceStudio({ scope: initialScope, onBack, notify }) {
     ? `1 device · ${scope.model || scope.deviceTypes[0] || 'device'}`
     : `${affected} device${affected === 1 ? '' : 's'} across ${scope.storeIds.length} store${scope.storeIds.length === 1 ? '' : 's'}`;
 
+  // Scope card rules:
+  //  · configuration/store level → editable scope (you're defining the profile).
+  //  · a device that belongs to a configuration profile → shown read-only (inherited).
+  //  · a standalone device (no configuration) → no scope card at all.
+  const scopeConfig = scope.configuration || (scope.type === 'device' && scope.storeId ? 'Lightspeed F&B' : null);
+  const scopeEditable = scope.type !== 'device';
+  const showScope = scopeEditable || !!scopeConfig;
+
   const scopeControls = (
     <Col gap={16}>
       <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Configuration name</span>
@@ -4275,7 +5466,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify }) {
   );
 
   return (
-    <FullPage title="Device Studio" onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />}
+    <FullPage title={initialScope.type === 'device' ? (initialScope.model || initialScope.name || 'Device') : 'Device Studio'} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />}
       badge={<Row gap={4}>
         <InfoTip width={320} content={isDeviceScreen
           ? <span>The <b>Device screen</b> edits device‑only settings (connectivity, hardware, passcodes). Store‑level policy (receipts, payments, language, branding) shows as <b>Inherited · Store</b> and is read‑only until you override it here.</span>
@@ -4287,45 +5478,60 @@ function DeviceStudio({ scope: initialScope, onBack, notify }) {
         <Button variant="secondary" onClick={onBack}>Cancel</Button>
         <Button variant="primary" iconLeft="checkmark" disabled={diff.length === 0} onClick={() => setReviewOpen(true)}>Review{diff.length ? ` (${diff.length})` : ''}</Button>
       </>}>
-      <div style={{ display: 'flex', flexDirection: 'row-reverse', height: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', height: '100%' }}>
         {/* collapsed rail — click the panel icon to reopen the control panel */}
         {!panelOpen && (
-          <div style={{ width: 48, flexShrink: 0, borderLeft: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0' }}>
-            <GlyphButton title="Show control panel" onClick={() => setPanelOpen(true)}><PanelToggleIcon flip /></GlyphButton>
+          <div style={{ width: 48, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0' }}>
+            <GlyphButton title="Show control panel" onClick={() => setPanelOpen(true)}><PanelToggleIcon /></GlyphButton>
           </div>
         )}
-        {/* control panel (docked right) — settings always visible, AI composer docked at the bottom */}
+        {/* control panel (docked left) — settings always visible, AI composer docked at the bottom */}
         {panelOpen && (
-        <div style={{ width: 440, flexShrink: 0, borderLeft: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ width: 440, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Row style={{ padding: '8px 12px 8px 20px', borderBottom: `1px solid ${T.sepFaint}`, gap: 8, flexShrink: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>Settings</span>
             <ModeSwitch mode={chatMode} setMode={setChatMode} />
-            <GlyphButton title="Hide control panel" onClick={() => setPanelOpen(false)}><PanelToggleIcon /></GlyphButton>
+            <GlyphButton title="Hide control panel" onClick={() => setPanelOpen(false)}><PanelToggleIcon flip /></GlyphButton>
           </Row>
 
           {chatMode === 'agent' ? (
             <DockedAsk expanded messages={messages} draft={draft} setDraft={setDraft} onSend={sendChat} />
           ) : (<>
-          {/* persistent scope — always visible, clearly editable, shows impact */}
+          {/* persistent scope — editable when defining a configuration; read-only (inherited)
+              for a device inside a configuration; hidden for a standalone device */}
+          {showScope && (
           <div style={{ flexShrink: 0, padding: '12px 16px', borderBottom: `1px solid ${T.sep}`, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--b-color-background-secondary)' }}>
             <Row style={{ justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: T.faint }}>Scope</span>
-              <span style={{ fontSize: 11, color: T.faint }}>Applies to all settings below</span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: T.faint }}>Scope</span>
+              <span style={{ fontSize: 11, color: T.faint }}>{scopeEditable ? 'Applies to all settings below' : 'Inherited · read-only'}</span>
             </Row>
-            <button className="ns-suggest" onClick={() => setScopeOpen(true)} title="Edit scope & devices"
-              style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '10px 12px', border: `1px solid ${T.border}`, borderRadius: T.radiusM, background: T.card, cursor: 'pointer', fontFamily: 'inherit' }}>
-              <span style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--b-color-background-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Ico name={scope.type === 'device' ? 'terminal-1' : 'store'} size={16} color={T.sub} />
-              </span>
-              <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{scopeName || 'Configuration'}</span>
-                <span style={{ fontSize: 12, color: T.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {scope.type === 'device' ? `1 device · ${scope.model || scope.deviceTypes[0] || 'device'}` : `${scope.storeIds.length} store${scope.storeIds.length === 1 ? '' : 's'} · 15 devices`}
+            {scopeEditable ? (
+              <button className="ns-suggest" onClick={() => setScopeOpen(true)} title="Edit scope & devices"
+                style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '10px 12px', border: `1px solid ${T.border}`, borderRadius: T.radiusM, background: T.card, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <span style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--b-color-background-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Ico name="store" size={16} color={T.sub} />
                 </span>
-              </Col>
-              <Ico name="edit-1" size={16} color={T.faint} />
-            </button>
+                <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{scopeName || 'Configuration'}</span>
+                  <span style={{ fontSize: 12, color: T.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{`${scope.storeIds.length} store${scope.storeIds.length === 1 ? '' : 's'} · 15 devices`}</span>
+                </Col>
+                <Ico name="edit-1" size={16} color={T.faint} />
+              </button>
+            ) : (<>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '10px 12px', border: `1px solid ${T.border}`, borderRadius: T.radiusM, background: T.card }}>
+                <span style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--b-color-background-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Ico name="terminal-1" size={16} color={T.sub} />
+                </span>
+                <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{scope.model || scopeName || 'Device'}</span>
+                  <span style={{ fontSize: 12, color: T.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Inherited from {scopeConfig}</span>
+                </Col>
+                <Ico name="lock" size={16} color={T.faint} />
+              </div>
+              <Alert type="highlight" variant="tip" description={<span>Scope is set by the <b>{scopeConfig}</b> configuration profile. Edit that configuration to change which devices these settings apply to.</span>} />
+            </>)}
           </div>
+          )}
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 20px' }}>
             {/* setting groups — grouped by owning level per the scoping rule; market-specific
@@ -4353,15 +5559,14 @@ function DeviceStudio({ scope: initialScope, onBack, notify }) {
                 : (groupChanged ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#0070F5', flexShrink: 0 }} /> : null);
               return (
                 <React.Fragment key={g.id}>
-                {showHeader && <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: T.faint, padding: '16px 0 6px' }}>{sectionLabel}</div>}
+                {showHeader && <div style={{ fontSize: 12, fontWeight: 600, color: T.faint, padding: '16px 0 6px' }}>{sectionLabel}</div>}
                 <Accordion open={supported && openGroups.has(g.id)} onToggle={() => supported && toggleGroup(g.id)}
                   title={g.title} desc={g.desc} disabled={!supported} right={badge}>
                   <Col gap={16}>
                     {inherited && (
-                      <Row gap={8} style={{ justifyContent: 'space-between', padding: '8px 10px', background: 'var(--b-color-background-secondary)', borderRadius: T.radiusM }}>
-                        <span style={{ fontSize: 12, color: T.sub, minWidth: 0 }}><Ico name="info" size={16} color={T.ink} style={{ verticalAlign: 'middle', marginRight: 6 }} />Set at Store level. Read-only unless you override it for {scope.type === 'device' ? 'this device' : 'these devices'}.</span>
-                        <Button variant="tertiary" condensed onClick={() => toggleOverride(g.id)}>Override</Button>
-                      </Row>
+                      <Alert type="highlight" variant="tip" description={
+                        <span>Set at Store level — read-only. <button type="button" onClick={() => toggleOverride(g.id)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 600, color: 'var(--b-color-link-primary)', textDecoration: 'underline', textUnderlineOffset: 2 }}>Override for {scope.type === 'device' ? 'this device' : 'these devices'}</button>.</span>
+                      } />
                     )}
                     {isDeviceScreen && isPolicy && overrides.has(g.id) && (
                       <Row gap={8} style={{ justifyContent: 'flex-end' }}>
@@ -4388,9 +5593,13 @@ function DeviceStudio({ scope: initialScope, onBack, notify }) {
         </div>
         )}
 
-        {/* simulator — left controls (vertically centered) · device centered both axes */}
+        {/* simulator — right controls pinned to the top · device centered both axes */}
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', alignItems: 'stretch', gap: 32, padding: '32px 32px 40px', background: T.page }}>
-          <div style={{ width: 300, flexShrink: 0, alignSelf: 'center', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Simulator vals={vals} screen={screen} deviceId={previewDevice} txAmount={txAmountVar} deviceType={(scope.deviceTypes[0] || 'Terminal').indexOf('SoftPOS') === 0 ? 'SoftPOS' : 'Terminal'}
+              tx={{ base: 100, tip, tipValue: tip == null ? 0 : tip === 'custom' ? 5 : 100 * tip / 100, total: 100 + (tip == null ? 0 : tip === 'custom' ? 5 : 100 * tip / 100), setTip }} />
+          </div>
+          <div style={{ width: 300, flexShrink: 0, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 20 }}>
             <Col gap={8}><span style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>Screen</span>
               <ChipPicker value={screen} onChange={setScreen} options={previewScreens} />
             </Col>
@@ -4399,13 +5608,9 @@ function DeviceStudio({ scope: initialScope, onBack, notify }) {
             </Col>
             {screen === 'transaction' && (
               <Col gap={8}><span style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>Transaction state</span>
-                <SegmentedControl className="ns-seg-full" style={{ display: 'flex', width: '100%' }} value={txAmountVar ? 'amt' : 'noamt'} onChange={(v) => setTxAmountVar(v === 'amt')} options={[{ value: 'amt', label: 'Amount entered' }, { value: 'noamt', label: 'Awaiting card' }]} />
+                <ChipPicker value={txAmountVar ? 'amt' : 'noamt'} onChange={(v) => setTxAmountVar(v === 'amt')} options={[{ value: 'amt', label: 'Amount entered' }, { value: 'noamt', label: 'Awaiting card' }]} />
               </Col>
             )}
-          </div>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Simulator vals={vals} screen={screen} deviceId={previewDevice} txAmount={txAmountVar} deviceType={(scope.deviceTypes[0] || 'Terminal').indexOf('SoftPOS') === 0 ? 'SoftPOS' : 'Terminal'}
-              tx={{ base: 100, tip, tipValue: tip == null ? 0 : tip === 'custom' ? 5 : 100 * tip / 100, total: 100 + (tip == null ? 0 : tip === 'custom' ? 5 : 100 * tip / 100), setTip }} />
           </div>
         </div>
       </div>
@@ -4415,7 +5620,24 @@ function DeviceStudio({ scope: initialScope, onBack, notify }) {
         description={scopeSummary}
         footer={<Row gap={8} style={{ justifyContent: 'flex-end' }}>
           <Button variant="secondary" onClick={() => setReviewOpen(false)}>Cancel</Button>
-          <Button variant="primary" onClick={() => { setReviewOpen(false); notify(`Applied ${diff.length} change(s) to ${affected} device(s)`); onBack(); }}>Apply to {affected} device{affected === 1 ? '' : 's'}</Button>
+          <Button variant="primary" onClick={() => {
+            setReviewOpen(false);
+            // Configuration/fleet level → publish it to the configuration library (top of the list).
+            if (scopeEditable && onApply) {
+              const dt = scope.deviceTypes[0] || 'Terminal';
+              const market = (scope.markets || [])[0];
+              onApply({
+                id: 'cfg-' + Date.now(), name: scopeName || 'New configuration',
+                appliesTo: `${scope.deviceTypes.join(', ') || dt}${market ? ' · ' + market : ''}`,
+                deviceType: dt, market, stores: scope.storeIds.length, devices: affected,
+                status: 'Published', statusV: 'green', updated: 'just now', isNew: true,
+              });
+              notify(`Published “${scopeName || 'configuration'}” to your configurations`);
+            } else {
+              notify(`Applied ${diff.length} change(s) to ${affected} device(s)`);
+            }
+            onBack();
+          }}>Apply to {affected} device{affected === 1 ? '' : 's'}</Button>
         </Row>}>
         <Col gap={12}>
           <Alert type="warning" variant="tip" description={`This updates ${affected} device(s). Unsupported settings are skipped per device capability. Every change is audit-logged.`} />
@@ -4490,7 +5712,7 @@ const CONFIGURATIONS = [
 ];
 
 /* Device studio home — the merchant's configuration library. */
-function ConfigLibrary({ onOpen, onNew }) {
+function ConfigLibrary({ onOpen, onNew, configs = CONFIGURATIONS }) {
   const th = (align) => ({ textAlign: align, padding: '12px 16px', fontSize: 14, color: T.ink, fontWeight: 600, background: T.card, borderTop: `1px solid ${T.sep}`, borderBottom: `1px solid ${T.sep}`, whiteSpace: 'nowrap' });
   const td = { padding: '14px 16px', borderBottom: `1px solid ${T.sep}`, whiteSpace: 'nowrap' };
   return (
@@ -4517,10 +5739,10 @@ function ConfigLibrary({ onOpen, onNew }) {
             <th style={th('right')} />
           </tr></thead>
           <tbody>
-            {CONFIGURATIONS.map(cfg => {
+            {configs.map(cfg => {
               const soft = cfg.deviceType.indexOf('SoftPOS') === 0;
               return (
-                <tr key={cfg.id} className="ns-row ns-clickable" onClick={() => onOpen(cfg)}>
+                <tr key={cfg.id} className="ns-row ns-clickable" onClick={() => onOpen(cfg)} style={cfg.isNew ? { background: 'var(--b-color-background-success-weak)' } : undefined}>
                   <td style={td}>
                     <Row gap={10}>
                       <span style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--b-color-background-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ico name={soft ? 'mobile' : 'terminal-2'} size={16} color={T.sub} /></span>
@@ -4561,7 +5783,7 @@ function StudioPreview({ config, onBack, onEdit }) {
           <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', lineHeight: 1 }}>{cfg.name}</span>
           <span style={{ fontSize: 13, color: T.sub, lineHeight: 1.3 }}>{deviceType} configuration{cfg.devices ? ` · ${cfg.devices} devices` : ''}{cfg.appliesTo ? ` · ${cfg.appliesTo}` : ''}</span>
         </Col>
-        <Button variant="primary" iconLeft="settings" onClick={onEdit}>Edit settings</Button>
+        <Button variant="primary" iconLeft="settings" onClick={onEdit}>Edit configuration</Button>
       </Row>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: T.s4, alignItems: 'stretch' }}>
@@ -4586,7 +5808,7 @@ function StudioPreview({ config, onBack, onEdit }) {
         {/* saved settings summary — Bento structured list, independent scroll */}
         <div style={{ ...surface, flex: '1 1 300px', minWidth: 280, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <Col gap={1} style={{ padding: `${T.s3}px ${T.s4}px`, borderBottom: `1px solid ${T.sepFaint}`, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: T.faint }}>Configuration</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: T.faint }}>Configuration</span>
             <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{cfg.name}</span>
           </Col>
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s5 }}>
@@ -4612,6 +5834,7 @@ function App() {
   const [nav, setNav] = useState('device-intelligence');
   const [navOpen, setNavOpen] = useState(true);
   const [studioCfg, setStudioCfg] = useState(null); // selected configuration in Device studio
+  const [configs, setConfigs] = useState(CONFIGURATIONS); // configuration library (new profiles prepend)
   const [env, setEnv] = useState('Test');
   const [stack, setStack] = useState([]); // overlay stack
   const [toast, setToast] = useState(null);
@@ -4642,9 +5865,9 @@ function App() {
             studioCfg
               ? <StudioPreview config={studioCfg} onBack={() => setStudioCfg(null)}
                   onEdit={() => openStudio({ type: 'fleet', name: studioCfg.name, deviceType: studioCfg.deviceType, market: studioCfg.market })} />
-              : <ConfigLibrary onOpen={setStudioCfg} onNew={() => openStudio({ type: 'fleet', name: 'New configuration', deviceType: 'Terminal' })} />
+              : <ConfigLibrary configs={configs} onOpen={setStudioCfg} onNew={() => openStudio({ type: 'fleet', name: 'New configuration', deviceType: 'Terminal' })} />
           ) : nav === 'stores' ? (
-            <DeviceLocationsPage notify={notify} onOpenStore={openStore} />
+            <DeviceLocationsPage notify={notify} onOpenStore={openStore} onOpenStudio={openStudio} />
           ) : nav === 'device-intelligence' ? (
             <DeviceIntelligence notify={notify} onOpenAllStores={openAllStores} onOpenAllDevices={openAllDevices} onOpenExplore={openExplore} onOpenStudio={openStudio} />
           ) : (
@@ -4653,12 +5876,19 @@ function App() {
         </div>
       </div>
 
-      {top && top.type === 'allDevices' && <AllDevicesModal onBack={pop} onOpenDevice={openDevice} />}
-      {top && top.type === 'allLocations' && <AllStoresModal notify={notify} onBack={pop} onOpenStore={openStore} />}
+      {top && top.type === 'allDevices' && <AllDevicesModal onBack={pop} onOpenDevice={openDevice} onOpenStore={openStore} onOpenStudio={openStudio} notify={notify} />}
+      {top && top.type === 'allLocations' && <AllStoresModal notify={notify} onBack={pop} onOpenStore={openStore} onOpenStudio={openStudio} />}
       {top && top.type === 'store' && <StoreModal storeId={top.storeId} onBack={pop} onOpenDevice={openDevice} onOpenStudio={openStudio} notify={notify} />}
       {top && top.type === 'device' && <DeviceModal deviceId={top.deviceId} onBack={pop} onOpenStudio={openStudio} notify={notify} />}
-      {top && top.type === 'studio' && <DeviceStudio scope={top.scope} onBack={pop} notify={notify} />}
+      {top && top.type === 'studio' && <DeviceStudio scope={top.scope} onBack={pop} notify={notify}
+        onApply={(cfg) => { setConfigs(c => [cfg, ...c.map(x => ({ ...x, isNew: false }))]); setStudioCfg(null); setNav('device-studio'); }} />}
       {top && top.type === 'explore' && <ExploreModal tile={top.tile} onBack={pop} />}
+
+      {/* Global Ask — available on every main page (Fleet Intelligence has its own with Save-as-tile).
+          Hidden while a full-page modal is open (those carry their own docked AI). */}
+      {!top && nav !== 'device-intelligence' && (
+        <FloatingAsk notify={notify} context={nav === 'stores' ? 'devices' : nav === 'device-studio' ? 'studio' : 'fleet'} />
+      )}
 
       <ToastHost toast={toast} onClose={() => setToast(null)} />
     </div>
