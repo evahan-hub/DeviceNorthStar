@@ -29,6 +29,11 @@
     series: [{ name: 'Auth rate', color: 'var(--lume-royalblue)', points: [92.1, 92.4, 92.0, 91.6, 92.8, 93.1, 93.4, 93.6, 93.9, 94.0, 94.1, 94.2] }],
     unit: '%', min: 88, max: 96,
   };
+  const notTradingTrend = {
+    labels: months,
+    series: [{ name: 'Active, not trading', color: 'var(--b-color-decorative-red)', points: [39.2, 38.9, 38.5, 38.1, 37.6, 37.3, 37.0, 36.8, 36.6, 36.4, 36.2, 36.1] }],
+    unit: '%', min: 30, max: 42,
+  };
   const featureAdoption = {
     labels: months,
     series: [
@@ -167,7 +172,11 @@
       question: 'How many DCC-enabled terminals in Retail stores in DE?',
       answer: 'You have 3,912 DCC-enabled terminals across 41 Retail stores in Germany — 46% of the German Retail fleet.',
       metric: { value: '3,912', label: 'DCC-enabled · DE Retail', trend: 4.1, dir: 'positive' },
-      grid: { columns: ['Store', 'DCC terminals', 'Acceptance'], rows: [['Berlin Mitte Flagship', '6', '52%'], ['Munich Marienplatz', '9', '48%'], ['Hamburg Mönckeberg', '7', '39%'], ['Frankfurt Zeil', '5', '44%']] },
+      grid: { columns: [
+        'Store',
+        { label: 'DCC terminals', info: 'Terminals in this store with Dynamic Currency Conversion enabled.' },
+        { label: 'Acceptance', info: 'Share of eligible foreign-card transactions where the shopper accepted DCC (paid in their home currency).' },
+      ], rows: [['Berlin Mitte Flagship', '6', '52%'], ['Munich Marienplatz', '9', '48%'], ['Hamburg Mönckeberg', '7', '39%'], ['Frankfurt Zeil', '5', '44%']] },
     },
     {
       match: ['not', 'trading', 'transact'],
@@ -178,10 +187,40 @@
     },
     {
       match: ['tipping', 'gratuit'],
-      question: 'What is tipping adoption by terminal model?',
-      answer: 'Tipping is enabled on 30% of the fleet. It is highest on S1F2 portables (44%) and lowest on SoftPOS (22%).',
-      metric: { value: '30%', label: 'Fleet tipping adoption', trend: 2.0, dir: 'positive' },
-      grid: { columns: ['Model', 'Tipping enabled'], rows: [['S1F2', '44%'], ['AMS1', '31%'], ['V400m', '28%'], ['SoftPOS', '22%'], ['e355', '18%']] },
+      question: 'How is tipping configured across my fleet?',
+      answer: 'Tipping is enabled on ~30% of your tipping-capable fleet (~170,400 of ~522,900 terminals). Adoption is highest on S1F2 portables (44%) and lowest on SoftPOS (22%) and e355 (18%).',
+      metric: { value: '30%', label: 'Fleet tipping adoption · ~170,400 terminals', trend: 2.0, dir: 'positive' },
+      grid: { columns: [
+        'Model',
+        { label: 'Devices', info: 'Total terminals of this model in your fleet.' },
+        { label: 'Tipping on', info: 'Share of this model’s terminals that have the tipping prompt enabled.' },
+        { label: 'Avg tip', info: 'Average tip left, as a % of the transaction amount, on terminals where tipping is enabled.' },
+        { label: 'Status', info: 'Tipping performance vs the fleet benchmark. “Underperforming” = attach rate or average tip well below peers — usually because the tipping prompt is off by default or the staff-facing flow lets it be skipped.' },
+      ], rows: [
+        ['S1F2', '184,203', '44%', '11.4%', 'Healthy'],
+        ['AMS1', '96,540', '31%', '9.1%', 'OK'],
+        ['V400m', '142,880', '28%', '8.7%', 'OK'],
+        ['SoftPOS', '38,110', '22%', '6.2%', 'Underperforming'],
+        ['e355', '61,220', '18%', '5.5%', 'Underperforming'],
+      ] },
+      note: 'SoftPOS and e355 underperform because the tipping prompt is off by default and the flow lets staff skip the screen. Turning on the tipping step with preset amounts (10 / 15 / 20%) typically lifts attach by 8–12 points.',
+      actions: [
+        { label: 'Enable tipping on SoftPOS & e355', icon: 'checkmark', msg: 'Enabling tipping on 2 underperforming models (99,330 devices)…' },
+        { label: 'Set presets 10 / 15 / 20%', icon: 'percent', msg: 'Applying tip presets 10 / 15 / 20% across the fleet…' },
+      ],
+      deepDive: { prompt: 'Do you want to deep dive with revenue optimisation?', label: 'Deep dive with revenue optimisation', q: 'revenue optimisation deep dive' },
+    },
+    {
+      match: ['revenue', 'optimis', 'optimiz'],
+      question: 'Where can I optimise revenue across the fleet?',
+      answer: 'Your biggest payments-revenue levers are DCC and authorisation-rate features. DCC is eligible-but-off on 49 terminals (~€22k/mo). Tipping raises in-store ticket size (+~€18k/mo) — a complementary, point-of-sale revenue feature rather than a payments-optimisation lever.',
+      metric: { value: '+~€58k/mo', label: 'Identified revenue opportunity', trend: 6.0, dir: 'positive' },
+      grid: { columns: ['Lever', 'Type', 'Opportunity', 'Status'], rows: [
+        ['DCC', 'Payments revenue optimisation', '+~€22k/mo', '49 eligible off'],
+        ['Auth-rate (tokens, retries)', 'Payments revenue optimisation', '+~€18k/mo', 'Review'],
+        ['Tipping', 'In-store revenue (ticket size)', '+~€18k/mo', '2 models off'],
+      ] },
+      note: '“Revenue optimisation” at Adyen refers to payments-side levers — DCC, network tokens, auto-retries and routing. Tipping is a point-of-sale feature that raises ticket size; it complements revenue optimisation but is tracked separately.',
     },
     {
       match: ['firmware', 'update', 'compliance', 'pci'],
@@ -291,7 +330,7 @@
   };
 
   window.DATA = {
-    fmt, kpis, volumeTrend, authTrend, featureAdoption,
+    fmt, kpis, volumeTrend, authTrend, notTradingTrend, featureAdoption,
     featureByModel, storesAttention, notTransacting, compliance, notReadyReasons,
     models, stores, devices, nlAnswers, sdkHealth, firmwareHealth,
   };

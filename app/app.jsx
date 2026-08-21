@@ -97,6 +97,16 @@ function ArrowLeftGlyph({ size = 16 }) {
   );
 }
 
+/* Revert / undo glyph (counter-clockwise arrow) for the chat "Revert to this point" control. */
+function RevertGlyph({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ display: 'block' }}>
+      <path d="M3.5 3.5v3h3" stroke="var(--b-color-label-secondary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.9 6.3A5 5 0 1 1 3 9.2" stroke="var(--b-color-label-secondary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /* Bento List recreation — label/value rows split by hairline dividers (b-list / b-list-item). */
 function BentoList({ items }) {
   return (
@@ -289,9 +299,19 @@ function Grid({ columns, rows, onCell, dense = false, rightAlignFrom = 1, render
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
         <thead>
           <tr>
-            {columns.map((c, ci) => (
-              <th key={ci} style={{ textAlign: ci >= rightAlignFrom ? 'right' : 'left', padding: dense ? '8px 12px' : '10px 14px', fontSize: 13, color: T.ink, fontWeight: 600, background: T.card, borderBottom: `1px solid ${T.border}`, whiteSpace: 'nowrap' }}>{c}</th>
-            ))}
+            {columns.map((c, ci) => {
+              const right = ci >= rightAlignFrom;
+              const label = typeof c === 'string' ? c : c.label;
+              const info = typeof c === 'object' ? c.info : null;
+              return (
+                <th key={ci} style={{ textAlign: right ? 'right' : 'left', padding: dense ? '8px 16px' : '10px 16px', fontSize: 13, color: T.ink, fontWeight: 600, background: T.card, borderBottom: `1px solid ${T.border}`, whiteSpace: 'nowrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {label}
+                    {info && <InfoTip content={info} placement={right ? 'left' : 'right'}><Ico name="info" size={16} color={T.ink} /></InfoTip>}
+                  </span>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -481,14 +501,21 @@ const ALL_TILES = [
   { id: 'sdkHealth', name: 'SDK & OS health', kind: 'sdkHealth', w: 'half' },
   { id: 'firmware', name: 'Firmware health', kind: 'firmwareHealth', w: 'half' },
   { id: 'auth', name: 'Authorisation-rate trend', kind: 'chart', chart: 'authTrend', w: 'half' },
+  { id: 'notTradingTrend', name: 'Active, not trading trend', kind: 'chart', chart: 'notTradingTrend', w: 'half' },
   { id: 'notReady', name: 'Not-ready reasons', kind: 'grid', grid: 'notReadyReasons', topic: 'notReady', w: 'half' },
   { id: 'compliance', name: 'Firmware & PCI compliance', kind: 'grid', grid: 'compliance', topic: 'compliance', w: 'half' },
   { id: 'storesAttention', name: 'Stores needing attention', kind: 'grid', grid: 'storesAttention', topic: 'storesAttention', w: 'full' },
   { id: 'notTransacting', name: 'Not-transacting reasons', kind: 'grid', grid: 'notTransacting', w: 'half' },
   { id: 'featureByModel', name: 'Feature adoption by model', kind: 'grid', grid: 'featureByModel', w: 'half' },
 ];
-// Business insight ↔ Getting started, and SDK & OS health ↔ Firmware health sit side-by-side.
-const DEFAULT_TILE_IDS = ['kpis', 'business', 'sdkHealth', 'firmware', 'featureInsight', 'auth', 'notReady'];
+// Business insight ↔ Feature insight, and SDK & OS health ↔ Firmware health sit side-by-side.
+const DEFAULT_TILE_IDS = ['kpis', 'business', 'featureInsight', 'sdkHealth', 'firmware', 'auth', 'notTradingTrend', 'notReady'];
+
+// Shared data-period options for every Explore modal (keeps the "scope of the data" consistent).
+const DATA_PERIODS = [
+  { value: 'today', label: 'Today' }, { value: '7d', label: 'Last 7 days' }, { value: '30d', label: 'Last 30 days' }, { value: '90d', label: 'Last 90 days' }, { value: '12m', label: 'Last 12 months' },
+];
+const periodLabel = (v) => (DATA_PERIODS.find(p => p.value === v) || DATA_PERIODS[2]).label;
 
 /* ---- Dashboard layout persistence ----
    The user's saved tile order survives reloads via localStorage. Bump LAYOUT_VERSION on any
@@ -542,14 +569,13 @@ function KPITile({ actions, onOpenStores, onOpenDevices }) {
   const fleetItems = [
     { id: 'stores', title: 'All locations', value: String(SM_STORES.length), hint: 'Locations in this account. Click to view all.', onClick: onOpenStores },
     { id: 'devices', title: 'All devices', value: D.fmt(D.devices.length), hint: 'Devices across all your stores. Click to view all.', onClick: onOpenDevices },
-    kpiById('gap'),
     kpiById('auth'),
     kpiById('atv'),
   ];
   return (
     <div>
       {actions && <Row style={{ justifyContent: 'flex-end', marginBottom: 8 }}>{actions}</Row>}
-      <SummaryGrid items={fleetItems} cols={5} />
+      <SummaryGrid items={fleetItems} cols={4} />
     </div>
   );
 }
@@ -574,13 +600,13 @@ function TileHeader({ title, info, subtitle, right, badge }) {
 
 /* Feature insight — same card anatomy as SDK & OS Health: header (title + info +
    subtitle) with legend top-right, then chart beside its feature-level metrics. */
-function FeatureInsightTile() {
+function FeatureInsightTile({ onExplore }) {
   const data = D.featureAdoption;
   return (
     <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
       <TileHeader title="Feature insight" subtitle="Feature adoption · last 12 months"
         info="Adoption of DCC, tipping and installments across your fleet over the last 12 months."
-        right={<Legend series={data.series} />} />
+        right={<Row gap={12} align="center"><Legend series={data.series} />{onExplore && <Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>Explore</Button>}</Row>} />
       <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 220 }}>
         <LineChart data={data} height={200} />
       </div>
@@ -633,6 +659,11 @@ const ASK_CONTEXTS = {
   fleet: {
     placeholder: 'Ask about fleet health, security or operations…',
     intro: 'Ask across your whole fleet — analytics, security, operations and troubleshooting.',
+    // Surfaced first when the panel opens; everything else collapses under "See more insights".
+    featured: [
+      { cat: 'Business enablement', icon: 'sparkles', q: 'How is tipping configured across all my fleets?', desc: 'Overview and what it means — high-performing vs misconfiguration — linked to action points.' },
+      { cat: 'Fleet security', icon: 'settings', q: 'How many SDKs / firmware are expiring?', desc: 'Current status plus immediate action points.' },
+    ],
     models: [
       { id: 'analytics', label: 'Fleet Analytics 2.5', desc: 'Aggregate metrics, trends & reporting', icon: 'nav-analytics' },
       { id: 'security', label: 'Security Advisor', desc: 'Firmware & SDK compliance and risk', icon: 'settings' },
@@ -725,6 +756,9 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
   const [q, setQ] = useState('');
   const [thinking, setThinking] = useState(false);
   const [ans, setAns] = useState(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [history, setHistory] = useState([]); // drilled-down insights: { id, q, ans, pinned }
+  const [histOpen, setHistOpen] = useState(true);
   const run = (text) => {
     const query = (text || q).toLowerCase();
     if (!query.trim()) return;
@@ -733,8 +767,13 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
       let best = D.nlAnswers[0], bestScore = -1;
       D.nlAnswers.forEach(a => { const score = a.match.filter(m => query.includes(m)).length; if (score > bestScore) { bestScore = score; best = a; } });
       setAns(best); setThinking(false);
+      // record in history (latest first; move an existing one to top, keep its pin)
+      setHistory(h => { const ex = h.find(x => x.q === best.question); return ex ? [ex, ...h.filter(x => x !== ex)] : [{ id: Date.now(), q: best.question, ans: best, pinned: false }, ...h]; });
     }, 650);
   };
+  const togglePin = (id) => setHistory(h => h.map(x => x.id === id ? { ...x, pinned: !x.pinned } : x));
+  const openHistory = (item) => { setAns(item.ans); setQ(''); setThinking(false); };
+  const sortedHistory = [...history].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   return (
     <div style={{ ...surface, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }} className="ns-tile">
       {/* header */}
@@ -747,14 +786,63 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
         </Row>
       </Row>
 
+      {/* body — collapsible history sidebar + conversation/composer column */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        {/* history sidebar (collapsible, max 200px) — only in the expanded panel */}
+        {expanded && (
+        <div style={{ width: histOpen ? 200 : 44, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0, transition: 'width 120ms' }}>
+          <Row style={{ padding: 8, alignItems: 'center', justifyContent: histOpen ? 'space-between' : 'center', flexShrink: 0 }}>
+            {histOpen && <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>History</span>}
+            <GlyphButton title={histOpen ? 'Hide history' : 'Show history'} onClick={() => setHistOpen(o => !o)}><PanelToggleIcon flip={!histOpen} /></GlyphButton>
+          </Row>
+          {histOpen && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 6px 8px' }}>
+              {sortedHistory.length === 0
+                ? <span style={{ fontSize: 12, color: T.faint, padding: '4px 8px', display: 'block', lineHeight: '16px' }}>Insights you open appear here.</span>
+                : sortedHistory.map(item => (
+                  <div key={item.id} className="ns-suggest" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, borderRadius: 8, padding: '6px', background: ans === item.ans ? 'var(--b-color-background-secondary)' : undefined }}>
+                    <button onClick={() => openHistory(item)} title={item.q} style={{ flex: 1, minWidth: 0, border: 0, background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 12.5, color: T.ink, lineHeight: '16px', padding: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.q}</button>
+                    <button onClick={() => togglePin(item.id)} title={item.pinned ? 'Unpin' : 'Pin'} style={{ border: 0, background: 'none', cursor: 'pointer', lineHeight: 0, padding: 2, flexShrink: 0 }}><Ico name="star-fill" size={13} color={item.pinned ? 'var(--b-color-decorative-blue)' : T.faint} /></button>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+        )}
+        {/* conversation + composer */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       {/* scrollable conversation area */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4 }}>
         {!ans && !thinking && (
           <Col gap={T.s4}>
             <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{ctx.intro}</span>
-            {ctx.groups.map(g => (
+            {/* Featured JTBD insights — surfaced first */}
+            {ctx.featured && (
+              <Col gap={10}>
+                {ctx.featured.map(f => (
+                  <button key={f.q} type="button" className="ns-tile" onClick={() => run(f.q)}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', border: `1px solid ${T.border}`, borderRadius: T.radiusM, background: T.card, padding: '12px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: T.faint, marginBottom: 5 }}>{f.cat}</span>
+                    <Row gap={8} align="flex-start">
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: T.ink, lineHeight: '19px' }}>{f.q}</span>
+                      <Ico name="arrow-right" size={16} color={T.faint} />
+                    </Row>
+                    <span style={{ display: 'block', fontSize: 12, color: T.sub, lineHeight: '17px', marginTop: 4 }}>{f.desc}</span>
+                  </button>
+                ))}
+              </Col>
+            )}
+            {/* "See more insights" — collapsed when featured prompts exist */}
+            {ctx.featured && (
+              <button type="button" onClick={() => setMoreOpen(o => !o)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--b-color-link-primary)', padding: '2px 6px', borderRadius: 8 }}>
+                {moreOpen ? 'Hide insights' : 'See more insights'}
+                <Ico name={moreOpen ? 'chevron-up-small' : 'chevron-down-small'} size={16} color="var(--b-color-link-primary)" />
+              </button>
+            )}
+            {(!ctx.featured || moreOpen) && ctx.groups.map(g => (
               <Col key={g.label} gap={1}>
-                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: T.faint, padding: '0 10px 4px' }}>{g.label}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: T.faint, padding: '0 10px 4px' }}>{g.label}</span>
                 {g.prompts.map(p => (
                   <button key={p} className="ns-suggest" onClick={() => run(p)}
                     style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', border: 0, background: 'transparent', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: T.ink, fontSize: 14 }}>
@@ -774,7 +862,7 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
           <div className="ns-fade">
             {/* question + save */}
             <Row style={{ marginBottom: 14 }}>
-              <Row gap={8} style={{ flex: 1, minWidth: 0 }}><Ico name="sparkles" size={16} color="var(--b-color-decorative-blue)" /><span style={{ fontSize: 13, color: T.sub }}>{ans.question}</span></Row>
+              <Row gap={8} style={{ flex: 1, minWidth: 0 }}><Ico name="sparkles" size={16} color="var(--b-color-label-primary)" /><span style={{ fontSize: 13, color: T.sub }}>{ans.question}</span></Row>
               {onSaveTile && <Button variant="secondary" condensed iconLeft="plus" onClick={() => onSaveTile(ans)}>Save as tile</Button>}
             </Row>
             {/* headline number + summary, stacked above the table */}
@@ -787,18 +875,42 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
               <span style={{ fontSize: 14, color: T.ink, lineHeight: '20px', marginTop: 2 }}>{ans.answer}</span>
             </Col>
             {/* supporting table — full width */}
-            <Grid columns={ans.grid.columns} rows={ans.grid.rows.slice(0, 5)} dense />
-            {/* contextual follow-ups */}
-            <Col gap={2} style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.sepFaint}` }}>
-              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: T.faint, padding: '0 10px 2px' }}>You might also ask</span>
-              {followups.map(f => (
-                <button key={f.question} className="ns-suggest" onClick={() => run(f.question)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', border: 0, background: 'transparent', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: T.ink, fontSize: 14 }}>
-                  <Ico name="sparkles" size={16} color={T.sub} />
-                  <span style={{ flex: 1 }}>{f.question}</span>
-                  <Ico name="arrow-right" size={16} color={T.faint} />
-                </button>
-              ))}
+            <Grid columns={ans.grid.columns} rows={ans.grid.rows.slice(0, 6)} dense />
+            {/* diagnostic — why it's happening */}
+            {ans.note && (
+              <div style={{ marginTop: 12 }}>
+                <Alert type="warning" variant="tip" description={ans.note} />
+              </div>
+            )}
+            {/* one-click actions */}
+            {ans.actions && (
+              <Row gap={8} style={{ flexWrap: 'wrap', marginTop: 12 }}>
+                {ans.actions.map(a => (
+                  <button key={a.label} className="ns-chip-btn" onClick={() => notify && notify(a.msg)}
+                    style={{ display: 'inline-flex', alignItems: 'center', border: `1px solid ${T.borderStrong}`, background: T.card, borderRadius: 999, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink }}>
+                    {a.label}
+                  </button>
+                ))}
+              </Row>
+            )}
+            {/* deep-dive follow-up */}
+            {ans.deepDive && (
+              <Row gap={12} align="center" style={{ ...surface, marginTop: 14, padding: '14px 16px' }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: T.ink, fontWeight: 600 }}>{ans.deepDive.prompt}</span>
+                <Button variant="primary" condensed iconRight="arrow-right" onClick={() => run(ans.deepDive.q)}>{ans.deepDive.label}</Button>
+              </Row>
+            )}
+            {/* contextual follow-ups — same quick-reply chip style as Device studio AI */}
+            <Col gap={8} style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.sepFaint}` }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>You might also ask</span>
+              <Row gap={6} style={{ flexWrap: 'wrap' }}>
+                {followups.map(f => (
+                  <button key={f.question} className="ns-chip-btn" onClick={() => run(f.question)}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${T.borderStrong}`, background: T.card, borderRadius: 999, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink }}>
+                    {f.question}
+                  </button>
+                ))}
+              </Row>
             </Col>
           </div>
           );
@@ -810,6 +922,8 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
         <PromptBox q={q} setQ={setQ} onSend={() => run()} thinking={thinking} models={ctx.models} placeholder={ctx.placeholder}
           onAdd={(v) => notify && notify((NL_ADD_ITEMS.find(i => i.value === v) || {}).label + ' — coming soon')} />
       </div>
+        </div>{/* /conversation+composer */}
+      </div>{/* /body row */}
     </div>
   );
 }
@@ -1047,9 +1161,10 @@ function SdkReleasesChart() {
 function SdkHealthDetail({ onBack, notify }) {
   const d = D.sdkHealth, sdk = d.sdk.kpis, os = d.os.kpis;
   const kpiGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: T.s3 };
+  const [range, setRange] = useState('30d');
   return (
-    <FullPage title="SDK & OS health — Tap to Pay & card readers" onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
-      actions={<Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting SDK & OS health to CSV…')}>Export</Button>} bodyBg={T.page}>
+    <FullPage title="SDK & OS health — Tap to Pay & card readers" subtitle={`All locations · ${d.totalDevices} devices · ${periodLabel(range)}`} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
+      actions={<Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting SDK & OS health to CSV…')}>Export</Button></Row>} bodyBg={T.page}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s7 }}>
         <DetailSection title="SDK versions" info="Adyen SDK versions running across the fleet. Expiry drives whether devices keep accepting payments." description={`As of ${d.asOf} · single fleet of ${d.totalDevices} devices`}>
           <div style={kpiGrid}>
@@ -1162,11 +1277,12 @@ function UnderlineTabs({ value, onChange, tabs }) {
 function FirmwareDetail({ onBack, notify }) {
   const d = D.firmwareHealth;
   const [tab, setTab] = useState('updates');
+  const [range, setRange] = useState('30d');
   const miniLabel = { fontSize: 11, color: T.faint, fontWeight: 600 };
   const num = (n) => n === 0 ? <span style={{ color: T.faint }}>–</span> : <span className="ns-num">{n}</span>;
   return (
-    <FullPage title="Terminal software" onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
-      actions={<Button variant="primary" iconLeft="plus" onClick={() => notify && notify('Schedule update…')}>Schedule update</Button>} bodyBg={T.page}>
+    <FullPage title="Terminal software" subtitle={`All locations · ${periodLabel(range)}`} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
+      actions={<Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="primary" iconLeft="plus" onClick={() => notify && notify('Schedule update…')}>Schedule update</Button></Row>} bodyBg={T.page}>
       <div style={{ maxWidth: 1240, margin: '0 auto', padding: `${T.s5}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s6 }}>
         <UnderlineTabs value={tab} onChange={setTab} tabs={[{ value: 'updates', label: 'Updates' }, { value: 'releases', label: 'Releases' }, { value: 'defaults', label: 'Default versions' }]} />
 
@@ -1301,11 +1417,9 @@ function businessGroups({ say, onOpenStores, onOpenDevices, onFirmware }) {
 /* Full-screen business-impact detail — trend over time + the categorised metric cards. */
 function BusinessInsightDetail({ onBack, notify, onOpenStores, onOpenDevices, onFirmware }) {
   const say = (m) => () => notify && notify(m);
-  const RANGES = [
-    { value: 'today', label: 'Today' }, { value: '7d', label: 'Last 7 days' }, { value: '30d', label: 'Last 30 days' }, { value: '90d', label: 'Last 90 days' }, { value: '12m', label: 'Last 12 months' },
-  ];
+  const RANGES = DATA_PERIODS;
   const [range, setRange] = useState('30d');
-  const rangeLabel = (RANGES.find(r => r.value === range) || {}).label;
+  const rangeLabel = `All locations · ${periodLabel(range)}`;
   const groups = businessGroups({ say, onOpenStores, onOpenDevices, onFirmware });
   const trend = {
     labels: D.volumeTrend.labels, unit: '€k', min: 0, max: 800,
@@ -1442,12 +1556,12 @@ function BusinessInsight({ notify, onOpenStores, onOpenDevices, onFirmware }) {
   const open = () => setDetail(true);
   return (
     <>
-      <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
+      <div style={{ ...surface, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }} className="ns-tile">
         <TileHeader title="Business insight" subtitle="Last 30 days"
           info={<span>What your fleet is <b>costing or making</b> you — and where to act. Explore for the trend and full breakdown.</span>}
           right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={open}>Explore</Button>} />
-        <div style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
-          <SummaryGrid cols={2} style={{ gridAutoRows: '1fr' }} items={[
+        <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, flex: 1, minHeight: 0 }}>
+          <SummaryGrid cols={2} style={{ gridAutoRows: '1fr', height: '100%' }} items={[
             { title: 'Revenue at risk / month', value: '~€695k', hint: 'Idle devices, declines and stale software.', onClick: open },
             { title: 'Opportunity identified / month', value: '+~€76k', hint: 'DCC, tipping and benchmark gap.', onClick: open },
             kpiById('dcc'),
@@ -1587,7 +1701,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
               {t.kind === 'kpi'
                 ? <KPITile actions={tileActions(t)} onOpenStores={onOpenAllStores} onOpenDevices={onOpenAllDevices} />
                 : t.kind === 'featureInsight'
-                  ? <FeatureInsightTile />
+                  ? <FeatureInsightTile onExplore={() => onOpenExplore({ name: 'Feature adoption', grid: 'featureByModel' })} />
                 : t.kind === 'business'
                   ? <BusinessInsight notify={notify} onOpenStores={onOpenAllStores} onOpenDevices={onOpenAllDevices} onFirmware={() => setFwOpen(true)} />
                 : t.kind === 'onboarding'
@@ -1628,35 +1742,44 @@ function ExploreModal({ tile, onBack }) {
   const [sortCol, setSortCol] = useState(0);
   const [sortDir, setSortDir] = useState('asc');
   const [q, setQ] = useState('');
-  const [facets, setFacets] = useState([]); // active first-column filters
-  const facetCol = g.columns[0];
-  const distinct = useMemo(() => [...new Set(g.rows.map(r => r[0]))], [g]);
+  const [range, setRange] = useState('30d');
+  const [filters, setFilters] = useState({}); // { [colIndex]: string[] } — one facet per column
+  const colLabel = (ci) => { const c = g.columns[ci]; return typeof c === 'string' ? c : c.label; };
+  const distinctFor = (ci) => [...new Set(g.rows.map(r => r[ci]))];
+  // Only offer categorical-ish columns as filters (a handful of distinct values).
+  const filterableCols = g.columns.map((_, ci) => ci).filter(ci => { const d = distinctFor(ci); return d.length >= 2 && d.length <= 12; });
+  const activeCols = Object.keys(filters).map(Number);
+  const availableCols = filterableCols.filter(ci => !(ci in filters));
   const num = (v) => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? null : n; };
   const rows = useMemo(() => {
-    let r = g.rows.filter(row => (!q || row.join(' ').toLowerCase().includes(q.toLowerCase())) && (facets.length === 0 || facets.includes(row[0])));
+    let r = g.rows.filter(row => (!q || row.join(' ').toLowerCase().includes(q.toLowerCase()))
+      && Object.entries(filters).every(([ci, vals]) => vals.length === 0 || vals.includes(row[ci])));
     r = [...r].sort((a, b) => {
       const av = a[sortCol], bv = b[sortCol], an = num(av), bn = num(bv);
       let c = (an != null && bn != null) ? an - bn : String(av).localeCompare(String(bv));
       return sortDir === 'asc' ? c : -c;
     });
     return r;
-  }, [g, sortCol, sortDir, q, facets]);
+  }, [g, sortCol, sortDir, q, filters]);
   const toggleSort = (ci) => { if (ci === sortCol) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(ci); setSortDir('asc'); } };
-  const available = distinct.filter(d => !facets.includes(d));
+  const setColFilter = (ci, vals) => setFilters(f => ({ ...f, [ci]: vals }));
+  const removeColFilter = (ci) => setFilters(f => { const n = { ...f }; delete n[ci]; return n; });
   return (
-    <FullPage title={tile.name} subtitle="Per-topic explore · filter, sort and export" tone="nav-analytics" onBack={onBack} backLabel="Dashboard"
+    <FullPage title={tile.name} subtitle={`All locations · ${periodLabel(range)}`} tone="nav-analytics" onBack={onBack} backLabel="Dashboard"
       actions={<Button variant="secondary" iconLeft="download">Export</Button>}>
       <div style={{ padding: '32px 20px 20px', maxWidth: 1040, margin: '0 auto' }}>
-        {/* Bento-style filter bar: search · removable Chips · add-filter menu */}
+        {/* Bento-style filter bar: search · data period · per-field facet chips · add-filter menu */}
         <Row style={{ marginBottom: 12, flexWrap: 'wrap' }} gap={8}>
           <SearchBar value={q} onChange={setQ} placeholder="Search…" width={260} />
-          {facets.map(f => (
-            <Chip key={f} label={`${facetCol}: ${f}`} condensed onRemove={() => setFacets(x => x.filter(v => v !== f))} />
+          <RangeChip value={range} onChange={setRange} options={DATA_PERIODS} />
+          {activeCols.map(ci => (
+            <FacetChip key={ci} label={colLabel(ci)} options={distinctFor(ci)} selected={filters[ci]}
+              onChange={(vals) => setColFilter(ci, vals)} onRemove={() => removeColFilter(ci)} />
           ))}
-          <MenuButton variant="secondary" icon="filter" label="Add filter" align="left"
-            items={available.length ? available.map(d => ({ value: d, label: d })) : [{ value: '_', label: 'No more values', disabled: true }]}
-            onSelect={(v) => v !== '_' && setFacets(x => [...x, v])} />
-          {facets.length > 0 && <Button variant="tertiary" condensed onClick={() => setFacets([])}>Clear</Button>}
+          <MenuButton variant="secondary" icon="filter" label="Add filter" align="left" condensed={false}
+            items={availableCols.length ? availableCols.map(ci => ({ value: String(ci), label: colLabel(ci) })) : [{ value: '_', label: 'No more fields', disabled: true }]}
+            onSelect={(v) => v !== '_' && setColFilter(Number(v), [])} />
+          {activeCols.length > 0 && <Button variant="tertiary" condensed onClick={() => setFilters({})}>Clear</Button>}
           <span style={{ marginLeft: 'auto', fontSize: 13, color: T.sub }}>{rows.length} of {g.rows.length} rows</span>
         </Row>
         <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: T.radiusL, overflow: 'hidden' }}>
@@ -2192,7 +2315,8 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
               <GlyphButton title="Hide control panel" onClick={() => setPanelOpen(false)}><PanelToggleIcon flip /></GlyphButton>
             </Row>
             {chatMode === 'agent' ? (
-              <DockedAsk expanded messages={messages} draft={draft} setDraft={setDraft} onSend={sendChat} />
+              <DockedAsk expanded messages={messages} draft={draft} setDraft={setDraft} onSend={sendChat} notify={notify}
+                onNewSession={() => { setMessages([{ role: 'assistant', text: "Describe the change you want and I'll configure this store's devices." }]); setDraft(''); notify && notify('Started a new session'); }} />
             ) : (<>
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 20px' }}>
               {/* Device-related settings only — store identity lives on the overview page. */}
@@ -2249,11 +2373,13 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
           <Alert type="warning" variant="tip" description={`This updates the ${affected} terminal${affected === 1 ? '' : 's'} in ${store.code}. Unsupported settings are skipped per device capability. Every change is audit-logged.`} />
           <div style={{ ...surface, overflow: 'hidden' }}>
             {diff.map((dd, i) => (
-              <Row key={i} style={{ padding: '12px 14px', borderBottom: i < diff.length - 1 ? `1px solid ${T.sepFaint}` : 'none' }} gap={8}>
-                <Col gap={2} style={{ flex: 1 }}><span style={{ fontSize: 13, fontWeight: 500 }}>{dd.label}</span><span style={{ fontSize: 11, color: T.faint }}>{dd.group}</span></Col>
-                <span style={{ fontSize: 13, color: T.sub, textDecoration: 'line-through' }}>{dd.from}</span>
-                <Ico name="arrow-right" size={16} color={T.faint} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--b-color-link-primary)' }}>{dd.to}</span>
+              <Row key={i} style={{ padding: '12px 14px', borderBottom: i < diff.length - 1 ? `1px solid ${T.sepFaint}` : 'none' }} gap={12} align="center">
+                <Col gap={2} style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 500 }}>{dd.label}</span><span style={{ fontSize: 11, color: T.faint }}>{dd.group}</span></Col>
+                <Row gap={8} align="center" style={{ flexShrink: 0 }}>
+                  {dd.from && dd.from !== '—' ? <Tag label={String(dd.from)} variant="grey" /> : <span style={{ fontSize: 13, color: T.faint }}>—</span>}
+                  <Ico name="arrow-right" size={16} color={T.faint} />
+                  <Tag label={String(dd.to)} variant="blue" />
+                </Row>
               </Row>
             ))}
           </div>
@@ -2913,6 +3039,33 @@ function RangeChip({ value, onChange, options, icon = 'timer' }) {
   );
 }
 
+/* Multi-select facet filter — 36px bordered chip + checkbox popover, removable. Bento filter-bar style. */
+function FacetChip({ label, options, selected, onChange, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const ref = useOutside(open, () => setOpen(false));
+  const toggle = (v) => onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v]);
+  const active = selected.length > 0;
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 6px 0 12px', border: `1px solid ${active ? 'var(--b-color-label-primary)' : '#8C959D'}`, borderRadius: 8, background: T.card, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, color: T.ink, boxSizing: 'border-box' }}>
+        <span>{active ? `${label}: ${selected.length}` : label}</span>
+        <Ico name="chevron-down-small" size={16} color={T.faint} />
+        <span onClick={(e) => { e.stopPropagation(); onRemove(); }} title="Remove filter" style={{ display: 'inline-flex', lineHeight: 0, padding: 2, borderRadius: 4 }}><Ico name="cross-small" size={14} color={T.faint} /></span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 600, minWidth: 200, maxHeight: 280, overflowY: 'auto', background: '#fff', boxShadow: '0px 6px 12px rgba(0,18,34,0.08), 0px 2px 4px rgba(0,18,34,0.04), 0px 0px 0px 1px #DADDDF', borderRadius: 8, padding: 4 }}>
+          {options.map(o => (
+            <button key={o} className="b-menu-item" onClick={() => toggle(o)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 12px', border: 0, background: 'transparent', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, color: T.ink, textAlign: 'left' }}>
+              <span style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${selected.includes(o) ? 'var(--b-color-label-primary)' : '#8C959D'}`, background: selected.includes(o) ? 'var(--b-color-label-primary)' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{selected.includes(o) && <Ico name="checkmark-small" size={12} color="#fff" />}</span>
+              <span style={{ flex: 1 }}>{o}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* Bento search bar — 36px, matches b-search-bar spec (border #8C959D · radius 8 · leading icon). */
 function SearchBar({ value, onChange, placeholder = 'Search…', width = 260 }) {
   return (
@@ -3441,13 +3594,8 @@ function TerminalSelector({ onBack, onOrder, notify }) {
       <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
         {/* control panel */}
         <div style={{ width: 400, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.sepFaint}` }}>
-            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Tell us about the client</span>
-            <div style={{ marginTop: 8, height: 6, borderRadius: 100, background: T.page, overflow: 'hidden' }}><div style={{ width: `${(answeredCount / SELECTOR_QUESTIONS.length) * 100}%`, height: '100%', background: 'var(--b-color-decorative-blue)', borderRadius: 100, transition: 'width 200ms' }} /></div>
-            <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>{answeredCount} of {SELECTOR_QUESTIONS.length} answered</span>
-          </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {SELECTOR_QUESTIONS.slice(0, visibleCount).map((q, i) => (
+            {SELECTOR_QUESTIONS.map((q, i) => (
               <Col key={q.id} gap={6} className="ns-fade">
                 <span style={{ fontSize: 13, color: T.sub }}>{i + 1}. {q.label}</span>
                 <Dropdown value={vals[q.id] || ''} placeholder={`— ${q.ph} —`} onChange={(v) => setVal(q.id, v)} options={q.opts.map(([value, label]) => ({ value, label }))} />
@@ -5088,9 +5236,41 @@ function Accordion({ open, onToggle, title, desc, icon, right, disabled, childre
   );
 }
 
+/* One chat bubble. Assistant replies can be structured — intro/text + a bulleted list of
+   changes + "Learn more" doc links — so long answers stay scannable. */
+function ChatBubble({ m, notify }) {
+  const isUser = m.role === 'user';
+  const bubble = {
+    maxWidth: '84%', borderRadius: 12, padding: '10px 12px', fontSize: 13, lineHeight: 1.5,
+    background: isUser ? 'var(--b-color-background-inverse-primary)' : 'var(--b-color-background-secondary)',
+    color: isUser ? 'var(--b-color-label-inverse-primary)' : T.ink,
+  };
+  return (
+    <div style={bubble}>
+      {m.text && <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>}
+      {m.bullets && m.bullets.length > 0 && (
+        <ul style={{ margin: m.text ? '8px 0 0' : 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {m.bullets.map((b, i) => <li key={i} style={{ paddingLeft: 2 }}>{b}</li>)}
+        </ul>
+      )}
+      {m.outro && <div style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{m.outro}</div>}
+      {m.docs && m.docs.length > 0 && (
+        <Col gap={6} style={{ marginTop: 10, alignItems: 'flex-start' }}>
+          {m.docs.map(d => <Link key={d.label} href={d.url || '#'} external style={{ fontSize: 13 }}>{d.label}</Link>)}
+        </Col>
+      )}
+      {m.action && (
+        <div style={{ marginTop: 12 }}>
+          <Button variant="primary" condensed onClick={m.action.onClick}>{m.action.label}</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* AI assistant. Manual mode = docked composer under the settings (typing updates them live).
    Agent mode (expanded) = the whole panel becomes a chat: message thread + composer. */
-function DockedAsk({ messages, draft, setDraft, onSend, expanded }) {
+function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onRevert, onNewSession }) {
   // Studio JTBD: customisation + payment integration. First = scripted market-setup scenario.
   const suggestions = ['Enable devices for international clients in Japan', 'Install an Android app on these devices', 'Upload a media asset to the home screen', 'Enable DCC and set the margin'];
   const suggIcons = ['sparkles', 'settings', 'image', 'percent'];
@@ -5098,6 +5278,11 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded }) {
   const showReply = messages.length > 1 && last && last.role === 'assistant';
   const firstTurn = messages.length <= 1;
   const threadRef = useRef(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const sq = search.trim().toLowerCase();
+  const msgText = (m) => ((m.text || '') + ' ' + (m.bullets || []).join(' ') + ' ' + (m.outro || '')).toLowerCase();
+  const shown = messages.map((m, i) => ({ m, i })).filter(({ m }) => !sq || msgText(m).includes(sq));
   useEffect(() => { if (expanded && threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight; }, [messages, expanded]);
 
   const composer = (
@@ -5115,6 +5300,23 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded }) {
   if (expanded) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: T.card }}>
+        {/* AI chat nav — New session (revert to a fresh chat) + Search */}
+        <Row style={{ flexShrink: 0, padding: '6px 8px', borderBottom: `1px solid ${T.sepFaint}`, gap: 2, alignItems: 'center' }}>
+          {onNewSession && (
+            <button onClick={() => { setSearch(''); setSearchOpen(false); onNewSession(); }} title="Start a new session — clears this chat"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink }} className="ns-suggest">
+              <Ico name="plus" size={16} color={T.sub} />New session
+            </button>
+          )}
+          <span style={{ flex: 1 }} />
+          <IconButton icon="search" variant="tertiary" title="Search this session" onClick={() => setSearchOpen(o => !o)} />
+        </Row>
+        {searchOpen && (
+          <div style={{ flexShrink: 0, padding: '8px 12px', borderBottom: `1px solid ${T.sepFaint}` }}>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search this session…" autoFocus
+              style={{ width: '100%', height: 32, border: `1px solid ${T.borderStrong}`, borderRadius: 8, padding: '0 10px', fontFamily: 'inherit', fontSize: 13, background: T.card, color: T.ink, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+        )}
         <div ref={threadRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4 }}>
           {firstTurn ? (
             <Col gap={T.s3}>
@@ -5132,17 +5334,26 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded }) {
             </Col>
           ) : (
             <Col gap={12}>
-              {messages.map((m, i) => (
-                <Row key={i} align="flex-start" gap={8} style={{ flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
+              {sq && shown.length === 0 && <span style={{ fontSize: 13, color: T.faint, padding: '4px 2px' }}>No messages match “{search}”.</span>}
+              {shown.map(({ m, i }) => (
+                <Row key={i} className="ns-msg" align="flex-start" gap={8} style={{ flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
                   {m.role === 'assistant' && <span style={{ lineHeight: 0, flexShrink: 0, paddingTop: 6 }}><Ico name="sparkles" size={16} color="var(--b-color-label-primary)" /></span>}
-                  <div style={{ maxWidth: '84%', background: m.role === 'user' ? 'var(--b-color-background-inverse-primary)' : 'var(--b-color-background-secondary)', color: m.role === 'user' ? 'var(--b-color-label-inverse-primary)' : T.ink, borderRadius: 12, padding: '8px 12px', fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                  <ChatBubble m={m} notify={notify} />
+                  {onRevert && i > 0 && (
+                    <div className="ns-revert" style={{ alignSelf: 'center', flexShrink: 0 }}>
+                      <button className="ns-revert-btn" onClick={() => onRevert(i)} title="Revert to this point" aria-label="Revert to this point"
+                        style={{ width: 28, height: 28, borderRadius: '50%', border: `1px solid ${T.border}`, background: T.card, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--b-shadow-low)', padding: 0 }}>
+                        <RevertGlyph size={14} />
+                      </button>
+                    </div>
+                  )}
                 </Row>
               ))}
               {last && last.role === 'assistant' && last.quick && last.quick.length > 0 && (
                 <Row gap={6} style={{ flexWrap: 'wrap', paddingLeft: 24 }}>
                   {last.quick.map(qr => (
                     <button key={qr} onClick={() => onSend(qr)} className="ns-chip-btn"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${T.borderStrong}`, background: T.card, borderRadius: 999, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: 'var(--b-color-link-primary)' }}>
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${T.borderStrong}`, background: T.card, borderRadius: 999, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink }}>
                       {qr}
                     </button>
                   ))}
@@ -5304,12 +5515,53 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
   };
   // Scripted "market setup" scenario — AI enables the right settings, then asks for the
   // inputs it needs (profile name · devices · logo · app · updates) as an interactive chat.
+  // ---- reversible chat: snapshot the full editable state before each turn, restore on revert ----
+  const snapshot = () => ({
+    vals: JSON.parse(JSON.stringify(vals)), scope: JSON.parse(JSON.stringify(scope)),
+    openGroups: Array.from(openGroups), overrides: Array.from(overrides),
+    screen, scopeName, scopeDesc, flow, previewDevice, tip, txAmountVar,
+  });
+  const applySnap = (s) => {
+    if (!s) return;
+    setVals(s.vals); setScope(s.scope);
+    setOpenGroups(new Set(s.openGroups)); setOverrides(new Set(s.overrides));
+    setScreen(s.screen); setScopeName(s.scopeName); setScopeDesc(s.scopeDesc);
+    setFlow(s.flow); setPreviewDevice(s.previewDevice); setTip(s.tip); setTxAmountVar(s.txAmountVar);
+  };
+  // Revert = keep previous user prompts, remove the assistant outcome and anything after it,
+  // then restore settings to the state right before that outcome.
+  // Only user messages carry a pre-turn snapshot, so an assistant outcome uses the snap from
+  // the preceding user prompt (i.e. the state before the AI changed anything this turn).
+  const revertTo = (i) => {
+    const cur = messages[i];
+    let snap = null;
+    let keepTo = i + 1; // keep the clicked bubble
+    if (cur && cur.role === 'user') {
+      snap = cur.snap; // state before this prompt's turn → remove the assistant outcome after it
+    } else {
+      // assistant bubble: remove the outcome itself and anything after it
+      keepTo = i;
+      for (let j = i - 1; j >= 0; j--) { if (messages[j].role === 'user' && messages[j].snap) { snap = messages[j].snap; break; } }
+    }
+    applySnap(snap);
+    setMessages(prev => prev.slice(0, keepTo));
+    setDraft('');
+    notify && notify('Reverted — changes after this point were undone');
+  };
+  const newSession = () => {
+    setMessages([{ role: 'assistant', text: "Describe the change you want and I'll configure the selected devices." }]);
+    setFlow(null); setDraft('');
+    notify && notify('Started a new session');
+  };
+
   const startJapanScenario = () => {
     setScope(s => ({ ...s, markets: Array.from(new Set([...(s.markets || []), 'Japan'])) }));
-    setOpenGroups(prev => new Set([...prev, 'dcc', 'gratuities', 'localization', 'homeScreen', 'japan']));
+    setOpenGroups(prev => new Set([...prev, 'dcc', 'gratuities', 'offline', 'localization', 'homeScreen', 'japan']));
     setField('dcc', 'enabled', true);
     setField('dcc', 'markup', 3);
     setField('gratuities', 'enabled', true);
+    setField('offline', 'enabled', true);
+    setField('offline', 'limit', '€100');
     setField('localization', 'language', 'Japanese');
     setField('japan', 'jcb', true);
     setField('japan', 'emoney', true);
@@ -5319,8 +5571,11 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
   const sendChat = (text) => {
     const q = (text != null ? text : draft).trim(); if (!q) return;
     setDraft('');
-    setMessages(m => [...m, { role: 'user', text: q }]);
-    const reply = (t, quick) => setMessages(m => [...m, { role: 'assistant', text: t, quick }]);
+    // Capture a checkpoint of the state as it was before this turn, so it can be reverted to.
+    const snap = snapshot();
+    setMessages(m => [...m, { role: 'user', text: q, snap }]);
+    // reply(str) → plain text; reply({intro/bullets/outro/docs}) → structured, scannable answer.
+    const reply = (t, quick) => setMessages(m => [...m, typeof t === 'string' ? { role: 'assistant', text: t, quick } : { role: 'assistant', quick, ...t }]);
     const t = q.toLowerCase();
     const step = flow && flow.step;
 
@@ -5328,7 +5583,22 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
     if (!step && /international|japan|日本|market[- ]?specific/.test(t)) {
       startJapanScenario();
       setFlow({ step: 'name' });
-      reply("Setting this up for international shoppers in Japan. I've enabled DCC (3% margin) and tipping, turned on JCB, e-money (iD/QUICPay) and QR wallets, and set the language to Japanese — the preview is updated.\n\nWhat should I name this configuration profile?", ['Japan retail profile']);
+      reply({
+        text: 'Setting this up for international shoppers in Japan. Here\u2019s what I changed:',
+        bullets: [
+          'Enabled DCC at a 3% margin',
+          'Turned on tipping (gratuities)',
+          'Enabled offline payments (€100 per-transaction limit)',
+          'Enabled JCB, e-money (iD / QUICPay) and QR wallets',
+          'Set the device language to Japanese',
+        ],
+        outro: 'The preview is updated. What should I name this configuration?',
+        docs: [
+          { label: 'Dynamic Currency Conversion', url: 'https://docs.adyen.com/platforms/in-person-payments/dynamic-currency-conversion' },
+          { label: 'Payment methods in Japan', url: 'https://www.adyen.com/payment-methods-guides/asia-pacific/japan' },
+          { label: 'Offline payments', url: 'https://docs.adyen.com/point-of-sale/offline-payment' },
+        ],
+      }, ['Japan retail profile']);
       return;
     }
     if (step === 'name') {
@@ -5367,7 +5637,17 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
     if (step === 'updates') {
       const name = (flow && flow.name) || scopeName;
       setFlow(null);
-      reply(`All set — I've prepared “${name}”: DCC + tipping, Japanese localization, JCB / e-money / QR wallets${/apply|updates|yes/.test(t) ? ', the branded home screen, the retail app and the latest media & config updates' : ' and the branded home screen'}. Review the change list on the left and save to roll it out.`);
+      reply({
+        text: `All set — I've prepared “${name}”:`,
+        bullets: [
+          'DCC, tipping and offline payments',
+          'Japanese localization',
+          'JCB, e-money (iD / QUICPay) and QR wallets',
+          /apply|updates|yes/.test(t) ? 'Branded home screen, the retail app and the latest media & config updates' : 'Branded home screen',
+        ],
+        outro: 'Review the changes and apply them to your devices.',
+        action: { label: 'Review', onClick: () => setReviewOpen(true) },
+      });
       return;
     }
 
@@ -5495,7 +5775,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
           </Row>
 
           {chatMode === 'agent' ? (
-            <DockedAsk expanded messages={messages} draft={draft} setDraft={setDraft} onSend={sendChat} />
+            <DockedAsk expanded messages={messages} draft={draft} setDraft={setDraft} onSend={sendChat} notify={notify} onRevert={revertTo} onNewSession={newSession} />
           ) : (<>
           {/* persistent scope — editable when defining a configuration; read-only (inherited)
               for a device inside a configuration; hidden for a standalone device */}
@@ -5643,11 +5923,13 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
           <Alert type="warning" variant="tip" description={`This updates ${affected} device(s). Unsupported settings are skipped per device capability. Every change is audit-logged.`} />
           <div style={{ ...surface, overflow: 'hidden' }}>
             {diff.map((d, i) => (
-              <Row key={i} style={{ padding: '12px 14px', borderBottom: i < diff.length - 1 ? `1px solid ${T.sepFaint}` : 'none' }} gap={8}>
-                <Col gap={2} style={{ flex: 1 }}><span style={{ fontSize: 13, fontWeight: 500 }}>{d.label}</span><span style={{ fontSize: 11, color: T.faint }}>{d.group}</span></Col>
-                <span style={{ fontSize: 13, color: T.sub, textDecoration: 'line-through' }}>{d.from}</span>
-                <Ico name="arrow-right" size={16} color={T.faint} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--b-color-link-primary)' }}>{d.to}</span>
+              <Row key={i} style={{ padding: '12px 14px', borderBottom: i < diff.length - 1 ? `1px solid ${T.sepFaint}` : 'none' }} gap={12} align="center">
+                <Col gap={2} style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 500 }}>{d.label}</span><span style={{ fontSize: 11, color: T.faint }}>{d.group}</span></Col>
+                <Row gap={8} align="center" style={{ flexShrink: 0 }}>
+                  {d.from && d.from !== '—' ? <Tag label={String(d.from)} variant="grey" /> : <span style={{ fontSize: 13, color: T.faint }}>—</span>}
+                  <Ico name="arrow-right" size={16} color={T.faint} />
+                  <Tag label={String(d.to)} variant="blue" />
+                </Row>
               </Row>
             ))}
           </div>
@@ -5670,6 +5952,17 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
 }
 
 /* ============================================================= TOAST */
+function Toast({ message, icon, onClose }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, background: 'var(--b-color-background-primary)', boxShadow: '0 8px 24px rgba(0,18,34,0.16)', border: '1px solid var(--b-color-outline-primary)' }}>
+      {icon && <Icon name={icon} size={16} color="var(--b-color-label-success)" />}
+      <span style={{ fontSize: 14, color: 'var(--b-color-label-primary)', whiteSpace: 'nowrap' }}>{message}</span>
+      <button onClick={onClose} style={{ marginLeft: 8, border: 0, background: 'transparent', cursor: 'pointer', display: 'inline-flex', color: 'var(--b-color-label-secondary)', padding: 2 }}>
+        <Icon name="cross-small" size={14} />
+      </button>
+    </div>
+  );
+}
 function ToastHost({ toast, onClose }) {
   useEffect(() => { if (toast) { const t = setTimeout(onClose, 3200); return () => clearTimeout(t); } }, [toast]);
   if (!toast) return null;
