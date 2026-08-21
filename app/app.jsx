@@ -500,8 +500,10 @@ const ALL_TILES = [
   { id: 'featureInsight', name: 'Feature insight', kind: 'featureInsight', w: 'half' },
   { id: 'sdkHealth', name: 'SDK & OS health', kind: 'sdkHealth', w: 'half' },
   { id: 'firmware', name: 'Firmware health', kind: 'firmwareHealth', w: 'half' },
-  { id: 'auth', name: 'Authorisation-rate trend', kind: 'chart', chart: 'authTrend', w: 'half' },
-  { id: 'notTradingTrend', name: 'Active, not trading trend', kind: 'chart', chart: 'notTradingTrend', w: 'half' },
+  { id: 'auth', name: 'Authorisation-rate trend', kind: 'chart', chart: 'authTrend', w: 'half',
+    info: <span><b>Authorisation rate</b> = approved authorisations ÷ total authorisation attempts — the share of payments the card issuer says yes to.<br /><br /><b>Why it matters:</b> it&rsquo;s the clearest measure of revenue you capture vs lose at the moment of payment. Around <b>5% of card payments are wrongly refused</b> by legacy systems, and Adyen&rsquo;s revenue-optimisation tooling (RevenueAccelerate) is credited with lifting merchant revenue by <b>~1.4%</b>. A downward trend means more shoppers are being declined — check issuer refusals, network tokens and routing.</span> },
+  { id: 'notTradingTrend', name: 'Active, not trading trend', kind: 'chart', chart: 'notTradingTrend', w: 'half',
+    info: <span><b>Active, not trading</b> = terminals seen online in the period but that processed <b>zero payments</b>.<br /><br /><b>Why it matters:</b> it&rsquo;s a fleet reliability &amp; ROI gap — hardware you&rsquo;ve deployed and pay for that isn&rsquo;t making money, usually from connectivity drops, terminals not fully boarded, or misconfiguration. Driving this down turns idle devices into revenue and is a leading indicator of store-level problems before they show up in sales.</span> },
   { id: 'notReady', name: 'Not-ready reasons', kind: 'grid', grid: 'notReadyReasons', topic: 'notReady', w: 'half' },
   { id: 'compliance', name: 'Firmware & PCI compliance', kind: 'grid', grid: 'compliance', topic: 'compliance', w: 'half' },
   { id: 'storesAttention', name: 'Stores needing attention', kind: 'grid', grid: 'storesAttention', topic: 'storesAttention', w: 'full' },
@@ -632,7 +634,7 @@ function ChartCard({ t, actions, onExplore }) {
   return (
     <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
       <TileHeader title={t.name} subtitle={`Last update: ${updated}`}
-        info="How this metric is measured and the period it covers."
+        info={t.info || 'How this metric is measured and the period it covers.'}
         right={actions || <Legend series={data.series} />} />
       <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}>
         <LineChart data={data} height={200} />
@@ -654,7 +656,13 @@ const NL_ADD_ITEMS = [
 /* ---- Ask contexts (JTBD) ----
    Each page gets its own AI models (routed by the kind of data on that page) and a set of
    grouped, job-to-be-done starter prompts. Keyed by page: fleet · devices · studio. */
-const DEFAULT_ASK_MODELS = [{ id: 'general', label: 'North Star 2.5', desc: 'General fleet assistant', icon: 'sparkles' }];
+const MODES = [
+  { id: 'analytics', label: 'Analytic', icon: 'nav-analytics' },
+  { id: 'ops', label: 'Operation', icon: 'store' },
+  { id: 'compliance', label: 'Compliance', icon: 'settings' },
+  { id: 'custom', label: 'Customise', icon: 'sparkles' },
+];
+const DEFAULT_ASK_MODELS = MODES;
 const ASK_CONTEXTS = {
   fleet: {
     placeholder: 'Ask about fleet health, security or operations…',
@@ -664,11 +672,8 @@ const ASK_CONTEXTS = {
       { cat: 'Business enablement', icon: 'sparkles', q: 'How is tipping configured across all my fleets?', desc: 'Overview and what it means — high-performing vs misconfiguration — linked to action points.' },
       { cat: 'Fleet security', icon: 'settings', q: 'How many SDKs / firmware are expiring?', desc: 'Current status plus immediate action points.' },
     ],
-    models: [
-      { id: 'analytics', label: 'Fleet Analytics 2.5', desc: 'Aggregate metrics, trends & reporting', icon: 'nav-analytics' },
-      { id: 'security', label: 'Security Advisor', desc: 'Firmware & SDK compliance and risk', icon: 'settings' },
-      { id: 'ops', label: 'Operations Copilot', desc: 'Terminal distribution & scaling', icon: 'store' },
-    ],
+    models: MODES,
+    defaultMode: 'analytics',
     groups: [
       { label: 'Business enablement', icon: 'sparkles', prompts: ['Order new terminals for a store I\u2019m opening', 'Set up kitting and custom packaging for my next rollout', 'Create a new store and pre-configure its devices'] },
       { label: 'Fleet security analysis', icon: 'settings', prompts: ['Show firmware and SDK version distribution across my fleet', 'Which devices fall short of our security baseline?', 'What should I update first to meet PCI requirements?'] },
@@ -679,10 +684,12 @@ const ASK_CONTEXTS = {
   devices: {
     placeholder: 'Ask about ordering, onboarding or fulfilment…',
     intro: 'Ask about the device lifecycle — ordering, onboarding, supply chain and returns.',
-    models: [
-      { id: 'lifecycle', label: 'Lifecycle Assistant', desc: 'Order, replace, return, repair', icon: 'refresh' },
-      { id: 'onboarding', label: 'Onboarding Guide', desc: 'Get terminals transacting on arrival', icon: 'store' },
-      { id: 'supply', label: 'Supply Chain Copilot', desc: 'Fulfilment, stock & shipping', icon: 'grid' },
+    models: MODES,
+    defaultMode: 'ops',
+    // Surfaced first when the panel opens; everything else collapses under "See more insights".
+    featured: [
+      { cat: 'Look up a device', icon: 'search', q: "Why isn't this terminal working?", desc: 'Scan or enter a device ID for live status — connectivity, battery, SDK/firmware, last transaction and recent changes — with clear next steps to get it trading again.' },
+      { cat: 'Device reassignment', icon: 'refresh', q: 'Which devices are stuck mid-move?', desc: 'Surface devices stalled between locations, then bulk-route them to the best store or back to inventory with a reason code and a full audit trail.' },
     ],
     groups: [
       { label: 'Merchant lifecycle services', icon: 'refresh', prompts: ['Order a replacement for a damaged terminal', 'Start a return and generate the shipping label', 'Check warranty and insurance status for a device'] },
@@ -693,10 +700,8 @@ const ASK_CONTEXTS = {
   studio: {
     placeholder: 'Ask AI to customise or configure devices…',
     intro: 'Ask AI to customise devices and launch payment features — I\u2019ll update the preview.',
-    models: [
-      { id: 'custom', label: 'Customisation Studio', desc: 'Apps, media assets & configuration', icon: 'settings' },
-      { id: 'payments', label: 'Payments Copilot', desc: 'Payment methods, features & billing', icon: 'bank' },
-    ],
+    models: MODES,
+    defaultMode: 'custom',
     groups: [
       { label: 'Customisation', icon: 'settings', prompts: ['Install an Android app on these devices', 'Upload a media asset to the home screen', 'Push a configuration update to this scope'] },
       { label: 'Payment integration', icon: 'bank', prompts: ['Launch a new payment method for this configuration', 'Enable a new feature and confirm billing', 'Turn on DCC and set the margin'] },
@@ -704,13 +709,66 @@ const ASK_CONTEXTS = {
   },
 };
 
-function PromptBox({ q, setQ, onSend, thinking, onAdd, models, placeholder = 'Ask your fleet anything…' }) {
+/* ============================================================= ASK CHAT DESIGN SYSTEM
+   Reusable building blocks shared by every AI chat (Fleet · Location · Studio):
+   · AskPromptCard  — a featured "main prompt" card (category · question · description)
+   · AskSectionTitle — small caps section label
+   · AskInsightRow  — one-line insight/prompt row (icon · text · arrow)
+   · AskLine        — one-line callout with a leading icon and an optional right-side CTA
+                      (used for the Tip and the Next-best-action rows)                    */
+function AskPromptCard({ item, onClick }) {
+  return (
+    <button type="button" className="ns-tile" onClick={onClick}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', textAlign: 'left', border: `1px solid ${T.border}`, borderRadius: T.radiusM, background: T.card, padding: '12px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
+      <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: T.faint, marginBottom: 5 }}>{item.cat}</span>
+      <Row gap={8} align="flex-start">
+        <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: T.ink, lineHeight: '19px' }}>{item.q}</span>
+        <Ico name="arrow-right" size={16} color={T.faint} />
+      </Row>
+      <span style={{ display: 'block', fontSize: 12, color: T.sub, lineHeight: '17px', marginTop: 4 }}>{item.desc}</span>
+    </button>
+  );
+}
+function AskSectionTitle({ children }) {
+  return <span style={{ fontSize: 12, fontWeight: 600, color: T.faint, padding: '0 10px 4px' }}>{children}</span>;
+}
+function AskInsightRow({ icon = 'sparkles', text, onClick }) {
+  return (
+    <button className="ns-suggest" onClick={onClick}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', border: 0, background: 'transparent', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: T.ink, fontSize: 14 }}>
+      <Ico name={icon} size={16} color={T.sub} />
+      <span style={{ flex: 1 }}>{text}</span>
+      <Ico name="arrow-right" size={16} color={T.faint} />
+    </button>
+  );
+}
+function AskLine({ icon, iconColor, children, action }) {
+  return (
+    <Row gap={10} align="center" style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--b-color-background-secondary)' }}>
+      <span style={{ lineHeight: 0, flexShrink: 0 }}><Ico name={icon} size={16} color={iconColor || T.sub} /></span>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: T.ink, lineHeight: '18px' }}>{children}</span>
+      {action}
+    </Row>
+  );
+}
+/* Text CTA used on the right of an AskLine (e.g. the Next-best-action row). */
+function AskLineCTA({ label, onClick }) {
+  return (
+    <button onClick={onClick} className="ns-suggest"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--b-color-link-primary)', padding: '4px 6px', borderRadius: 8 }}>
+      {label}<Ico name="arrow-right" size={16} color="var(--b-color-link-primary)" />
+    </button>
+  );
+}
+
+function PromptBox({ q, setQ, onSend, thinking, onAdd, models, defaultMode, placeholder = 'Ask your fleet anything…' }) {
   const [addOpen, setAddOpen] = useState(false);
   const addRef = useOutside(addOpen, () => setAddOpen(false));
   const mList = models && models.length ? models : DEFAULT_ASK_MODELS;
   const [modelOpen, setModelOpen] = useState(false);
   const modelRef = useOutside(modelOpen, () => setModelOpen(false));
-  const [modelId, setModelId] = useState(mList[0].id);
+  const initialMode = (defaultMode && mList.find(m => m.id === defaultMode)) ? defaultMode : mList[0].id;
+  const [modelId, setModelId] = useState(initialMode);
   const model = mList.find(m => m.id === modelId) || mList[0];
   return (
     <div style={{ border: `1px solid ${T.borderStrong}`, borderRadius: T.radiusL, background: T.card, boxShadow: 'var(--b-shadow-low)' }}>
@@ -719,21 +777,24 @@ function PromptBox({ q, setQ, onSend, thinking, onAdd, models, placeholder = 'As
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
         placeholder={placeholder}
         style={{ width: '100%', border: 0, outline: 'none', resize: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 14, lineHeight: '20px', color: T.ink, padding: '12px 12px 6px' }} />
-      {/* action toolbar */}
-      <Row gap={6} style={{ padding: '6px 8px 8px' }}>
-        <div ref={addRef} style={{ position: 'relative' }}>
-          <IconButton icon="plus" variant="tertiary" condensed title="Add" onClick={() => setAddOpen(o => !o)} />
+      {/* action toolbar — Plus + Mode aligned to the same height and vertically centered */}
+      <Row gap={6} align="center" style={{ padding: '6px 8px 8px' }}>
+        <div ref={addRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', height: 28 }}>
+          <button onClick={() => setAddOpen(o => !o)} title="Add" aria-label="Add" className="ns-suggest"
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: 0, background: 'transparent', cursor: 'pointer', padding: 0 }}>
+            <Ico name="plus" size={16} color={T.sub} />
+          </button>
           {addOpen && (
             <div style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, zIndex: 600 }}>
               <Menu items={NL_ADD_ITEMS} onSelect={(v) => { setAddOpen(false); onAdd && onAdd(v); }} />
             </div>
           )}
         </div>
-        <div ref={modelRef} style={{ position: 'relative' }}>
-          <span onClick={() => setModelOpen(o => !o)} title="Choose AI model" className="ns-suggest"
+        <div ref={modelRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', height: 28 }}>
+          <span onClick={() => setModelOpen(o => !o)} title="Choose mode (e.g. Devin)" className="ns-suggest"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 8px', borderRadius: 8, fontSize: 13, color: T.sub, cursor: 'pointer' }}>
             <Ico name={model.icon || 'sparkles'} size={16} color={T.sub} />
-            {model.label}
+            Mode: {model.label}
             <Ico name="chevron-down-small" size={16} color={T.faint} />
           </span>
           {modelOpen && mList.length > 1 && (
@@ -760,12 +821,24 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
   const [history, setHistory] = useState([]); // drilled-down insights: { id, q, ans, pinned }
   const [histOpen, setHistOpen] = useState(true);
   const run = (text) => {
-    const query = (text || q).toLowerCase();
-    if (!query.trim()) return;
+    const raw = (text || q).trim();
+    const query = raw.toLowerCase();
+    if (!query) return;
     setThinking(true); setAns(null);
     setTimeout(() => {
-      let best = D.nlAnswers[0], bestScore = -1;
-      D.nlAnswers.forEach(a => { const score = a.match.filter(m => query.includes(m)).length; if (score > bestScore) { bestScore = score; best = a; } });
+      const hasId = /[a-z0-9]{2,6}-\d{5,}/i.test(raw); // terminal ID e.g. SFO1-0544000067
+      let best = null;
+      // 1) exact canned question (clicking a featured/starter card)
+      best = D.nlAnswers.find(a => a.question.toLowerCase() === query) || null;
+      // 2) "resolve/fix" a terminal → resolution answer
+      if (!best && hasId && /resolve|fix|solve|repair/.test(query)) best = D.nlAnswers.find(a => a.resolve) || null;
+      // 3) a bare terminal ID → run the diagnosis
+      if (!best && hasId) best = D.nlAnswers.find(a => a.diag) || null;
+      // 4) fall back to keyword scoring
+      if (!best) {
+        best = D.nlAnswers[0]; let bestScore = -1;
+        D.nlAnswers.forEach(a => { const score = a.match.filter(m => query.includes(m)).length; if (score > bestScore) { bestScore = score; best = a; } });
+      }
       setAns(best); setThinking(false);
       // record in history (latest first; move an existing one to top, keep its pin)
       setHistory(h => { const ex = h.find(x => x.q === best.question); return ex ? [ex, ...h.filter(x => x !== ex)] : [{ id: Date.now(), q: best.question, ans: best, pinned: false }, ...h]; });
@@ -773,7 +846,10 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
   };
   const togglePin = (id) => setHistory(h => h.map(x => x.id === id ? { ...x, pinned: !x.pinned } : x));
   const openHistory = (item) => { setAns(item.ans); setQ(''); setThinking(false); };
+  const newSession = () => { setQ(''); setAns(null); setThinking(false); setMoreOpen(false); };
   const sortedHistory = [...history].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  const pinned = sortedHistory.filter(x => x.pinned);
+  const recent = sortedHistory.filter(x => !x.pinned);
   return (
     <div style={{ ...surface, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }} className="ns-tile">
       {/* header */}
@@ -791,20 +867,46 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
         {/* history sidebar (collapsible, max 200px) — only in the expanded panel */}
         {expanded && (
         <div style={{ width: histOpen ? 200 : 44, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0, transition: 'width 120ms' }}>
-          <Row style={{ padding: 8, alignItems: 'center', justifyContent: histOpen ? 'space-between' : 'center', flexShrink: 0 }}>
-            {histOpen && <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>History</span>}
+          <Row style={{ padding: '8px 10px', alignItems: 'center', justifyContent: histOpen ? 'space-between' : 'center', flexShrink: 0 }}>
+            {histOpen ? (
+              <button onClick={newSession} title="Start a new session" className="ns-suggest"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: 0, background: 'transparent', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink }}>
+                <Ico name="plus" size={14} color="var(--b-color-label-primary)" />
+                New session
+              </button>
+            ) : <span />}
             <GlyphButton title={histOpen ? 'Hide history' : 'Show history'} onClick={() => setHistOpen(o => !o)}><PanelToggleIcon flip={!histOpen} /></GlyphButton>
           </Row>
           {histOpen && (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 6px 8px' }}>
-              {sortedHistory.length === 0
-                ? <span style={{ fontSize: 12, color: T.faint, padding: '4px 8px', display: 'block', lineHeight: '16px' }}>Insights you open appear here.</span>
-                : sortedHistory.map(item => (
-                  <div key={item.id} className="ns-suggest" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, borderRadius: 8, padding: '6px', background: ans === item.ans ? 'var(--b-color-background-secondary)' : undefined }}>
-                    <button onClick={() => openHistory(item)} title={item.q} style={{ flex: 1, minWidth: 0, border: 0, background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 12.5, color: T.ink, lineHeight: '16px', padding: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.q}</button>
-                    <button onClick={() => togglePin(item.id)} title={item.pinned ? 'Unpin' : 'Pin'} style={{ border: 0, background: 'none', cursor: 'pointer', lineHeight: 0, padding: 2, flexShrink: 0 }}><Ico name="star-fill" size={13} color={item.pinned ? 'var(--b-color-decorative-blue)' : T.faint} /></button>
-                  </div>
-                ))}
+            <div className="ns-chat-scroll" style={{ flex: 1, overflowY: 'auto', padding: '0 6px 8px' }}>
+              {sortedHistory.length === 0 ? (
+                <span style={{ fontSize: 12, color: T.faint, padding: '4px 8px', display: 'block', lineHeight: '16px' }}>Insights you open appear here.</span>
+              ) : (
+                <>
+                  {pinned.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: T.faint, padding: '4px 2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Pinned</span>
+                      {pinned.map(item => (
+                        <div key={item.id} className="ns-suggest" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, borderRadius: 8, padding: '6px', background: ans === item.ans ? 'var(--b-color-background-secondary)' : undefined }}>
+                          <button onClick={() => openHistory(item)} title={item.q} style={{ flex: 1, minWidth: 0, border: 0, background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 12.5, color: T.ink, lineHeight: '16px', padding: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.q}</button>
+                          <button onClick={() => togglePin(item.id)} title="Unpin" style={{ border: 0, background: 'none', cursor: 'pointer', lineHeight: 0, padding: 2, flexShrink: 0 }}><Ico name="star-fill" size={13} color="var(--b-color-decorative-blue)" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {recent.length > 0 && (
+                    <div>
+                      <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: T.faint, padding: '4px 2px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>History</span>
+                      {recent.map(item => (
+                        <div key={item.id} className="ns-suggest" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, borderRadius: 8, padding: '6px', background: ans === item.ans ? 'var(--b-color-background-secondary)' : undefined }}>
+                          <button onClick={() => openHistory(item)} title={item.q} style={{ flex: 1, minWidth: 0, border: 0, background: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 12.5, color: T.ink, lineHeight: '16px', padding: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.q}</button>
+                          <button onClick={() => togglePin(item.id)} title="Pin" style={{ border: 0, background: 'none', cursor: 'pointer', lineHeight: 0, padding: 2, flexShrink: 0 }}><Ico name="star-fill" size={13} color={T.faint} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -812,25 +914,15 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
         {/* conversation + composer */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       {/* scrollable conversation area */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4 }}>
+      <div className="ns-chat-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4 }}>
         {!ans && !thinking && (
           <Col gap={T.s4}>
             <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{ctx.intro}</span>
-            {/* Featured JTBD insights — surfaced first */}
+            {/* Featured "main prompt" cards — side-by-side when the panel is expanded */}
             {ctx.featured && (
-              <Col gap={10}>
-                {ctx.featured.map(f => (
-                  <button key={f.q} type="button" className="ns-tile" onClick={() => run(f.q)}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', border: `1px solid ${T.border}`, borderRadius: T.radiusM, background: T.card, padding: '12px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: T.faint, marginBottom: 5 }}>{f.cat}</span>
-                    <Row gap={8} align="flex-start">
-                      <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: T.ink, lineHeight: '19px' }}>{f.q}</span>
-                      <Ico name="arrow-right" size={16} color={T.faint} />
-                    </Row>
-                    <span style={{ display: 'block', fontSize: 12, color: T.sub, lineHeight: '17px', marginTop: 4 }}>{f.desc}</span>
-                  </button>
-                ))}
-              </Col>
+              <div style={{ display: 'grid', gridTemplateColumns: expanded ? 'repeat(2, minmax(0, 1fr))' : '1fr', gap: 10, alignItems: 'stretch' }}>
+                {ctx.featured.map(f => <AskPromptCard key={f.q} item={f} onClick={() => run(f.q)} />)}
+              </div>
             )}
             {/* "See more insights" — collapsed when featured prompts exist */}
             {ctx.featured && (
@@ -840,17 +932,11 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
                 <Ico name={moreOpen ? 'chevron-up-small' : 'chevron-down-small'} size={16} color="var(--b-color-link-primary)" />
               </button>
             )}
+            {/* Insights list — grouped title + insight prompt rows */}
             {(!ctx.featured || moreOpen) && ctx.groups.map(g => (
               <Col key={g.label} gap={1}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: T.faint, padding: '0 10px 4px' }}>{g.label}</span>
-                {g.prompts.map(p => (
-                  <button key={p} className="ns-suggest" onClick={() => run(p)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', border: 0, background: 'transparent', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: T.ink, fontSize: 14 }}>
-                    <Ico name={g.icon} size={16} color={T.sub} />
-                    <span style={{ flex: 1 }}>{p}</span>
-                    <Ico name="arrow-right" size={16} color={T.faint} />
-                  </button>
-                ))}
+                <AskSectionTitle>{g.label}</AskSectionTitle>
+                {g.prompts.map(p => <AskInsightRow key={p} icon={g.icon} text={p} onClick={() => run(p)} />)}
               </Col>
             ))}
           </Col>
@@ -873,16 +959,17 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
               </Row>
               <span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{ans.metric.label}</span>
               <span style={{ fontSize: 14, color: T.ink, lineHeight: '20px', marginTop: 2 }}>{ans.answer}</span>
+              {/* tip — plain info line right under the description (no alert box) */}
+              {ans.note && (
+                <Row gap={8} align="flex-start" style={{ marginTop: 6 }}>
+                  <span style={{ lineHeight: 0, flexShrink: 0, paddingTop: 1 }}><Ico name="info" size={16} color={T.sub} /></span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: T.sub, lineHeight: '18px' }}>{ans.note}</span>
+                </Row>
+              )}
             </Col>
             {/* supporting table — full width */}
             <Grid columns={ans.grid.columns} rows={ans.grid.rows.slice(0, 6)} dense />
-            {/* diagnostic — why it's happening */}
-            {ans.note && (
-              <div style={{ marginTop: 12 }}>
-                <Alert type="warning" variant="tip" description={ans.note} />
-              </div>
-            )}
-            {/* one-click actions */}
+            {/* action prompts — one-click actions */}
             {ans.actions && (
               <Row gap={8} style={{ flexWrap: 'wrap', marginTop: 12 }}>
                 {ans.actions.map(a => (
@@ -893,24 +980,19 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
                 ))}
               </Row>
             )}
-            {/* deep-dive follow-up */}
+            {/* next best action — one line with an action icon and a right-side CTA */}
             {ans.deepDive && (
-              <Row gap={12} align="center" style={{ ...surface, marginTop: 14, padding: '14px 16px' }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: T.ink, fontWeight: 600 }}>{ans.deepDive.prompt}</span>
-                <Button variant="primary" condensed iconRight="arrow-right" onClick={() => run(ans.deepDive.q)}>{ans.deepDive.label}</Button>
-              </Row>
+              <div style={{ marginTop: 12 }}>
+                <AskLine icon="sparkles" iconColor="var(--b-color-label-primary)"
+                  action={<AskLineCTA label={ans.deepDive.label} onClick={() => run(ans.deepDive.q)} />}>
+                  {ans.deepDive.prompt}
+                </AskLine>
+              </div>
             )}
-            {/* contextual follow-ups — same quick-reply chip style as Device studio AI */}
-            <Col gap={8} style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.sepFaint}` }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>You might also ask</span>
-              <Row gap={6} style={{ flexWrap: 'wrap' }}>
-                {followups.map(f => (
-                  <button key={f.question} className="ns-chip-btn" onClick={() => run(f.question)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${T.borderStrong}`, background: T.card, borderRadius: 999, padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink }}>
-                    {f.question}
-                  </button>
-                ))}
-              </Row>
+            {/* you might also ask — insights list (title + insight prompt rows) */}
+            <Col gap={1} style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${T.sepFaint}` }}>
+              <AskSectionTitle>You might also ask</AskSectionTitle>
+              {followups.map(f => <AskInsightRow key={f.question} icon="sparkles" text={f.question} onClick={() => run(f.question)} />)}
             </Col>
           </div>
           );
@@ -919,7 +1001,7 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
 
       {/* pinned prompt */}
       <div style={{ flexShrink: 0, padding: T.s4, borderTop: `1px solid ${T.sep}` }}>
-        <PromptBox q={q} setQ={setQ} onSend={() => run()} thinking={thinking} models={ctx.models} placeholder={ctx.placeholder}
+        <PromptBox q={q} setQ={setQ} onSend={() => run()} thinking={thinking} models={ctx.models} defaultMode={ctx.defaultMode} placeholder={ctx.placeholder}
           onAdd={(v) => notify && notify((NL_ADD_ITEMS.find(i => i.value === v) || {}).label + ' — coming soon')} />
       </div>
         </div>{/* /conversation+composer */}
@@ -3575,59 +3657,115 @@ function getMatches(vals) {
 
 function TerminalSelector({ onBack, onOrder, notify }) {
   const [vals, setVals] = useState({});
-  const [phase, setPhase] = useState('empty'); // empty · loading · done
-  const answeredKey = SELECTOR_QUESTIONS.map(q => vals[q.id] || '').join('|');
-  const complete = SELECTOR_QUESTIONS.every(q => vals[q.id]);
+  const [selected, setSelected] = useState([]); // selected product ids (multi-select)
+  const [step, setStep] = useState('select');   // select · review · cart
+  const [cartTab, setCartTab] = useState('devices');
+  const [cart, setCart] = useState([]);         // added line items
   const answeredCount = SELECTOR_QUESTIONS.filter(q => vals[q.id]).length;
   const matches = getMatches(vals);
-  
   const setVal = (id, v) => setVals(s => ({ ...s, [id]: v }));
-  const reset = () => { setVals({}); };
+  const reset = () => { setVals({}); setSelected([]); };
+  const toggleSel = (id) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const selectedProducts = ORDER_PRODUCTS.filter(p => selected.includes(p.id));
+  const addToCart = (line) => { setCart(c => [...c, line]); notify && notify(`Added ${line.name} to cart`); };
+  const cartCount = cart.reduce((n, i) => n + i.qty, 0);
 
-  // progressive reveal — show a question once the previous one is answered
-  const visibleCount = Math.min(SELECTOR_QUESTIONS.length, answeredCount + 1);
+  // ---------- Step 1: select matching devices (multi-select) ----------
+  if (step === 'select') {
+    return (
+      <FullPage title="Order devices" subtitle="Terminal selector · find the right device" tone="nav-devices"
+        onBack={onBack} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+        actions={<Button variant="primary" iconRight="arrow-right" disabled={selected.length === 0} onClick={() => setStep('review')}>Next{selected.length ? ` (${selected.length})` : ''}</Button>}>
+        <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+          {/* control panel — questions + Start over pinned below */}
+          <div style={{ width: 400, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {SELECTOR_QUESTIONS.map((q, i) => (
+                <Col key={q.id} gap={6} className="ns-fade">
+                  <span style={{ fontSize: 13, color: T.sub }}>{i + 1}. {q.label}</span>
+                  <Dropdown value={vals[q.id] || ''} placeholder={`— ${q.ph} —`} onChange={(v) => setVal(q.id, v)} options={q.opts.map(([value, label]) => ({ value, label }))} />
+                </Col>
+              ))}
+            </div>
+            <div style={{ padding: '12px 20px', borderTop: `1px solid ${T.sepFaint}`, flexShrink: 0 }}>
+              <Button variant="tertiary" condensed iconLeft="refresh" onClick={reset} disabled={answeredCount === 0 && selected.length === 0}>Start over</Button>
+            </div>
+          </div>
+          {/* canvas — matching devices grid (click to select) */}
+          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 40, background: T.page }}>
+            <div style={{ maxWidth: 840, margin: '0 auto' }}>
+              <Row style={{ marginBottom: 24, justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 18, fontWeight: 600 }}>{matches.length} matching device{matches.length === 1 ? '' : 's'}</span>
+                <span style={{ fontSize: 13, color: T.sub }}>{selected.length} selected</span>
+              </Row>
+              {matches.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: T.s4 }}>
+                  {matches.map(p => {
+                    const on = selected.includes(p.id);
+                    return (
+                      <div key={p.id} className="ns-fade" onClick={() => toggleSel(p.id)}
+                        style={{ ...surface, padding: 16, display: 'flex', flexDirection: 'column', gap: 12, cursor: 'pointer', border: on ? '2px solid var(--b-color-outline-primary-active, var(--b-color-label-primary))' : `1px solid ${T.border}`, position: 'relative' }}>
+                        {on && <span style={{ position: 'absolute', top: 10, right: 10, width: 22, height: 22, borderRadius: '50%', background: 'var(--b-color-label-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Ico name="checkmark" size={14} color="#fff" /></span>}
+                        <OrderProductImg p={p} />
+                        <Col gap={2}>
+                          <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{p.name}</span>
+                          <span style={{ fontSize: 13, color: T.sub }}>{p.type}</span>
+                        </Col>
+                        <Button variant={on ? 'primary' : 'secondary'} condensed iconLeft={on ? 'checkmark' : undefined} onClick={(e) => { e.stopPropagation(); toggleSel(p.id); }}>{on ? 'Selected' : 'Select'}</Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState icon="search" title="No matching devices" description="Try removing or changing some of your answers on the left." />
+              )}
+            </div>
+          </div>
+        </div>
+      </FullPage>
+    );
+  }
 
-  return (
-    <FullPage title="Order devices" subtitle="Terminal selector · find the right device" tone="nav-devices"
-      onBack={onBack} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
-      actions={<Button variant="secondary" iconLeft="refresh" onClick={reset} disabled={answeredCount === 0}>Start over</Button>}>
-      <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
-        {/* control panel */}
-        <div style={{ width: 400, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {SELECTOR_QUESTIONS.map((q, i) => (
-              <Col key={q.id} gap={6} className="ns-fade">
-                <span style={{ fontSize: 13, color: T.sub }}>{i + 1}. {q.label}</span>
-                <Dropdown value={vals[q.id] || ''} placeholder={`— ${q.ph} —`} onChange={(v) => setVal(q.id, v)} options={q.opts.map(([value, label]) => ({ value, label }))} />
-              </Col>
+  // ---------- Step 2: review the selected models ----------
+  if (step === 'review') {
+    return (
+      <FullPage title="Selected devices" subtitle={`${selectedProducts.length} model${selectedProducts.length === 1 ? '' : 's'} selected`} tone="nav-devices"
+        onBack={() => setStep('select')} backLabel="Terminal selector" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+        actions={<Button variant="primary" iconRight="arrow-right" onClick={() => setStep('cart')}>Next: add to cart</Button>}>
+        <div style={{ maxWidth: 840, margin: '0 auto', padding: `${T.s7}px 24px` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: T.s4 }}>
+            {selectedProducts.map(p => (
+              <div key={p.id} style={{ ...surface, padding: 16, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
+                <button onClick={() => toggleSel(p.id)} title="Remove" style={{ position: 'absolute', top: 10, right: 10, width: 26, height: 26, borderRadius: '50%', border: `1px solid ${T.border}`, background: T.card, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><Ico name="cross-small" size={14} color={T.sub} /></button>
+                <OrderProductImg p={p} />
+                <Col gap={2}>
+                  <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{p.name}</span>
+                  <span style={{ fontSize: 13, color: T.sub }}>{p.type}</span>
+                </Col>
+                <span style={{ fontSize: 13, color: T.sub, lineHeight: '18px' }}>{p.blurb}</span>
+              </div>
             ))}
           </div>
+          {selectedProducts.length === 0 && <EmptyState icon="package" title="Nothing selected" description="Go back and pick one or more device models." />}
         </div>
-        {/* canvas — matching devices grid */}
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 40, background: T.page }}>
-          <div style={{ maxWidth: 840, margin: '0 auto' }}>
-            <Row style={{ marginBottom: 24, justifyContent: 'space-between' }}>
-               <span style={{ fontSize: 18, fontWeight: 600 }}>{matches.length} matching device{matches.length === 1 ? '' : 's'}</span>
-               {answeredCount > 0 && <span style={{ fontSize: 13, color: T.sub }}>Filters applied</span>}
-            </Row>
-            {matches.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: T.s4 }}>
-                {matches.map(p => (
-                  <div key={p.id} className="ns-fade" style={{ ...surface, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <OrderProductImg p={p} />
-                    <Col gap={2}>
-                      <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{p.name}</span>
-                      <span style={{ fontSize: 13, color: T.sub }}>{p.type}</span>
-                    </Col>
-                    <Button variant="secondary" condensed onClick={() => onOrder && onOrder(p)}>Select</Button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState icon="search" title="No matching devices" description="Try removing or changing some of your answers on the left." />
-            )}
-          </div>
-        </div>
+      </FullPage>
+    );
+  }
+
+  // ---------- Step 3: add to cart (Devices · Accessories · Device kits) ----------
+  return (
+    <FullPage title="Add to cart" subtitle="Devices, accessories & hardware kits" tone="nav-devices"
+      onBack={() => setStep('review')} backLabel="Selected devices" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+      actions={<Button variant={cartCount ? 'primary' : 'secondary'} iconLeft="package" onClick={() => cartCount ? (onOrder && onOrder(selectedProducts[0] || ORDER_PRODUCTS[0])) : notify && notify('Your cart is empty')}>Cart{cartCount ? ` (${cartCount})` : ''}</Button>}>
+      <div style={{ maxWidth: 760, margin: '0 auto', padding: `${T.s6}px 24px` }}>
+        <UnderlineTabs value={cartTab} onChange={setCartTab} tabs={[{ value: 'devices', label: 'Devices' }, { value: 'accessories', label: 'Accessories' }, { value: 'kits', label: 'Device kits' }]} />
+        <Col gap={T.s4} style={{ marginTop: T.s5 }}>
+          {cartTab === 'devices' && (selectedProducts.length
+            ? selectedProducts.map(p => <CartRow key={p.id} item={p} onAdd={addToCart} notify={notify} />)
+            : <EmptyState icon="package" title="No devices selected" description="Go back to add device models to your order." />)}
+          {cartTab === 'accessories' && ORDER_ACCESSORIES.map(a => <CartRow key={a.id} item={a} onAdd={addToCart} notify={notify} />)}
+          {cartTab === 'kits' && ORDER_KITS.map(k => <CartRow key={k.id} item={k} onAdd={addToCart} notify={notify} />)}
+        </Col>
       </div>
     </FullPage>
   );
@@ -3638,29 +3776,79 @@ function TerminalSelector({ onBack, onOrder, notify }) {
    region → product catalogue → product detail → checkout. All mock data. */
 const ORDER_COUNTRIES = ['Netherlands', 'United Kingdom', 'United States', 'Germany', 'France', 'Spain', 'Australia', 'Japan'];
 const ORDER_PRODUCTS = [
-  { id: 's1f2', name: 'S1F2', type: 'Mobile', acc: 12, price: 395, blurb: 'An all-in-one Android device with printing power', specs: ['Portable', '2.4 and 5 GHz', '4G'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2ZpbGVcL01hNHR4a3Fib29xbThtZ1VmY3JXLnBuZyJ9:adyen:0fcuuj2UrJ36lqGND2gZAKWNaTUWzI6sHcSO-iawPJU?format=webp&width=624&height=832',
+  { id: 's1f2', name: 'S1F2', type: 'Mobile', acc: 12, price: 395, blurb: 'An all-in-one Android device with printing power', specs: ['Portable', '2.4 and 5 GHz', '4G'], icon: 'mobile', img: 'assets/devices/s1f2.webp',
     filter: { use: ['mobile'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'yes' } },
-  { id: 'ams1', name: 'AMS1', type: 'Mobile', acc: 5, price: 249, blurb: 'Designed by Adyen; your all-in-one terminal running on Android.', specs: ['Portable', 'Wi-Fi', '4G'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL3Q1Y2VySmpjV1B0UkpEZUR4a21SLnBuZyJ9:adyen:Kxr1RJJmlEr_VW--jzZVrMXBbA9jeCcRU6mQQNcP9KA?format=webp&width=624&height=832',
+  { id: 'ams1', name: 'AMS1', type: 'Mobile', acc: 5, price: 249, blurb: 'Designed by Adyen; your all-in-one terminal running on Android.', specs: ['Portable', 'Wi-Fi', '4G'], icon: 'mobile', img: 'assets/devices/ams1.png',
     filter: { use: ['mobile'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'no' } },
-  { id: 'nyc1', name: 'NYC1', type: 'Mobile', acc: 0, price: 79, blurb: 'Designed by us, inspired by you; a card reader for businesses on the move.', specs: ['Portable', 'Bluetooth'], icon: 'terminal-1', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2IzREdwSzRzMmpSV0NYZFJteHo5LnBuZyJ9:adyen:PItds0nupqldFNFSHXLFJvhoGof3pmEmtuxz-1lEsu4?format=webp&width=624&height=832',
+  { id: 'nyc1', name: 'NYC1', type: 'Mobile', acc: 0, price: 79, blurb: 'Designed by us, inspired by you; a card reader for businesses on the move.', specs: ['Portable', 'Bluetooth'], icon: 'terminal-1', img: 'assets/devices/nyc1.png',
     filter: { use: ['mobile', 'unattended'], card: 'contactless_only', input: 'touchscreen', os: 'payment_only', offline: 'no', print: 'no' } },
-  { id: 'sfo1', name: 'Adyen SFO1', type: 'Countertop', acc: 10, price: 329, blurb: 'Payment, branding, and customer engagement — all in one terminal.', specs: ['Countertop', 'Ethernet', 'Wi-Fi'], icon: 'terminal-2', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2lRTnNmMkpZbXlpRHNZU3p3dmdOLnBuZyJ9:adyen:_IvTntqAuPTeu_ZpRw2fA7TdLa_vOz1SyMVixX0xI_c?format=webp&width=624&height=832',
+  { id: 'sfo1', name: 'Adyen SFO1', type: 'Countertop', acc: 10, price: 329, blurb: 'Payment, branding, and customer engagement — all in one terminal.', specs: ['Countertop', 'Ethernet', 'Wi-Fi'], icon: 'terminal-2', img: 'assets/devices/sfo1.png',
     filter: { use: ['countertop'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'yes' } },
-  { id: 'v400m', name: 'V400m', type: 'Mobile', acc: 6, price: 289, blurb: 'Go-to portable, with fast printing and many connections.', specs: ['Portable', 'Wi-Fi', '4G'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2dBcTZlZ3FidW00OUUzemVFa0ppLnBuZyJ9:adyen:a5trkKg2W6H4lcxWjeNC1WuKCNvcBJeV-fOhxqYxGk8?format=webp&width=624&height=832',
+  { id: 'v400m', name: 'V400m', type: 'Mobile', acc: 6, price: 289, blurb: 'Go-to portable, with fast printing and many connections.', specs: ['Portable', 'Wi-Fi', '4G'], icon: 'mobile', img: 'assets/devices/v400m.png',
     filter: { use: ['mobile'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'yes' } },
-  { id: 'v400c', name: 'V400c Plus', type: 'Countertop', acc: 6, price: 309, blurb: 'Standalone countertop, with added printer.', specs: ['Countertop', 'Wi-Fi', 'Ethernet'], icon: 'terminal-2', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL0VNYXRkbTdEdzJqNjRrdGZIc05zLnBuZyJ9:adyen:TPUta3nY4UxF6mJpsba9NX4Yzu8QluRflLQ7caGBhRc?format=webp&width=624&height=832',
+  { id: 'v400c', name: 'V400c Plus', type: 'Countertop', acc: 6, price: 309, blurb: 'Standalone countertop, with added printer.', specs: ['Countertop', 'Wi-Fi', 'Ethernet'], icon: 'terminal-2', img: 'assets/devices/v400c.png',
     filter: { use: ['countertop'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'yes' } },
-  { id: 'e285p', name: 'e285', type: 'Mobile', acc: 2, price: 199, blurb: 'Pocket-sized and mobile, for personal shopping.', specs: ['Portable', 'Wi-Fi'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2lkaHdZU3VyTEphZ0pIWk10dFdBLnBuZyJ9:adyen:6sMtm8DqITQstuVuLP9fURW1MscS4hfmAzfHl-D9Ipc?format=webp&width=624&height=832',
+  { id: 'e285p', name: 'e285', type: 'Mobile', acc: 2, price: 199, blurb: 'Pocket-sized and mobile, for personal shopping.', specs: ['Portable', 'Wi-Fi'], icon: 'mobile', img: 'assets/devices/e285p.png',
     filter: { use: ['mobile'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'no' } },
-  { id: 'm450', name: 'M450', type: 'Countertop', acc: 5, price: 299, blurb: 'Impact, insights and two-way interactions.', specs: ['Countertop', 'Ethernet'], icon: 'terminal-2', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL0pQTWd1RDZlQXc1eXpWeTh1UEdjLnBuZyJ9:adyen:rECF9hGvC_4XwKal-lAuUlQVca5R9A-1JymbVyGXoE8?format=webp&width=624&height=832',
+  { id: 'm450', name: 'M450', type: 'Countertop', acc: 5, price: 299, blurb: 'Impact, insights and two-way interactions.', specs: ['Countertop', 'Ethernet'], icon: 'terminal-2', img: 'assets/devices/m450.png',
     filter: { use: ['countertop'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'no' } },
-  { id: 's1u2', name: 'S1U2', type: 'Unattended', acc: 3, price: 399, blurb: 'All-in-one unattended Android device.', specs: ['Unattended', 'Android'], icon: 'terminal-1', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL0FnNnVVNzV6a1g0RWpGTEhoUW9XLnBuZyJ9:adyen:l0WdmQ66XAeQJKIjL0Nyrw_J-PsNH4hTXjCi6C35q8k?format=webp&width=624&height=832',
+  { id: 's1u2', name: 'S1U2', type: 'Unattended', acc: 3, price: 399, blurb: 'All-in-one unattended Android device.', specs: ['Unattended', 'Android'], icon: 'terminal-1', img: 'assets/devices/s1u2.png',
     filter: { use: ['unattended'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'no' } },
-  { id: 'p630', name: 'P630', type: 'Countertop', acc: 5, price: 349, blurb: 'Premium design, full of features and ultra-reliable.', specs: ['Countertop', 'Ethernet'], icon: 'terminal-2', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL280NGNoMTQ5R2lNbTRlYWJIZFFDLnBuZyJ9:adyen:FZLbWs22rLP6LDkPk9dAV4hu70NZQf9GhDZIpwO22Kc?format=webp&width=624&height=832',
+  { id: 'p630', name: 'P630', type: 'Countertop', acc: 5, price: 349, blurb: 'Premium design, full of features and ultra-reliable.', specs: ['Countertop', 'Ethernet'], icon: 'terminal-2', img: 'assets/devices/p630.png',
     filter: { use: ['countertop'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'no' } },
-  { id: 'ttp', name: 'Tap to Pay', type: 'SoftPOS', acc: 0, price: 0, blurb: 'Accept contactless right on the seller’s own phone.', specs: ['SoftPOS', 'iOS & Android'], icon: 'mobile', img: 'https://cdn-assets-eu.frontify.com/s3/frontify-enterprise-files-eu/eyJwYXRoIjoiYWR5ZW5cL2ZpbGVcL0V1UmVFa0JnTXRGVkV1b2FRdDVoLnBuZyJ9:adyen:tQaYhK5XULpw88hLg-inj7a13EvSCDYRL2jYfAJ5hAQ?format=webp&width=624&height=832',
+  { id: 'ttp', name: 'Tap to Pay on Android', type: 'SoftPOS', acc: 0, price: 0, blurb: 'Accept contactless right on the seller’s own Android phone.', specs: ['SoftPOS', 'Android'], icon: 'mobile', img: 'assets/devices/ttp.png',
+    filter: { use: ['smartphone'], card: 'contactless_only', input: 'touchscreen', os: 'all_in_one', offline: 'no', print: 'no' } },
+  { id: 'ttp-ios', name: 'Tap to Pay on iPhone', type: 'SoftPOS', acc: 0, price: 0, blurb: 'Accept contactless right on the seller’s own iPhone.', specs: ['SoftPOS', 'iOS'], icon: 'mobile', img: 'assets/devices/ttp-ios.png',
     filter: { use: ['smartphone'], card: 'contactless_only', input: 'touchscreen', os: 'all_in_one', offline: 'no', print: 'no' } },
 ];
+/* Accessories & device kits for the add-to-cart step (mock, images pulled from adyen-main). */
+const ORDER_ACCESSORIES = [
+  { id: 'charging-base', name: 'S1F2 Charging Base', sku: '10091003', price: 37.70, img: 'assets/devices/acc/charging-base.png', variants: ['With 2 meter power cord', 'Base only'], desc: 'Desk charging dock that keeps the S1F2 powered and ready between shifts.' },
+  { id: 'power-cable', name: 'Power cable', sku: 'CBL435-011', price: 12.50, img: 'assets/devices/acc/power-cable.png', variants: ['EU plug', 'UK plug', 'US plug'], desc: 'Replacement mains power cable for countertop terminals.' },
+  { id: 'multi-dock', name: 'Multi-terminal dock', sku: '10084018', price: 89.00, img: 'assets/devices/acc/dock.png', variants: ['3-bay', '6-bay'], desc: 'Charge and store several handhelds together in the back office.' },
+  { id: 'battery', name: 'Spare battery pack', sku: 'BPK475-001', price: 45.00, img: 'assets/devices/acc/battery.png', variants: ['Standard capacity'], desc: 'Keep a charged battery on hand for uninterrupted all-day trading.' },
+];
+const ORDER_KITS = [
+  { id: 'kit-retail', name: 'Retail lane kit', price: 459, img: 'assets/devices/sfo1.png', desc: 'Adyen SFO1 countertop + charging base + power cable — everything for a fixed checkout lane.' },
+  { id: 'kit-mobile', name: 'Mobile seller kit', price: 429, img: 'assets/devices/s1f2.webp', desc: 'S1F2 handheld + spare battery + charging base for floor selling and queue-busting.' },
+  { id: 'kit-hospitality', name: 'Hospitality kit', price: 349, img: 'assets/devices/v400m.png', desc: 'V400m portable + charging base — pay-at-table for restaurants, bars and cafés.' },
+];
+function QtyStepper({ value, onChange }) {
+  return (
+    <Row gap={0} style={{ border: `1px solid ${T.borderStrong}`, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+      <button onClick={() => onChange(Math.max(1, value - 1))} style={{ width: 32, height: 34, border: 0, background: T.card, cursor: 'pointer', color: T.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Ico name="minus" size={14} color={T.sub} /></button>
+      <span style={{ minWidth: 34, textAlign: 'center', fontSize: 14, fontWeight: 500, lineHeight: '34px', borderLeft: `1px solid ${T.sepFaint}`, borderRight: `1px solid ${T.sepFaint}` }}>{value}</span>
+      <button onClick={() => onChange(value + 1)} style={{ width: 32, height: 34, border: 0, background: T.card, cursor: 'pointer', color: T.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Ico name="plus" size={14} color={T.sub} /></button>
+    </Row>
+  );
+}
+/* One purchasable row (device / accessory / kit) — picture · details · variant · qty · add. */
+function CartRow({ item, onAdd, notify }) {
+  const [qty, setQty] = useState(1);
+  const [variant, setVariant] = useState(item.variants ? item.variants[0] : null);
+  return (
+    <div style={{ ...surface, padding: 16, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div style={{ width: 96, height: 96, flexShrink: 0, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {item.img ? <img src={item.img} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken' }} /> : <Ico name={item.icon || 'package'} size={40} color={T.sub} />}
+      </div>
+      <Col gap={6} style={{ flex: 1, minWidth: 0 }}>
+        <Col gap={2}>
+          <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{item.name}</span>
+          {item.sku && <span className="ns-num" style={{ fontSize: 12, color: T.faint }}>{item.sku}</span>}
+        </Col>
+        <span style={{ fontSize: 13, color: T.sub, lineHeight: '18px' }}>{item.desc || item.blurb}</span>
+        {item.variants && <div style={{ maxWidth: 320 }}><Dropdown value={variant} options={item.variants.map(v => ({ value: v, label: v }))} onChange={setVariant} condensed /></div>}
+        <Row style={{ marginTop: 4, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <span className="ns-num" style={{ fontSize: 16, fontWeight: 600 }}>{item.price > 0 ? `€ ${item.price.toFixed(2)}` : 'No charge'}</span>
+          <Row gap={10} align="center">
+            <QtyStepper value={qty} onChange={setQty} />
+            <Button variant="primary" iconLeft="package" onClick={() => onAdd({ id: item.id, name: item.name, qty, variant, price: item.price })}>Add to cart</Button>
+          </Row>
+        </Row>
+      </Col>
+    </div>
+  );
+}
 /* Delivered-but-not-yet-assigned devices awaiting activation (mock). */
 const ACTIVATE_PENDING = [
   { model: 'S1F2', icon: 'mobile', type: 'Mobile', spec: 'Android · portable · 4G · built-in printer', serial: '0000CC-18B4-2231' },
@@ -3670,7 +3858,8 @@ const ACTIVATE_PENDING = [
   { model: 'NYC 1', icon: 'terminal-1', type: 'Mobile', spec: 'Pocket reader · Bluetooth · pairs with phone', serial: '0000CC-22A1-3380' },
 ];
 function OrderProductImg({ p, size = 48, h = 140 }) {
-  if (p.img) return <div style={{ height: h, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}><img src={p.img} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken' }} /></div>;
+  const [failed, setFailed] = useState(false);
+  if (p.img && !failed) return <div style={{ height: h, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}><img src={p.img} alt={p.name} onError={() => setFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken' }} /></div>;
   return <div style={{ height: h, borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ico name={p.icon || 'terminal-2'} size={size} color={T.sub} /></div>;
 }
 function OrderFlow({ onBack, notify }) {
@@ -5255,8 +5444,17 @@ function ChatBubble({ m, notify }) {
       )}
       {m.outro && <div style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{m.outro}</div>}
       {m.docs && m.docs.length > 0 && (
-        <Col gap={6} style={{ marginTop: 10, alignItems: 'flex-start' }}>
-          {m.docs.map(d => <Link key={d.label} href={d.url || '#'} external style={{ fontSize: 13 }}>{d.label}</Link>)}
+        <Col gap={10} style={{ marginTop: 12, alignItems: 'flex-start' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: T.faint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Learn more</span>
+          {m.docs.map(d => (
+            <Col key={d.label} gap={2} style={{ alignItems: 'flex-start' }}>
+              <a href={d.url || '#'} target="_blank" rel="noopener noreferrer"
+                style={{ color: 'var(--b-color-link-primary)', textDecoration: 'underline', textUnderlineOffset: 2, display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'inherit', fontWeight: 400, fontSize: 13 }}>
+                {d.label}<Ico name="external-link-small" size={16} color="currentColor" />
+              </a>
+              {d.desc && <span style={{ fontSize: 12, color: T.sub, lineHeight: '16px' }}>{d.desc}</span>}
+            </Col>
+          ))}
         </Col>
       )}
       {m.action && (
@@ -5317,7 +5515,7 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onReve
               style={{ width: '100%', height: 32, border: `1px solid ${T.borderStrong}`, borderRadius: 8, padding: '0 10px', fontFamily: 'inherit', fontSize: 13, background: T.card, color: T.ink, outline: 'none', boxSizing: 'border-box' }} />
           </div>
         )}
-        <div ref={threadRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4 }}>
+        <div ref={threadRef} className="ns-chat-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4 }}>
           {firstTurn ? (
             <Col gap={T.s3}>
               <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Ask in plain language — I'll change the settings and update the preview.</span>
@@ -5363,7 +5561,7 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onReve
           )}
         </div>
         <div style={{ flexShrink: 0, padding: T.s4, borderTop: `1px solid ${T.sep}` }}>
-          <PromptBox q={draft} setQ={setDraft} onSend={() => onSend()} thinking={false} models={ASK_CONTEXTS.studio.models} placeholder="Ask AI to change settings…" />
+          <PromptBox q={draft} setQ={setDraft} onSend={() => onSend()} thinking={false} models={ASK_CONTEXTS.studio.models} defaultMode={ASK_CONTEXTS.studio.defaultMode} placeholder="Ask AI to change settings…" />
         </div>
       </div>
     );
@@ -5594,9 +5792,9 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
         ],
         outro: 'The preview is updated. What should I name this configuration?',
         docs: [
-          { label: 'Dynamic Currency Conversion', url: 'https://docs.adyen.com/platforms/in-person-payments/dynamic-currency-conversion' },
-          { label: 'Payment methods in Japan', url: 'https://www.adyen.com/payment-methods-guides/asia-pacific/japan' },
-          { label: 'Offline payments', url: 'https://docs.adyen.com/point-of-sale/offline-payment' },
+          { label: 'Dynamic Currency Conversion', url: 'https://docs.adyen.com/platforms/in-person-payments/dynamic-currency-conversion', desc: 'How DCC lets international shoppers pay in their home currency, and how the margin works.' },
+          { label: 'Payment methods in Japan', url: 'https://www.adyen.com/payment-methods-guides/asia-pacific/japan', desc: 'The local methods Japanese shoppers expect — JCB, iD / QUICPay e-money and QR wallets.' },
+          { label: 'Offline payments', url: 'https://docs.adyen.com/point-of-sale/offline-payment', desc: 'How store-and-forward keeps terminals accepting cards when the connection drops.' },
         ],
       }, ['Japan retail profile']);
       return;

@@ -229,6 +229,94 @@
       metric: { value: '49,118', label: 'Awaiting firmware update', trend: 5.0, dir: 'negative' },
       grid: compliance,
     },
+    // ---- Location AI · JTBD 1: Look up a device ----
+    {
+      match: ['why isn', 'terminal working', 'not working', 'look up a device'],
+      question: "Why isn't this terminal working?",
+      answer: '6 terminals across your locations are online but not trading right now. The most common cause is a lost Wi-Fi connection after a firmware update. Enter or scan a device ID to run a full diagnosis.',
+      metric: { value: '6', label: 'Terminals not trading · needs attention', trend: 2.0, dir: 'negative' },
+      grid: { columns: [
+        'Device ID',
+        'Store',
+        { label: 'Issue', info: 'Why this terminal is online but not accepting payments.' },
+        'Last seen',
+      ], rows: [
+        ['SFO1-0544000067', 'Amsterdam Centrum', 'Offline · Wi-Fi lost', '3h ago'],
+        ['V400m-0231889014', 'Rotterdam Beurs', 'Boarded · not trading', '1d ago'],
+        ['AMS1-0455120983', 'Utrecht Centraal', 'SDK expired', '5h ago'],
+        ['e285-0091334220', 'Den Haag Centrum', 'Offline', '2h ago'],
+        ['NYC1-0788451002', 'Eindhoven', 'Battery critical', '20m ago'],
+        ['P630-0345990871', 'Groningen', 'Boarded · not trading', '2d ago'],
+      ] },
+      note: 'Tip: type a device ID (e.g. SFO1-0544000067) to run a full diagnosis with one-click fixes.',
+      deepDive: { prompt: 'Diagnose SFO1-0544000067 (offline for 3h)?', label: 'Diagnose SFO1-0544000067', q: 'SFO1-0544000067' },
+    },
+    // ---- Location AI · JTBD 2: Device reassignment ----
+    {
+      match: ['stuck', 'mid-move', 'reassign', 'in transit', 'stuck in reassignment'],
+      question: 'Which devices are stuck mid-move?',
+      answer: '9 devices are stuck between locations — 4 boarded-but-not-trading, 3 over 48h in transit, and 2 unassigned-but-online. Smart routing suggests the best destination store for each.',
+      metric: { value: '9', label: 'Devices stuck in reassignment', trend: 3.0, dir: 'negative' },
+      grid: { columns: [
+        'Device ID',
+        { label: 'State', info: 'Where the device stalled: boarded but not trading, in transit >48h, or unassigned but online.' },
+        'Stuck for',
+        { label: 'Suggested destination', info: 'Best store ranked by proximity, stock gap and recent volume.' },
+      ], rows: [
+        ['V400m-0231889014', 'Boarded · not trading', '52h', 'Rotterdam Beurs · stock gap'],
+        ['AMS1-0455120983', 'In transit', '3d', 'Utrecht Centraal · nearest'],
+        ['S1F2-0912440087', 'Unassigned · online', '26h', 'Amsterdam Centrum · volume'],
+        ['e285-0091334220', 'In transit', '2d', 'Den Haag Centrum · nearest'],
+        ['P630-0345990871', 'Boarded · not trading', '61h', 'Groningen · stock gap'],
+      ] },
+      note: 'Smart suggestions rank destinations by proximity, stock gap and volume. Bulk-routing writes a reason code and logs who moved what, when, to the audit trail.',
+      actions: [
+        { label: 'Bulk-route to suggested stores', icon: 'checkmark', msg: 'Routing 9 devices to their suggested destinations…' },
+        { label: 'Return unassigned to inventory', icon: 'package', msg: 'Returning 2 unassigned devices to inventory…' },
+      ],
+    },
+    // ---- Location AI · device diagnosis (triggered by typing a terminal ID) ----
+    {
+      diag: true,
+      match: ['sfo1-0544000067', 'diagnose'],
+      question: 'Diagnose terminal SFO1-0544000067',
+      answer: 'SFO1-0544000067 (Adyen SFO1 · Amsterdam Centrum) has been offline for 3h 12m. Root cause: it dropped off Wi-Fi during last night’s firmware update and failed to re-board — so it’s active but not trading.',
+      metric: { value: 'Offline · 3h 12m', label: 'SFO1-0544000067 · Amsterdam Centrum', trend: null, dir: 'negative' },
+      grid: { columns: [
+        'Check',
+        'Status',
+        'Detail',
+      ], rows: [
+        ['Connectivity', 'Offline', 'Wi-Fi lost · last seen 3h 12m ago'],
+        ['Battery', 'OK', 'Mains powered'],
+        ['SDK', 'Expired', 'Android 2.13.0 · expired Apr 2026'],
+        ['Firmware', 'Behind', 'Castles 1.126.5 → 1.133.3 available'],
+        ['Last transaction', '18h ago', '€42.10 · approved'],
+        ['Boarding', 'Not trading', 'Re-board failed after the update'],
+      ] },
+      note: 'Most likely fix: re-sync the config and reconnect to Wi-Fi. If it stays offline, restart the terminal; if boarding still fails, reassign it to Amsterdam Centrum to force a fresh board.',
+      actions: [
+        { label: 'Restart terminal', icon: 'refresh', msg: 'Sending restart to SFO1-0544000067…' },
+        { label: 'Re-sync config', icon: 'settings', msg: 'Re-syncing configuration to SFO1-0544000067…' },
+        { label: 'Reassign to Amsterdam Centrum', icon: 'store', msg: 'Reassigning SFO1-0544000067…' },
+      ],
+      deepDive: { prompt: 'Want me to fix this now — re-sync config and reconnect to Wi-Fi?', label: 'Fix this terminal', q: 'resolve SFO1-0544000067' },
+    },
+    // ---- Location AI · resolution (after user confirms the fix) ----
+    {
+      resolve: true,
+      match: ['resolve', 'fix', 'solve'],
+      question: 'Fix terminal SFO1-0544000067',
+      answer: '✓ Re-synced the config and reconnected SFO1-0544000067 to Wi-Fi. The terminal is back online and boarded — it processed a €12.40 test authorisation successfully.',
+      metric: { value: 'Online · trading', label: 'SFO1-0544000067 · resolved', trend: null, dir: 'positive' },
+      grid: { columns: ['Step', 'Result'], rows: [
+        ['Reconnect Wi-Fi', 'Connected · signal good'],
+        ['Re-sync config', 'Applied · v1.133.3'],
+        ['Re-board', 'Success'],
+        ['Test transaction', '€12.40 · approved'],
+      ] },
+      note: 'Logged to the audit trail: config re-sync + Wi-Fi reconnect by you, just now. No support ticket needed.',
+    },
   ];
 
   /* SDK & OS Health — Tap to Pay & card readers (PRD addendum, single 25-device fleet). */
