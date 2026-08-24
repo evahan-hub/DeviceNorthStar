@@ -41,7 +41,7 @@
     .ns-chat-scroll { overflow-y: scroll !important; scrollbar-gutter: stable; }
     .ns-chat-scroll::-webkit-scrollbar { width: 10px; -webkit-appearance: none; }
     .ns-chat-scroll::-webkit-scrollbar-thumb { background: var(--b-color-outline-secondary); border-radius: 6px; border: 2px solid var(--b-color-background-primary); }
-    .ns-chat-scroll::-webkit-scrollbar-track { background: var(--b-color-background-secondary); border-radius: 6px; }
+    .ns-chat-scroll::-webkit-scrollbar-track { background: transparent; }
 
     /* Interaction helpers used across the prototype */
     .ns-nav { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
@@ -60,6 +60,16 @@
     .ns-hoverline:hover { text-decoration: underline; cursor: pointer; }
     .ns-kpi { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
     .ns-kpi:hover { background: var(--b-color-background-secondary-hover) !important; }
+    /* AI chat composer — Bento "Highlight" (green) style with an animated pulsing glow */
+    @keyframes ns-ask-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: none; } }
+    @keyframes ns-ask-glow {
+      0%,100% { box-shadow: 0 0 0 1px #00A152, 0 0 16px rgba(0,161,82,0.20); }
+      50%     { box-shadow: 0 0 0 1px #00A152, 0 0 34px rgba(0,161,82,0.42); }
+    }
+    .ns-ask-box { position: relative; animation: ns-ask-in 300ms cubic-bezier(.2,.7,.2,1) both; transition: box-shadow 220ms ease, border-color 220ms ease; }
+    .ns-ask-box:hover { border-color: #00A152 !important; box-shadow: 0 0 0 1px rgba(0,161,82,0.35), 0 0 14px rgba(0,161,82,0.14); }
+    /* typing/focus — Bento highlight-large ring + breathing green glow */
+    .ns-ask-box:focus-within { border-color: #00A152 !important; animation: ns-ask-in 300ms cubic-bezier(.2,.7,.2,1) both, ns-ask-glow 2.4s ease-in-out infinite; }
     /* Terminal-selector empty/loading animations */
     @keyframes ns-float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
     @keyframes ns-pulse { 0%,100% { opacity: .5; transform: scale(.97) } 50% { opacity: 1; transform: scale(1.02) } }
@@ -112,7 +122,7 @@
     .ns-loading { text-align: center; padding-top: 40vh; color: var(--b-color-label-secondary); font-size: 14px; }
 
     /* Store management (ported from the Stores prototype) */
-    .b-dg-row:hover { background: var(--b-color-background-primary-hover); }
+    .b-dg-row:hover { background: #FAFBFC; }
     .b-pill:hover { background: var(--b-color-background-secondary-hover); }
     .b-menu-item:hover { background: var(--b-color-background-secondary-hover); }
     .b-nav-item:hover { background: var(--b-color-background-secondary-hover); text-decoration: none; }

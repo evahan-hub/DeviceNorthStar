@@ -11,7 +11,7 @@
         { id: 'theme', label: 'Theme', type: 'segmented', options: ['Dark', 'Light', 'Brand'], default: 'Dark' },
         { id: 'brandColor', label: 'Brand colour', type: 'color', default: '#00D16A', dependsOn: { theme: 'Brand' } },
         { id: 'showLogo', label: 'Show store logo', type: 'toggle', default: true },
-        { id: 'greeting', label: 'Greeting text', type: 'text', default: 'Welcome to Lightspeed', placeholder: 'Welcome', valueInput: true },
+        { id: 'greeting', label: 'Greeting text', type: 'text', default: 'Welcome to Uniqlo', placeholder: 'Welcome', valueInput: true },
       ],
     },
     {
@@ -31,7 +31,7 @@
       unsupportedOn: ['SoftPOS', 'e355'],
       fields: [
         { id: 'printMerchant', label: 'Print merchant copy', type: 'toggle', default: true },
-        { id: 'header', label: 'Receipt header', type: 'text', default: 'Lightspeed F&B', valueInput: true },
+        { id: 'header', label: 'Receipt header', type: 'text', default: 'Uniqlo', valueInput: true },
         { id: 'footer', label: 'Receipt footer', type: 'text', default: 'Thank you for shopping with us', valueInput: true },
         { id: 'printLogo', label: 'Print logo on receipt', type: 'toggle', default: true },
       ],
@@ -87,7 +87,7 @@
       unsupportedOn: ['SoftPOS'], // SoftPOS uses the host phone's own network
       fields: [
         { id: 'wifi', label: 'Wi-Fi', type: 'toggle', default: true },
-        { id: 'ssid', label: 'Wi-Fi network (SSID)', type: 'text', default: 'Lightspeed-POS', dependsOn: { wifi: true } },
+        { id: 'ssid', label: 'Wi-Fi network (SSID)', type: 'text', default: 'Uniqlo-POS', dependsOn: { wifi: true } },
         { id: 'sim', label: 'Mobile data (SIM)', type: 'toggle', default: true },
       ],
     },

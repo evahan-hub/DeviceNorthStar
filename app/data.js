@@ -317,6 +317,77 @@
       ] },
       note: 'Logged to the audit trail: config re-sync + Wi-Fi reconnect by you, just now. No support ticket needed.',
     },
+    // ---- Location AI · reassignment by prompt (Tokyo → Osaka) ----
+    {
+      match: ['reassign', 'tokyo', 'osaka', 'move terminals'],
+      question: 'Reassign all terminals from Tokyo stores to Osaka stores.',
+      answer: '',
+      metric: { value: '14 terminals', label: 'Tokyo → Osaka · review before reassigning', trend: null, dir: 'neutral' },
+      grid: { columns: [
+        'Terminal',
+        'From (Tokyo)',
+        'To (Osaka)',
+        'Status',
+      ], rows: [
+        ['S1F2-0448120311', 'Uniqlo Ginza', 'Uniqlo Osaka Umeda', 'Ready'],
+        ['S1F2-0448120352', 'Uniqlo Ginza', 'Uniqlo Osaka Umeda', 'Ready'],
+        ['AMS1-0455120983', 'Uniqlo Shibuya', 'Uniqlo Osaka Umeda', 'Ready'],
+        ['V400m-0231889014', 'Uniqlo Shibuya', 'Uniqlo Osaka Umeda', 'In transit'],
+        ['SFO1-0544000067', 'Uniqlo Shinjuku', 'Uniqlo Osaka Umeda', 'Offline'],
+        ['P630-0345990871', 'Uniqlo Shinjuku', 'Uniqlo Osaka Umeda', 'Ready'],
+      ] },
+      note: '12 of 14 terminals are ready to move. 2 are flagged as stuck mid-move (1 in transit, 1 offline) — they’ll be skipped unless you include them. Reassigning writes a reason code and logs who moved what, when.',
+      actions: [
+        { label: 'Confirm reassignment (12 ready)', icon: 'checkmark', msg: 'Reassigning 12 terminals from Tokyo to Osaka…' },
+        { label: 'Include the 2 stuck devices', icon: 'refresh', msg: 'Including 2 stuck devices — retrying the move on next sync…' },
+      ],
+      deepDive: { prompt: 'Review the 2 stuck-mid-move terminals first?', label: 'Review stuck devices', q: 'which terminals are stuck mid-move between Tokyo and Osaka?' },
+    },
+    // ---- Fleet AI · settings inheritance (Standalone enabled) ----
+    {
+      match: ['standalone', 'enablestandalone', 'inheritance', 'inherited'],
+      question: 'How many terminals have Standalone enabled? List them.',
+      answer: '',
+      metric: { value: '18', label: 'Terminals with Standalone (device.enableStandalone = true)', trend: null, dir: 'neutral' },
+      grid: { columns: [
+        'Terminal',
+        'Store',
+        { label: 'Model', info: 'Device model this setting applies to.' },
+        { label: 'Source', info: 'Whether Standalone is inherited from the store/company config or overridden on the device itself.' },
+      ], rows: [
+        ['S1F2-0448120311', 'Uniqlo Ginza', 'S1F2', 'Device override'],
+        ['S1F2-0448120352', 'Uniqlo Ginza', 'S1F2', 'Device override'],
+        ['AMS1-0455120983', 'Uniqlo Shibuya', 'AMS1', 'Inherited · Store'],
+        ['V400m-0231889014', 'Uniqlo Seoul Gangnam', 'V400m', 'Inherited · Store'],
+        ['SFO1-0544000067', 'Uniqlo Osaka Umeda', 'Adyen SFO1', 'Device override'],
+        ['P630-0345990871', 'Uniqlo Taipei', 'P630', 'Inherited · Company'],
+      ] },
+      note: 'Standalone lets a terminal take payments without a connected POS. 12 of the 18 inherit it from a store/company configuration; 6 were overridden on the device — review those overrides if Standalone shouldn’t be fleet-wide.',
+      actions: [
+        { label: 'Open settings-inheritance report', icon: 'list', msg: 'Opening the settings-inheritance report (device.enableStandalone)…' },
+        { label: 'Export list (CSV)', icon: 'download', msg: 'Exporting 18 Standalone terminals to CSV…' },
+      ],
+      deepDive: { prompt: 'Review the 6 device-level overrides?', label: 'Review overrides', q: 'which settings are overridden at device level vs inherited?' },
+    },
+    // ---- Studio AI · one-card market-setup configuration (Japan) ----
+    {
+      match: ['create a configuration', 'international clients in japan', 'japan configuration', 'market setup'],
+      question: 'Create a configuration for devices for international clients in Japan',
+      metric: { value: '6 features', label: 'Japan configuration · ready to apply', trend: null, dir: 'positive' },
+      grid: { columns: ['Setting', 'Value', 'Status'], rows: [
+        ['Dynamic Currency Conversion', '3% margin', 'Enabled'],
+        ['Tipping (gratuities)', '10 / 15 / 20%', 'Enabled'],
+        ['Offline payments', '€100 limit', 'Enabled'],
+        ['Local methods', 'JCB · iD / QUICPay · QR', 'Enabled'],
+        ['Device language', 'Japanese', 'Enabled'],
+        ['Home screen', 'Localised greeting', 'Enabled'],
+      ] },
+      note: 'This bundles the payment features and localisation international shoppers in Japan expect. Review it in Device Studio, then apply to your selected devices.',
+      actions: [
+        { label: 'Open in Device Studio', icon: 'settings', msg: 'Opening the Japan configuration in Device Studio…' },
+        { label: 'Apply to selected devices', icon: 'checkmark', msg: 'Applying the Japan configuration…' },
+      ],
+    },
   ];
 
   /* SDK & OS Health — Tap to Pay & card readers (PRD addendum, single 25-device fleet). */
