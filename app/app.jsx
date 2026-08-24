@@ -3263,7 +3263,8 @@ const deviceActionMsg = (v, n) => {
 function DeviceGrid({ columns, rows, notify, bordered, onReassign, onConfigure }) {
   const [sel, setSel] = useState({});
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState({ key: null, dir: 'asc' });
+  // Default to the first column sorted ascending so the sort indicator is always visible.
+  const [sort, setSort] = useState(() => ({ key: (columns[0] || {}).key || null, dir: 'asc' }));
   const pageSize = 20;
   const sorted = useMemo(() => {
     if (!sort.key) return rows;
@@ -3543,9 +3544,6 @@ function LocationDeviceTable({ stores, onOpenLocation, onOpenDevice, onConfigure
   };
   return (
     <div>
-      <Row style={{ marginBottom: 16 }} gap={8}>
-        <span style={{ marginLeft: 'auto', fontSize: 13, color: T.sub, alignSelf: 'center' }}>{filtered.length} locations · {filtered.reduce((a, r) => a + r.devices, 0)} devices</span>
-      </Row>
       <div style={{ background: T.card, overflow: 'auto' }}>
         <div style={{ minWidth: gridMin }}>
           <SMHead>
@@ -3594,7 +3592,7 @@ function LocationDeviceTable({ stores, onOpenLocation, onOpenDevice, onConfigure
         </div>
       </div>
       <Row gap={16} style={{ position: 'sticky', bottom: 0, zIndex: 3, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 16px', fontSize: 14, color: T.ink }}>
-        <span style={{ color: T.sub }}>{sorted.length} locations</span>
+        <span style={{ color: T.sub }}>{sorted.length} locations · {sorted.reduce((a, r) => a + r.devices, 0)} devices</span>
         <Row gap={10} style={{ marginLeft: 'auto' }}>
           <span style={{ color: T.sub }}>Page</span>
           <span style={{ fontFamily: 'var(--b-font-family-secondary)', minWidth: 40, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${T.borderStrong}`, borderRadius: T.radiusM }}>{pg}</span>
@@ -4308,6 +4306,52 @@ function OrderFlow({ onBack, notify }) {
   );
 }
 
+/* Location creation flow — a focused form that adds a new location to the fleet. */
+function AddLocationModal({ onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [merchant, setMerchant] = useState(SM_MERCHANTS[0]);
+  const [country, setCountry] = useState(SM_COUNTRIES[0]);
+  const [city, setCity] = useState('');
+  const [address, setAddress] = useState('');
+  const [zip, setZip] = useState('');
+  const val = (e) => (e && e.target ? e.target.value : e);
+  const label = { fontSize: 13, color: T.sub };
+  const valid = name.trim() && country;
+  return (
+    <Modal open onClose={onClose} title="Add location" width={480}
+      description="Create a new location. You can assign or activate devices for it afterwards."
+      footer={<Row gap={8} style={{ justifyContent: 'flex-end' }}>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={!valid} onClick={() => onCreate({ name: name.trim(), merchant, country, city: city.trim(), address: address.trim(), zip: zip.trim() })}>Create location</Button>
+      </Row>}>
+      <Col gap={16}>
+        <Col gap={6}><span style={label}>Location reference</span>
+          <InputField value={name} onChange={(e) => setName(val(e))} placeholder="e.g. Berlin Mitte Flagship" />
+        </Col>
+        <Col gap={6}><span style={label}>Merchant account</span>
+          <Dropdown value={merchant} onChange={setMerchant} options={SM_MERCHANTS.map(m => ({ value: m, label: m }))} />
+        </Col>
+        <Row gap={12} align="stretch">
+          <Col gap={6} style={{ flex: 1 }}><span style={label}>Country/Region</span>
+            <Dropdown value={country} onChange={setCountry} options={SM_COUNTRIES.map(c => ({ value: c, label: c }))} />
+          </Col>
+          <Col gap={6} style={{ flex: 1 }}><span style={label}>City</span>
+            <InputField value={city} onChange={(e) => setCity(val(e))} placeholder="City" />
+          </Col>
+        </Row>
+        <Row gap={12} align="stretch">
+          <Col gap={6} style={{ flex: 2 }}><span style={label}>Address</span>
+            <InputField value={address} onChange={(e) => setAddress(val(e))} placeholder="Street and number" />
+          </Col>
+          <Col gap={6} style={{ flex: 1 }}><span style={label}>Zip code</span>
+            <InputField value={zip} onChange={(e) => setZip(val(e))} placeholder="Zip" />
+          </Col>
+        </Row>
+      </Col>
+    </Modal>
+  );
+}
+
 /* Device-first "Device locations" page — the full device list with Location as a column.
    "View all locations" flips to the store (location) list. */
 function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
@@ -4321,6 +4365,13 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
   const [view, setView] = useState('byLocation'); // byLocation | devices
   const [reassign, setReassign] = useState(null); // { rows } while the reassign modal is open
   const [reassignTarget, setReassignTarget] = useState((SM_STORES[0] || {}).id);
+  const [addLocOpen, setAddLocOpen] = useState(false);
+  const [ver, setVer] = useState(0); // bumped after creating a location so the table refreshes
+  const createLocation = (data) => {
+    const s = { id: 'loc' + Date.now(), code: data.name, name: data.name, status: 'Active', country: data.country, city: data.city, street: data.address, zip: data.zip, phone: '', merchant: data.merchant, terminals: 0, termOnline: 0, termWeek: 0, termOff: 0, storeId: 'ST' + Date.now() + 'ZKW' };
+    SM_STORES.unshift(s); setVer(v => v + 1); setAddLocOpen(false);
+    notify && notify(`Location “${data.name}” created`);
+  };
   const terminals = useMemo(() => makeTerminals(60, { seed: 2, stores: SM_STORES }), []);
   const mobiles = useMemo(() => makeMobiles(25, { seed: 9, stores: SM_STORES }), []);
   const st = SM_STORES.find(x => x.id === addStore);
@@ -4340,16 +4391,20 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
     <>
       <DeviceExplorer terminals={terminals} mobiles={mobiles} onOpenStore={openLocation} storeLabel="Location" notify={notify}
         view={view} onView={setView} onReassign={(rows) => setReassign({ rows })} onConfigure={configureDevices}
-        locationView={<LocationDeviceTable stores={SM_STORES} onOpenLocation={openLocation} onOpenDevice={openDeviceStudio} onConfigureStore={configureStore} onCloseLocation={(s) => notify && notify(`Closing ${s.code}…`)} notify={notify} />}
+        locationView={<LocationDeviceTable key={ver} stores={SM_STORES.slice()} onOpenLocation={openLocation} onOpenDevice={openDeviceStudio} onConfigureStore={configureStore} onCloseLocation={(s) => notify && notify(`Closing ${s.code}…`)} notify={notify} />}
         onOpenDevice={openDeviceStudio}
         title="Devices & locations" subtitle={`${SM_STORES.length} locations · ${terminals.length + mobiles.length} devices across your fleet`}
         info={<span>“<b>Location</b>” replaces the old “Store” concept so it can represent any level of your Adyen account structure — a <b>business line</b>, a <b>merchant account</b> acting as a single shop, or a physical store. One umbrella term for wherever a device operates.</span>}
         actions={<>
           <Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting devices to CSV…')}>Export</Button>
           {view === 'byLocation'
-            ? <Button variant="primary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Add devices</Button>
-            : <Button variant="primary" iconLeft="checkmark-circle" onClick={() => setAddOpen(true)}>Activate devices</Button>}
+            ? <Button variant="primary" iconLeft="store" onClick={() => setAddLocOpen(true)}>Add location</Button>
+            : <>
+                <Button variant="secondary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Add devices</Button>
+                <Button variant="primary" iconLeft="checkmark-circle" onClick={() => setAddOpen(true)}>Activate devices</Button>
+              </>}
         </>} />
+      {addLocOpen && <AddLocationModal onClose={() => setAddLocOpen(false)} onCreate={createLocation} />}
       {reassign && (
         <Modal open onClose={() => setReassign(null)} title="Reassign devices" width={460}
           description={`Move ${reassign.rows.length} device${reassign.rows.length === 1 ? '' : 's'} to a different location. Each device always belongs to exactly one location.`}
