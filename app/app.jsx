@@ -408,8 +408,8 @@ function Header({ env, setEnv, crumb, onToggleNav }) {
           <Ico name="menu" size={16} />
         </button>
         <button className="ns-hdrbtn" title="Switch account" style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, height: 44, padding: '0 8px', border: 0, borderRadius: 8, cursor: 'pointer', background: 'none', color: T.ink }}>
-          <span style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--b-color-grey-3200)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Ico name="adyen-a-filled" size={16} color="var(--b-color-green-900)" />
+          <span style={{ width: 28, height: 28, borderRadius: 7, overflow: 'hidden', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <img src="assets/tx/uniqlo.svg" alt="Uniqlo" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           </span>
           <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, minWidth: 0, textAlign: 'left' }}>
             <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Uniqlo APAC</span>
@@ -1451,13 +1451,13 @@ function FirmwareDetail({ onBack, notify }) {
 
 /* ============================================================= BUSINESS INSIGHT (merchant lens)
    Each card answers a real merchant question with a EUR consequence, a next action, and a
-   data-readiness tag. All euro figures are ILLUSTRATIVE MOCK (F&B demo · 74 stores · 117 devices). */
+   data-readiness tag. All euro figures are ILLUSTRATIVE MOCK (Uniqlo APAC retail / unified-commerce demo). */
 function DeltaChip({ text, tone }) {
   const color = tone === 'risk' ? 'var(--b-color-label-critical)' : 'var(--b-color-label-success)';
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12, fontWeight: 600, color }}><Ico name={tone === 'risk' ? 'arrow-down' : 'arrow-up'} size={14} color={color} />{text}</span>;
 }
 function MiniBar({ pct, color }) {
-  return <div style={{ height: 6, borderRadius: 3, background: T.page, overflow: 'hidden' }}><div style={{ width: Math.max(0, Math.min(100, pct)) + '%', height: '100%', background: color || 'var(--b-color-decorative-green)' }} /></div>;
+  return <div style={{ height: 6, borderRadius: 3, background: 'var(--b-color-background-tertiary)', overflow: 'hidden' }}><div style={{ width: Math.max(0, Math.min(100, pct)) + '%', height: '100%', background: color || 'var(--b-color-decorative-blue)' }} /></div>;
 }
 /* Clean Stripe-style metric card: short title + info · big value · muted sub · top-right link. */
 function BizCard({ title, value, delta, tone, sub, info, action, onAction, children }) {
@@ -1491,18 +1491,60 @@ function businessGroups({ say, onOpenStores, onOpenDevices, onFirmware }) {
     {
       label: 'Revenue optimization', cards: [
         <BizCard key="dcc" title="DCC uplift" value="+~€22k/mo" delta="uplift" tone="up" info="How many terminals have DCC enabled?" sub="58% enabled · 49 eligible off." action="Enable" onAction={say('DCC roll-out — 49 eligible terminals')}>
-          <MiniBar pct={58} color="var(--lume-royalblue, #0066ff)" />
+          <MiniBar pct={58} color="var(--b-color-decorative-blue)" />
         </BizCard>,
-        <BizCard key="tip" title="Tipping uplift" value="+~€18k/mo" delta="uplift" tone="up" info="Am I capturing tips? (F&B)" sub="46% attach · 9 stores off." action="Enable" onAction={say('Enable tipping on 9 stores')}>
-          <MiniBar pct={46} color="var(--b-color-decorative-green)" />
+        <BizCard key="instal" title="Installments uplift" value="+~€18k/mo" delta="uplift" tone="up" info="Are shoppers offered installments / BNPL at checkout? Common in APAC retail — lifts basket size and conversion." sub="Offered in 3 of 6 markets." action="Enable" onAction={say('Enable installments in 3 more markets')}>
+          <MiniBar pct={50} color="var(--b-color-decorative-blue)" />
         </BizCard>,
       ],
     },
     {
       label: 'Benchmark & cross-channel', cards: [
-        <BizCard key="bench" title="Peer benchmark" value="+~€36k/mo" delta="vs sector" tone="up" info="How do I compare to F&B peers?" sub="94.2% auth vs sector ~95.0%." action="Compare" onAction={onOpenStores} />,
-        <BizCard key="cross" title="Cross-channel" value="~€151k/30d" delta="2.3× spend" tone="up" info="Cards stored online, settled in-store?" sub="3,140 online → in-store · omnichannel 2.3×." action="Explore" onAction={say('Cross-channel flow — coming soon')} />,
-        <BizCard key="next" title="Next best action" value="Enable DCC" delta="+~€22k/mo" tone="up" info="What should I do next, ranked by impact?" sub="49 eligible terminals." action="Apply" onAction={say('Applying recommendation…')} />,
+        <BizCard key="bench" title="Peer benchmark" value="+~€36k/mo" delta="gap to close" tone="up" action="Compare" onAction={onOpenStores}
+          info={<span>Uniqlo APAC’s card <b>authorisation rate</b> compared with the median of similar Adyen <b>retail / unified-commerce</b> merchants — same region and size band, last 30 days, anonymised and aggregated. You sit <b>0.8pt below</b> the sector median; closing that gap is worth ~€36k/mo.</span>}
+          sub="Auth rate · Uniqlo APAC vs retail sector median">
+          <Col gap={20} style={{ marginTop: 10, flex: 1, justifyContent: 'center' }}>
+            {[['Uniqlo APAC', 94.2, 'var(--b-color-decorative-blue)'], ['Retail sector median', 95.0, 'var(--b-color-label-tertiary)']].map(([lbl, rate, c]) => (
+              <Col key={lbl} gap={6}>
+                <Row style={{ justifyContent: 'space-between' }}><span style={{ fontSize: 12, color: T.sub }}>{lbl}</span><span className="ns-num" style={{ fontSize: 13, fontWeight: 600 }}>{rate}%</span></Row>
+                <div style={{ height: 10, borderRadius: 5, background: 'var(--b-color-background-tertiary)', overflow: 'hidden' }}><div style={{ width: ((rate - 90) / 6 * 100) + '%', height: '100%', background: c }} /></div>
+              </Col>
+            ))}
+          </Col>
+        </BizCard>,
+        <BizCard key="cross" title="Cross-channel" value="~€151k/30d" delta="2.3× spend" tone="up"
+          info={<span>In-store sales in the last 30 days from shoppers Adyen first saw <b>online</b>, matched by the network token on their card. Unified commerce lets you recognise the same shopper across web and store.</span>}
+          sub="In-store sales from online-acquired shoppers">
+          <Col gap={12} style={{ marginTop: 2 }}>
+            <Row gap={12} style={{ borderTop: `1px solid ${T.sepFaint}`, paddingTop: 12 }}>
+              <Col gap={2} style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: 12, color: T.faint }}>Omnichannel shoppers</span><span className="ns-num" style={{ fontSize: 18, fontWeight: 600 }}>3,140</span></Col>
+              <Col gap={2} style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: 12, color: T.faint }}>Spend vs single-channel</span><span className="ns-num" style={{ fontSize: 18, fontWeight: 600 }}>2.3×</span></Col>
+            </Row>
+            <span style={{ fontSize: 12, color: T.sub, lineHeight: '17px' }}>Recognise the same card across web and store with network tokens to grow repeat conversion.</span>
+            <Row gap={8}>
+              <Button variant="secondary" condensed onClick={say('Enabling stored-card recognition across channels…')}>Enable stored-card recognition</Button>
+            </Row>
+          </Col>
+        </BizCard>,
+        <BizCard key="next" title="Next best action" value="2 recommended" delta="+~€70k/mo total" tone="up"
+          info="A ranked to-do list — the highest-impact changes for Uniqlo APAC right now, each with estimated monthly value and effort. Apply directly, or hand the list to your Adyen contact."
+          sub="Ranked by impact · one-click apply">
+          <Col gap={0} style={{ marginTop: 2 }}>
+            {[
+              { n: 1, t: 'Enable DCC on 49 eligible terminals', v: '+~€22k/mo', e: 'Low effort', act: 'Apply', m: 'Rolling out DCC to 49 terminals…' },
+              { n: 2, t: 'Recover wrongly-declined payments', v: '+~€48k/mo', e: 'Medium effort', act: 'Review', m: 'Opening decline recovery…' },
+            ].map((r, i) => (
+              <Row key={r.n} gap={10} align="center" style={{ padding: '10px 0', borderTop: i === 0 ? 'none' : `1px solid ${T.sepFaint}` }}>
+                <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--b-color-background-secondary)', color: T.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{r.n}</span>
+                <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: T.ink }}>{r.t}</span>
+                  <Row gap={6} align="center"><span className="ns-num" style={{ fontSize: 12, fontWeight: 600, color: 'var(--b-color-label-success)' }}>{r.v}</span><span style={{ fontSize: 12, color: T.faint }}>· {r.e}</span></Row>
+                </Col>
+                <Button variant="secondary" condensed onClick={say(r.m)}>{r.act}</Button>
+              </Row>
+            ))}
+          </Col>
+        </BizCard>,
       ],
     },
   ];
@@ -1516,9 +1558,10 @@ function BusinessInsightDetail({ onBack, notify, onOpenStores, onOpenDevices, on
   const rangeLabel = `All locations · ${periodLabel(range)}`;
   const groups = businessGroups({ say, onOpenStores, onOpenDevices, onFirmware });
   const trend = {
-    labels: D.volumeTrend.labels, unit: '€k', min: 0, max: 800,
+    labels: D.volumeTrend.labels, unit: '€k', min: 0, max: 900,
     series: [
-      { name: 'Revenue at risk (€k)', color: 'var(--b-color-decorative-red)', points: [760, 748, 735, 722, 714, 708, 704, 700, 702, 698, 696, 695] },
+      // A connectivity crisis in Dec–Jan spikes revenue-at-risk, then it's brought back under control.
+      { name: 'Revenue at risk (€k)', color: 'var(--b-color-decorative-red)', points: [300, 315, 330, 620, 860, 690, 500, 410, 470, 560, 400, 340] },
       { name: 'Opportunity (€k)', color: 'var(--b-color-decorative-green)', points: [58, 61, 63, 66, 68, 70, 72, 73, 74, 75, 76, 76] },
     ],
   };
@@ -1531,11 +1574,13 @@ function BusinessInsightDetail({ onBack, notify, onOpenStores, onOpenDevices, on
       </Row>}>
       <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s6 }}>
         <SummaryGrid cols={2} items={[
-          { title: 'Revenue at risk / month', value: '~€695k', hint: 'Idle devices, declines and stale software.' },
-          { title: 'Opportunity identified / month', value: '+~€76k', hint: 'DCC, tipping and benchmark gap.' },
+          { title: 'Revenue at risk / month', value: '~€340k', hint: 'Recovered from a ~€860k Jan peak · idle devices, declines & stale software.' },
+          { title: 'Opportunity identified / month', value: '+~€76k', hint: 'DCC, installments and benchmark gap.' },
         ]} />
+        <Alert type="critical" title="Revenue-at-risk spiked to ~€860k in Jan"
+          description="A 3-day network outage took 22 stores offline over the holiday peak, nearly tripling monthly revenue-at-risk. Connectivity is restored and it’s recovered to ~€340k — now driven by 12 idle devices and 15 terminals on expired SDKs." />
         <div style={{ ...surface, overflow: 'hidden' }}>
-          <TileHeader title="Business impact over time" subtitle="Last 12 months · illustrative"
+          <TileHeader title="Business impact over time" subtitle="Last 12 months · illustrative · Jan outage marked by the spike"
             right={<Legend series={trend.series} />} />
           <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}><LineChart data={trend} height={200} /></div>
         </div>
@@ -1657,7 +1702,7 @@ function BusinessInsight({ notify, onOpenStores, onOpenDevices, onFirmware }) {
         <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, flex: 1, minHeight: 0 }}>
           <SummaryGrid cols={2} style={{ gridAutoRows: '1fr', height: '100%' }} items={[
             { title: 'Revenue at risk / month', value: '~€695k', hint: 'Idle devices, declines and stale software.', onClick: open },
-            { title: 'Opportunity identified / month', value: '+~€76k', hint: 'DCC, tipping and benchmark gap.', onClick: open },
+            { title: 'Opportunity identified / month', value: '+~€76k', hint: 'DCC, installments and benchmark gap.', onClick: open },
             kpiById('dcc'),
             kpiById('offline'),
           ]} />
@@ -1762,9 +1807,9 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
         <Col gap={4} style={{ flex: 1 }}>
           <Row gap={6}>
             <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Fleet Intelligence</span>
-            <InfoTip width={320} content={<span>A single, queryable view of your whole device fleet across <b>IPP</b>, <b>SoftPOS</b> and <b>Checkout</b> — health, adoption and compliance. Ask questions in plain language or build your own dashboard.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
+            <InfoTip width={320} content={<span>A single, queryable view of every payment device across your fleet — <b>Terminals</b> and <b>SoftPOS</b> — covering health, adoption and compliance. Ask questions in plain language or build your own dashboard.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
           </Row>
-          <span style={{ fontSize: 13, color: T.sub }}>One queryable view of your fleet across IPP, SoftPOS and Checkout · last sync 4 min ago</span>
+          <span style={{ fontSize: 13, color: T.sub }}>Every payment device across your fleet — Terminals and SoftPOS · last sync 4 min ago</span>
         </Col>
         <Row gap={T.s2}>
           <Button variant="secondary" iconLeft="download" onClick={() => notify('Exporting dashboard to CSV…')}>Export</Button>
@@ -3485,7 +3530,7 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, onOpenDevice, title, 
 
 /* Location-first lens — each location with its device counts, health and performance;
    rows expand to reveal that location's devices. Answers "which location has which devices". */
-function LocationDeviceTable({ stores, onOpenLocation, onOpenDevice, onConfigureStore, onCloseLocation, notify }) {
+function LocationDeviceTable({ stores, onOpenLocation, onOpenDevice, onConfigureStore, onCloseLocation, notify, deviceTotal }) {
   const [q, setQ] = useState('');
   const [expanded, setExpanded] = useState({});
   const [sort, setSort] = useState({ key: 'code', dir: 'asc' });
@@ -3561,7 +3606,7 @@ function LocationDeviceTable({ stores, onOpenLocation, onOpenDevice, onConfigure
             return (
               <div key={r.id}>
                 <SMRowEl onClick={() => setExpanded(e => ({ ...e, [r.id]: !e[r.id] }))} style={{ cursor: 'pointer' }}>
-                  <div style={{ ...stickyL, width: 32, display: 'flex', justifyContent: 'center' }}><Ico name={open ? 'chevron-down-small' : 'chevron-right'} size={16} color={T.sub} /></div>
+                  <div style={{ ...stickyL, width: 32, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}><Ico name={open ? 'chevron-down' : 'chevron-right'} size={16} color={T.sub} /></div>
                   {cols.map(c => <div key={c.key} style={{ width: c.w, flexShrink: 0, boxSizing: 'border-box', paddingRight: 16, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} onClick={c.key === 'code' ? (e) => e.stopPropagation() : undefined}>{cell(c, r)}</div>)}
                   <div style={{ ...stickyR, width: 44, display: 'flex', justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
                     <MenuButton icon="options-vertical" variant="tertiary" items={[
@@ -3575,14 +3620,24 @@ function LocationDeviceTable({ stores, onOpenLocation, onOpenDevice, onConfigure
                   <div style={{ background: '#FAFBFC', padding: '4px 16px 12px 60px' }}>
                     {r.devices === 0
                       ? <span style={{ fontSize: 13, color: T.sub }}>This location has no devices yet.</span>
-                      : genDevices(r).map((d, di) => (
-                        <Row key={d.id} gap={12} style={{ padding: '10px 0', borderBottom: `1px solid ${T.sepFaint}` }}>
-                          <button type="button" onClick={() => onOpenDevice(d)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink, textDecoration: 'underline', textUnderlineOffset: 2, width: 150, textAlign: 'left', flexShrink: 0 }}>{d.model}</button>
-                          <span style={{ width: 90, flexShrink: 0 }}><Tag label={d._type} variant={d._type === 'Mobile' ? 'blue' : 'grey'} /></span>
-                          <Row gap={6} style={{ width: 170, flexShrink: 0 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: d.dot }} /><span style={{ fontSize: 13, color: T.sub }}>{d.lastActivity}</span></Row>
-                          <span style={{ fontFamily: 'var(--b-font-family-secondary)', fontSize: 13, color: T.sub }}>{d._type === 'Mobile' ? d.sdkVersion : d.version}</span>
-                        </Row>
-                      ))}
+                      : (
+                        <>
+                          <Row gap={20} style={{ padding: '8px 0 6px', borderBottom: `1px solid ${T.sep}`, fontSize: 12, fontWeight: 600, color: T.ink }}>
+                            <span style={{ width: 180, flexShrink: 0 }}>Device model</span>
+                            <span style={{ width: 100, flexShrink: 0 }}>Type</span>
+                            <span style={{ width: 180, flexShrink: 0 }}>Last activity</span>
+                            <span style={{ width: 120, flexShrink: 0 }}>Software</span>
+                          </Row>
+                          {genDevices(r).map((d, di) => (
+                            <Row key={d.id} gap={20} style={{ padding: '10px 0', borderBottom: `1px solid ${T.sepFaint}` }}>
+                              <button type="button" onClick={() => onOpenDevice(d)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink, textDecoration: 'underline', textUnderlineOffset: 2, width: 180, textAlign: 'left', flexShrink: 0 }}>{d.model}</button>
+                              <span style={{ width: 100, flexShrink: 0 }}><Tag label={d._type} variant={d._type === 'Mobile' ? 'blue' : 'grey'} /></span>
+                              <Row gap={6} style={{ width: 180, flexShrink: 0 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: d.dot }} /><span style={{ fontSize: 13, color: T.sub }}>{d.lastActivity}</span></Row>
+                              <span style={{ width: 120, flexShrink: 0, fontFamily: 'var(--b-font-family-secondary)', fontSize: 13, color: T.sub }}>{d._type === 'Mobile' ? d.sdkVersion : d.version}</span>
+                            </Row>
+                          ))}
+                        </>
+                      )}
                   </div>
                 )}
               </div>
@@ -3592,7 +3647,7 @@ function LocationDeviceTable({ stores, onOpenLocation, onOpenDevice, onConfigure
         </div>
       </div>
       <Row gap={16} style={{ position: 'sticky', bottom: 0, zIndex: 3, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 16px', fontSize: 14, color: T.ink }}>
-        <span style={{ color: T.sub }}>{sorted.length} locations · {sorted.reduce((a, r) => a + r.devices, 0)} devices</span>
+        <span style={{ color: T.sub }}>{sorted.length} locations · {deviceTotal != null ? deviceTotal : sorted.reduce((a, r) => a + r.devices, 0)} devices</span>
         <Row gap={10} style={{ marginLeft: 'auto' }}>
           <span style={{ color: T.sub }}>Page</span>
           <span style={{ fontFamily: 'var(--b-font-family-secondary)', minWidth: 40, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${T.borderStrong}`, borderRadius: T.radiusM }}>{pg}</span>
@@ -3729,7 +3784,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
   const [panelOpen, setPanelOpen] = useState(true);
   const [askText, setAskText] = useState('');
   const runAsk = (text) => { const q = (text != null ? text : askText).trim(); if (!q) return; const inferred = inferFilters(q); setAskText(q); setVals(v => ({ ...v, ...inferred })); const n = Object.keys(inferred).length; notify && notify(n ? `Applied ${n} filter${n === 1 ? '' : 's'} from your description` : 'Couldn’t detect specifics — try mentioning where you sell and your industry'); };
-  const ASK_EXAMPLES = ['Coffee shop with table service, tipping and some tourists', 'Fixed checkout lanes in a large supermarket', 'Market stall taking payments on my own phone'];
+  const ASK_EXAMPLES = ['Flagship apparel store with fixed checkout lanes and many tourists', 'Line-busting on the shop floor with handheld devices', 'Pop-up store taking payments on staff phones'];
   const answeredCount = SELECTOR_QUESTIONS.filter(q => vals[q.id]).length;
   const matches = getMatches(vals);
   const setVal = (id, v) => setVals(s => ({ ...s, [id]: v }));
@@ -4391,17 +4446,16 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
     <>
       <DeviceExplorer terminals={terminals} mobiles={mobiles} onOpenStore={openLocation} storeLabel="Location" notify={notify}
         view={view} onView={setView} onReassign={(rows) => setReassign({ rows })} onConfigure={configureDevices}
-        locationView={<LocationDeviceTable key={ver} stores={SM_STORES.slice()} onOpenLocation={openLocation} onOpenDevice={openDeviceStudio} onConfigureStore={configureStore} onCloseLocation={(s) => notify && notify(`Closing ${s.code}…`)} notify={notify} />}
+        locationView={<LocationDeviceTable key={ver} stores={SM_STORES.slice()} deviceTotal={terminals.length + mobiles.length} onOpenLocation={openLocation} onOpenDevice={openDeviceStudio} onConfigureStore={configureStore} onCloseLocation={(s) => notify && notify(`Closing ${s.code}…`)} notify={notify} />}
         onOpenDevice={openDeviceStudio}
-        title="Devices & locations" subtitle={`${SM_STORES.length} locations · ${terminals.length + mobiles.length} devices across your fleet`}
+        title="Devices & locations" subtitle="Set up locations and order, replace and return devices."
         info={<span>“<b>Location</b>” replaces the old “Store” concept so it can represent any level of your Adyen account structure — a <b>business line</b>, a <b>merchant account</b> acting as a single shop, or a physical store. One umbrella term for wherever a device operates.</span>}
         actions={<>
-          <Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting devices to CSV…')}>Export</Button>
           {view === 'byLocation'
             ? <Button variant="primary" iconLeft="store" onClick={() => setAddLocOpen(true)}>Add location</Button>
             : <>
-                <Button variant="secondary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Add devices</Button>
-                <Button variant="primary" iconLeft="checkmark-circle" onClick={() => setAddOpen(true)}>Activate devices</Button>
+                <Button variant="secondary" iconLeft="checkmark-circle" onClick={() => setAddOpen(true)}>Activate devices</Button>
+                <Button variant="primary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Add devices</Button>
               </>}
         </>} />
       {addLocOpen && <AddLocationModal onClose={() => setAddLocOpen(false)} onCreate={createLocation} />}
@@ -6595,9 +6649,9 @@ function ConfigLibrary({ onOpen, onNew, configs = CONFIGURATIONS }) {
         <Col gap={4} style={{ flex: 1 }}>
           <Row gap={6}>
             <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Device studio</span>
-            <InfoTip width={320} content={<span>Reusable <b>device configurations</b> — receipts, payments, branding and more — that you apply across your fleet. Each device follows exactly one configuration.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
+            <InfoTip width={320} content={<span>A guided <b>wizard with a live simulator</b> to configure device properties — receipts, payments, branding and more — for a single device or in bulk, previewed before you publish.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
           </Row>
-          <span style={{ fontSize: 13, color: T.sub }}>Reusable device configurations applied across your fleet · each device follows exactly one</span>
+          <span style={{ fontSize: 13, color: T.sub }}>A wizard with a live simulator to configure device properties — by device or in bulk.</span>
         </Col>
         <Button variant="primary" iconLeft="plus" onClick={onNew}>Add configuration</Button>
       </Row>
@@ -6734,7 +6788,7 @@ function App() {
       <Header env={env} setEnv={setEnv} crumb={crumb} onToggleNav={() => setNavOpen(o => !o)} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         {navOpen && <Sidebar active={nav} onNav={(n) => { reset(); setStudioCfg(null); setNav(n); }} />}
-        <div style={{ flex: 1, overflow: 'auto', minWidth: 0, background: T.card }}>
+        <div style={{ flex: 1, overflow: 'auto', minWidth: 0, background: T.card, scrollbarGutter: 'stable' }}>
           {nav === 'device-studio' ? (
             studioCfg
               ? <StudioPreview config={studioCfg} onBack={() => setStudioCfg(null)}
