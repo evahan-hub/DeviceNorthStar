@@ -5799,7 +5799,7 @@ function LegacyScreen({ screen, vals, printable }) {
     return (
       <Col style={{ height: '100%', background: theme === 'Light' ? '#e9ebed' : '#111', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
         <div style={{ width: '84%', background: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.2)', padding: 16, fontFamily: 'var(--b-font-family-secondary)', fontSize: 11, color: '#070707' }}>
-          {rec.printLogo && <div style={{ textAlign: 'center', marginBottom: 8 }}><img src="assets/tx/adyen.svg" alt="" style={{ height: 16 }} /></div>}
+          {rec.printLogo && <div style={{ textAlign: 'center', marginBottom: 8 }}><img src="assets/tx/uniqlo.svg" alt="Uniqlo" style={{ height: 20 }} /></div>}
           <div style={{ textAlign: 'center', fontWeight: 700, marginBottom: 8 }}>{rec.header}</div>
           <div style={{ borderTop: '1px dashed #bbb', borderBottom: '1px dashed #bbb', padding: '6px 0', margin: '6px 0' }}>
             <Row style={{ justifyContent: 'space-between' }}><span>Dinner · Table 12</span><span>€100.00</span></Row>
