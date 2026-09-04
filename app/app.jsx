@@ -392,7 +392,7 @@ const NAV = [
   { id: 'analytics', label: 'Analytics', icon: 'nav-analytics' },
   { id: 'risk', label: 'Risk & disputes', icon: 'nav-risk' },
   { id: 'devices', label: 'Devices', icon: 'nav-devices', children: [
-    { id: 'device-intelligence', label: 'Fleet Intelligence' },
+    { id: 'device-intelligence', label: 'Devices Intelligence' },
     { id: 'stores', label: 'Devices & locations' },
     { id: 'device-studio', label: 'Device studio' },
   ] },
@@ -1768,7 +1768,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
     );
     return (
       <div style={{ padding: `${T.s7}px ${T.s7}px ${T.s7}px`, maxWidth: T.maxW, margin: '0 auto' }}>
-        <div style={{ marginBottom: T.s3 }}><Button variant="tertiary" condensed iconLeft="chevron-left" onClick={cancelEdit}>Fleet Intelligence</Button></div>
+        <div style={{ marginBottom: T.s3 }}><Button variant="tertiary" condensed iconLeft="chevron-left" onClick={cancelEdit}>Devices Intelligence</Button></div>
         <Row align="flex-start" style={{ marginBottom: T.s6 }}>
           <Col gap={4} style={{ flex: 1 }}>
             <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Customise dashboard</span>
@@ -1806,7 +1806,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
       <Row style={{ marginBottom: T.s5 }} align="flex-start">
         <Col gap={4} style={{ flex: 1 }}>
           <Row gap={6}>
-            <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Fleet Intelligence</span>
+            <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Devices Intelligence</span>
             <InfoTip width={320} content={<span>A single, queryable view of every payment device across your fleet — <b>Terminals</b> and <b>SoftPOS</b> — covering health, adoption and compliance. Ask questions in plain language or build your own dashboard.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
           </Row>
           <span style={{ fontSize: 13, color: T.sub }}>Every payment device across your fleet — Terminals and SoftPOS · last sync 4 min ago</span>
@@ -4455,7 +4455,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
             ? <Button variant="primary" iconLeft="store" onClick={() => setAddLocOpen(true)}>Add location</Button>
             : <>
                 <Button variant="secondary" iconLeft="checkmark-circle" onClick={() => setAddOpen(true)}>Activate devices</Button>
-                <Button variant="primary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Add devices</Button>
+                <Button variant="primary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Order devices</Button>
               </>}
         </>} />
       {addLocOpen && <AddLocationModal onClose={() => setAddLocOpen(false)} onCreate={createLocation} />}
@@ -4475,7 +4475,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
       {selectorOpen && <TerminalSelector onBack={() => setSelectorOpen(false)} notify={notify} onOrder={() => { setSelectorOpen(false); setOrderOpen(true); }} />}
       {orderOpen && <OrderFlow onBack={() => setOrderOpen(false)} notify={notify} />}
       {addOpen && (
-        <FullPage title="Activate devices" subtitle="Assign devices to a location and finish your setup"
+        <FullPage title="Activate devices" subtitle="Two steps: first assign each delivered device to a location, then activate it to go live and start accepting payments."
           onBack={() => setAddOpen(false)} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={() => setAddOpen(false)} bodyBg={T.page}
           actions={<>
             <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
@@ -6670,7 +6670,7 @@ function ConfigLibrary({ onOpen, onNew, configs = CONFIGURATIONS }) {
             {configs.map(cfg => {
               const soft = cfg.deviceType.indexOf('SoftPOS') === 0;
               return (
-                <tr key={cfg.id} className="ns-row ns-clickable" onClick={() => onOpen(cfg)} style={cfg.isNew ? { background: 'var(--b-color-background-success-weak)' } : undefined}>
+                <tr key={cfg.id} className="ns-row ns-clickable" onClick={() => onOpen(cfg)} style={cfg.isNew ? { background: 'var(--b-color-background-selected)' } : undefined}>
                   <td style={td}>
                     <Row gap={10}>
                       <span style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--b-color-background-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Ico name={soft ? 'mobile' : 'terminal-2'} size={16} color={T.sub} /></span>
@@ -6771,7 +6771,7 @@ function App() {
   const pop = () => setStack(s => s.slice(0, -1));
   const reset = () => setStack([]);
 
-  const crumb = nav === 'device-studio' ? ['Devices', 'Device studio'] : nav === 'stores' ? ['Devices', 'Devices & locations'] : ['Devices', 'Fleet Intelligence'];
+  const crumb = nav === 'device-studio' ? ['Devices', 'Device studio'] : nav === 'stores' ? ['Devices', 'Devices & locations'] : ['Devices', 'Devices Intelligence'];
 
   const top = stack[stack.length - 1];
 
