@@ -90,6 +90,40 @@
     columns: ['Not-ready reason', 'Terminals', 'Share'],
     rows: notTransacting.rows,
   };
+  const batteryHealth = {
+    columns: [
+      'Terminal model',
+      'Devices',
+      { label: 'Avg battery health', info: 'Average maximum battery capacity remaining vs original, across devices of this model. Below ~80% the battery should be replaced.' },
+      { label: 'Avg charge cycles', info: 'Average number of full charge/discharge cycles the batteries have completed.' },
+      { label: 'Needs replacement', info: 'Devices whose battery health has dropped below 80% and should be swapped to avoid mid-shift shutdowns.' },
+    ],
+    rows: [
+      ['S1F2 (portable)', '142,880', '92%', '186', '2,140'],
+      ['V400m (portable)', '96,540', '89%', '241', '3,880'],
+      ['e355 (mobile)', '61,220', '81%', '402', '9,410'],
+      ['SoftPOS (Android)', '38,110', '86%', '—', '1,560'],
+      ['AMS1 (countertop)', '184,203', 'Mains-powered', '—', '—'],
+      ['NYC1 (kiosk)', '12,406', 'Mains-powered', '—', '—'],
+    ],
+  };
+  const transactionSpeed = {
+    columns: [
+      'Terminal model',
+      'Devices',
+      { label: 'Median time', info: 'Median time from card presented to approval shown, in seconds.' },
+      { label: 'P95 time', info: '95th-percentile transaction time — the slow tail 1 in 20 shoppers experience.' },
+      { label: 'Slow (>5s)', info: 'Share of transactions slower than 5 seconds, usually driven by connectivity or online-auth latency.' },
+    ],
+    rows: [
+      ['AMS1 (countertop)', '184,203', '1.8s', '3.4s', '1.2%'],
+      ['S1F2 (portable)', '142,880', '2.1s', '4.0s', '2.0%'],
+      ['V400m (portable)', '96,540', '2.0s', '3.8s', '1.7%'],
+      ['e355 (mobile)', '61,220', '2.9s', '6.1s', '5.4%'],
+      ['SoftPOS (Android)', '38,110', '3.2s', '6.8s', '6.9%'],
+      ['NYC1 (kiosk)', '12,406', '1.9s', '3.5s', '1.3%'],
+    ],
+  };
 
   // ---- Stores & devices ----
   const models = [
@@ -490,7 +524,7 @@
 
   window.DATA = {
     fmt, kpis, volumeTrend, authTrend, notTradingTrend, featureAdoption,
-    featureByModel, storesAttention, notTransacting, compliance, notReadyReasons,
+    featureByModel, storesAttention, notTransacting, compliance, notReadyReasons, batteryHealth, transactionSpeed,
     models, stores, devices, nlAnswers, sdkHealth, firmwareHealth,
   };
 })();

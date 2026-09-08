@@ -508,9 +508,11 @@ const ALL_TILES = [
   { id: 'storesAttention', name: 'Stores needing attention', kind: 'grid', grid: 'storesAttention', topic: 'storesAttention', w: 'full' },
   { id: 'notTransacting', name: 'Not-transacting reasons', kind: 'grid', grid: 'notTransacting', w: 'half' },
   { id: 'featureByModel', name: 'Feature adoption by model', kind: 'grid', grid: 'featureByModel', w: 'half' },
+  { id: 'batteryHealth', name: 'Battery health', kind: 'grid', grid: 'batteryHealth', topic: 'batteryHealth', w: 'half' },
+  { id: 'transactionSpeed', name: 'Transaction speed', kind: 'grid', grid: 'transactionSpeed', topic: 'transactionSpeed', w: 'half' },
 ];
 // Business insight ↔ Feature insight, and SDK & OS health ↔ Firmware health sit side-by-side.
-const DEFAULT_TILE_IDS = ['kpis', 'business', 'featureInsight', 'sdkHealth', 'firmware', 'auth', 'notTradingTrend', 'notReady'];
+const DEFAULT_TILE_IDS = ['kpis', 'business', 'featureInsight', 'batteryHealth', 'transactionSpeed', 'sdkHealth', 'firmware', 'auth', 'notTradingTrend', 'notReady'];
 
 // Shared data-period options for every Explore modal (keeps the "scope of the data" consistent).
 const DATA_PERIODS = [
@@ -1876,8 +1878,32 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
 }
 
 /* ============================================================= EXPLORE */
+/* Optional analysis block shown above the list for richer Explore views (stat cards + an insight). */
+const EXPLORE_ANALYSIS = {
+  batteryHealth: {
+    stats: [
+      { label: 'Battery-powered devices', value: '338,750' },
+      { label: 'Avg battery health', value: '88%', sub: 'portable & mobile fleet' },
+      { label: 'Needs replacement', value: '16,990', sub: 'below 80% health' },
+      { label: 'Weakest model', value: 'e355', sub: '81% · 9,410 to swap' },
+    ],
+    insight: { type: 'warning', title: 'e355 handhelds are aging fastest',
+      description: 'At 81% average battery health with 9,410 units below the 80% replacement threshold, e355 handhelds are most at risk of mid-shift shutdowns — prioritise battery swaps here. Countertop (AMS1) and kiosk (NYC1) are mains-powered and unaffected.' },
+  },
+  transactionSpeed: {
+    stats: [
+      { label: 'Fleet median time', value: '2.1s' },
+      { label: 'Fleet P95', value: '4.4s' },
+      { label: 'Slow (>5s)', value: '2.9%', sub: 'of transactions' },
+      { label: 'Slowest model', value: 'SoftPOS', sub: '3.2s median · 6.9% slow' },
+    ],
+    insight: { type: 'highlight', title: 'Mobile devices are the slow tail',
+      description: 'SoftPOS (3.2s) and e355 (2.9s) have the slowest median times and the highest share of >5s transactions (~6–7%), typically online-authorisation latency over mobile networks. Countertop and kiosk terminals are fastest at ~1.8s. Network tokens and offline auth can tighten the slow tail.' },
+  },
+};
 function ExploreModal({ tile, onBack }) {
   const g = D[tile.grid];
+  const analysis = EXPLORE_ANALYSIS[tile.grid];
   const [sortCol, setSortCol] = useState(0);
   const [sortDir, setSortDir] = useState('asc');
   const [q, setQ] = useState('');
@@ -1907,6 +1933,20 @@ function ExploreModal({ tile, onBack }) {
     <FullPage title={tile.name} subtitle={`All locations · ${periodLabel(range)}`} tone="nav-analytics" onBack={onBack} backLabel="Dashboard"
       actions={<Button variant="secondary" iconLeft="download">Export</Button>}>
       <div style={{ padding: '32px 20px 20px', maxWidth: 1040, margin: '0 auto' }}>
+        {analysis && (
+          <Col gap={12} style={{ marginBottom: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+              {analysis.stats.map(s => (
+                <div key={s.label} style={{ ...surface, padding: '14px 16px' }} className="ns-tile">
+                  <span style={{ fontSize: 12, color: T.faint, fontWeight: 500 }}>{s.label}</span>
+                  <div className="ns-num" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em', marginTop: 4 }}>{s.value}</div>
+                  {s.sub && <span style={{ fontSize: 12, color: T.sub }}>{s.sub}</span>}
+                </div>
+              ))}
+            </div>
+            <Alert type={analysis.insight.type} title={analysis.insight.title} description={analysis.insight.description} />
+          </Col>
+        )}
         {/* Bento-style filter bar: search · data period · per-field facet chips · add-filter menu */}
         <Row style={{ marginBottom: 12, flexWrap: 'wrap' }} gap={8}>
           <SearchBar value={q} onChange={setQ} placeholder="Search…" width={260} />
@@ -1925,11 +1965,14 @@ function ExploreModal({ tile, onBack }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr>
-                {g.columns.map((c, ci) => (
+                {g.columns.map((c, ci) => {
+                  const info = typeof c === 'object' ? c.info : null;
+                  return (
                   <th key={ci} onClick={() => toggleSort(ci)} style={{ textAlign: ci === 0 ? 'left' : 'right', padding: '10px 14px', fontSize: 12, color: sortCol === ci ? T.ink : T.sub, fontWeight: 500, background: 'var(--b-color-background-secondary)', borderBottom: `1px solid ${T.sepFaint}`, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexDirection: ci === 0 ? 'row' : 'row-reverse' }}>{c}<Ico name={sortCol === ci ? (sortDir === 'asc' ? 'chevron-up-small' : 'chevron-down-small') : 'expand-vertical'} size={16} color={sortCol === ci ? T.sub : T.faint} /></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexDirection: ci === 0 ? 'row' : 'row-reverse' }}>{colLabel(ci)}{info && <InfoTip content={info} placement="top"><Ico name="info" size={14} color={T.faint} /></InfoTip>}<Ico name={sortCol === ci ? (sortDir === 'asc' ? 'chevron-up-small' : 'chevron-down-small') : 'expand-vertical'} size={16} color={sortCol === ci ? T.sub : T.faint} /></span>
                   </th>
-                ))}
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
