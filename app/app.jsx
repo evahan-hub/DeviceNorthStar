@@ -247,9 +247,13 @@ function LineChart({ data, height = 180 }) {
             </g>
           );
         })}
-        {data.labels.map((l, i) => (i % 2 === 0 || i === n - 1) && (
-          <text key={l} x={x(i)} y={h - 7} textAnchor="middle" fontSize="10" fill="var(--lume-axis)">{l}</text>
-        ))}
+        {(() => {
+          // Show ~one label per 64px so dates never overlap on narrow charts.
+          const step = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 64))));
+          return data.labels.map((l, i) => (i % step === 0 && i <= n - 1 - Math.floor(step / 2)) || i === n - 1 ? (
+            <text key={i} x={x(i)} y={h - 7} textAnchor={i === n - 1 ? 'end' : i === 0 ? 'start' : 'middle'} fontSize="10" fill="var(--lume-axis)">{l}</text>
+          ) : null);
+        })()}
         {/* hover guide */}
         {active != null && <line x1={x(active)} x2={x(active)} y1={pad.t} y2={pad.t + ih} stroke="var(--b-color-outline-secondary)" strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />}
         {data.series.map((s, si) => {
@@ -401,7 +405,7 @@ const NAV = [
 
 function Header({ env, setEnv, crumb, onToggleNav }) {
   return (
-    <header style={{ height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: `1px solid ${T.sep}`, background: T.page, zIndex: 300 }}>
+    <header style={{ ...(env === 'Test' ? ENV_TEST_VARS : null), height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: `1px solid ${T.sep}`, background: T.page, zIndex: 300 }}>
       {/* left zone — aligns with the sidebar */}
       <div style={{ width: T.navW, flexShrink: 0, display: 'flex', alignItems: 'center', gap: T.s2, height: '100%', paddingRight: T.s3 }}>
         <button className="ns-hdrbtn" aria-label="Toggle navigation" onClick={onToggleNav} style={{ width: 32, height: 32, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 0, background: 'none', borderRadius: 8, cursor: 'pointer', color: T.ink, padding: 0 }}>
@@ -442,7 +446,25 @@ function Header({ env, setEnv, crumb, onToggleNav }) {
   );
 }
 
-function Sidebar({ active, onNav }) {
+/* Test-mode dev theme — a dark-navy inversion applied to the sidebar + top header so it's
+   obvious you're in the Test environment. Overriding the Bento tokens on the container flips
+   every child (backgrounds, labels, borders) to the inverse palette automatically. */
+const ENV_TEST_VARS = {
+  '--b-color-background-primary': 'var(--b-color-background-inverse-primary)',
+  '--b-color-background-secondary': 'rgba(255,255,255,0.08)',
+  '--b-color-background-tertiary': 'rgba(255,255,255,0.08)',
+  '--b-color-label-primary': 'var(--b-color-label-inverse-primary)',
+  '--b-color-label-secondary': 'var(--b-color-label-inverse-secondary)',
+  '--b-color-label-tertiary': 'rgba(255,255,255,0.55)',
+  '--b-color-separator-primary': 'rgba(255,255,255,0.14)',
+  '--b-color-outline-primary': 'rgba(255,255,255,0.18)',
+  '--b-color-outline-secondary': 'rgba(255,255,255,0.28)',
+  // Active nav item highlight → Adyen green in the dark Test theme.
+  '--b-color-background-navigation': 'var(--b-color-decorative-green)',
+  '--b-color-background-navigation-hover': 'var(--b-color-decorative-green)',
+};
+
+function Sidebar({ active, onNav, env }) {
   // Groups expand/collapse independently (Bento b-navigation-menu-group). Default: the group
   // containing the active page starts open.
   const [open, setOpen] = useState(() => {
@@ -452,7 +474,7 @@ function Sidebar({ active, onNav }) {
   });
   const toggle = (id) => setOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   return (
-    <aside style={{ width: T.navW, flexShrink: 0, height: '100%', background: T.page, borderRight: `1px solid ${T.borderStrong}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <aside style={{ ...(env === 'Test' ? ENV_TEST_VARS : null), width: T.navW, flexShrink: 0, height: '100%', background: T.page, borderRight: `1px solid ${T.borderStrong}`, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 8px' }}>
         <Row style={{ padding: '6px 8px', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 12, fontWeight: 500, color: T.faint }}>Pages</span>
@@ -496,23 +518,23 @@ function Sidebar({ active, onNav }) {
 const ALL_TILES = [
   { id: 'kpis', name: 'Fleet overview', kind: 'kpi', w: 'full' },
   { id: 'business', name: 'Business insight', kind: 'business', w: 'half' },
-  { id: 'featureInsight', name: 'Feature insight', kind: 'featureInsight', w: 'half' },
   { id: 'sdkHealth', name: 'SDK & OS health', kind: 'sdkHealth', w: 'half' },
   { id: 'firmware', name: 'Firmware health', kind: 'firmwareHealth', w: 'half' },
+  { id: 'connectivity', name: 'Fleet health', kind: 'connectivity', w: 'half' },
   { id: 'auth', name: 'Authorisation-rate trend', kind: 'chart', chart: 'authTrend', w: 'half',
     info: <span><b>Authorisation rate</b> = approved authorisations ÷ total authorisation attempts — the share of payments the card issuer says yes to.<br /><br /><b>Why it matters:</b> it&rsquo;s the clearest measure of revenue you capture vs lose at the moment of payment. Around <b>5% of card payments are wrongly refused</b> by legacy systems, and Adyen&rsquo;s revenue-optimisation tooling (RevenueAccelerate) is credited with lifting merchant revenue by <b>~1.4%</b>. A downward trend means more shoppers are being declined — check issuer refusals, network tokens and routing.</span> },
-  { id: 'notTradingTrend', name: 'Active, not trading trend', kind: 'chart', chart: 'notTradingTrend', w: 'half',
-    info: <span><b>Active, not trading</b> = terminals seen online in the period but that processed <b>zero payments</b>.<br /><br /><b>Why it matters:</b> it&rsquo;s a fleet reliability &amp; ROI gap — hardware you&rsquo;ve deployed and pay for that isn&rsquo;t making money, usually from connectivity drops, terminals not fully boarded, or misconfiguration. Driving this down turns idle devices into revenue and is a leading indicator of store-level problems before they show up in sales.</span> },
+  { id: 'notTradingTrend', name: 'Failed transactions', kind: 'chart', chart: 'failedTxTrend', w: 'half',
+    info: <span><b>Failed transactions</b> = payments that were declined or aborted at the terminal (not by the issuer).<br /><br /><b>Why it matters:</b> most terminal-side failures trace back to <b>connectivity</b> — WebSocket drops, high latency or weak signal — so this is the leading signal that a store is about to lose sales. <b>Explore</b> to see the terminals to troubleshoot and the underlying signals, then fix them.</span> },
   { id: 'notReady', name: 'Not-ready reasons', kind: 'grid', grid: 'notReadyReasons', topic: 'notReady', w: 'half' },
   { id: 'compliance', name: 'Firmware & PCI compliance', kind: 'grid', grid: 'compliance', topic: 'compliance', w: 'half' },
   { id: 'storesAttention', name: 'Stores needing attention', kind: 'grid', grid: 'storesAttention', topic: 'storesAttention', w: 'full' },
   { id: 'notTransacting', name: 'Not-transacting reasons', kind: 'grid', grid: 'notTransacting', w: 'half' },
   { id: 'featureByModel', name: 'Feature adoption by model', kind: 'grid', grid: 'featureByModel', w: 'half' },
-  { id: 'batteryHealth', name: 'Battery health', kind: 'grid', grid: 'batteryHealth', topic: 'batteryHealth', w: 'half' },
   { id: 'transactionSpeed', name: 'Transaction speed', kind: 'grid', grid: 'transactionSpeed', topic: 'transactionSpeed', w: 'half' },
 ];
-// Business insight ↔ Feature insight, and SDK & OS health ↔ Firmware health sit side-by-side.
-const DEFAULT_TILE_IDS = ['kpis', 'business', 'featureInsight', 'batteryHealth', 'transactionSpeed', 'sdkHealth', 'firmware', 'auth', 'notTradingTrend', 'notReady'];
+// Business insight ↔ Connectivity & health · SDK & OS health ↔ Firmware health · Auth trend ↔ Failed transactions.
+// (Feature adoption lives in the Business insight Explore; battery is covered inside Connectivity & health.)
+const DEFAULT_TILE_IDS = ['kpis', 'business', 'connectivity', 'sdkHealth', 'firmware', 'auth', 'notTradingTrend', 'transactionSpeed', 'notReady'];
 
 // Shared data-period options for every Explore modal (keeps the "scope of the data" consistent).
 const DATA_PERIODS = [
@@ -524,7 +546,7 @@ const periodLabel = (v) => (DATA_PERIODS.find(p => p.value === v) || DATA_PERIOD
    The user's saved tile order survives reloads via localStorage. Bump LAYOUT_VERSION on any
    push that changes the default layout — that invalidates old saves so the new default wins;
    otherwise the user's own layout is always restored. */
-const LAYOUT_VERSION = 5;
+const LAYOUT_VERSION = 11;
 const LAYOUT_KEY = 'ns_fleet_layout';
 function loadLayout() {
   try {
@@ -571,7 +593,7 @@ function KPITile({ actions, onOpenStores, onOpenDevices }) {
   // Merchant-specific headline metrics (not Adyen-wide totals).
   const fleetItems = [
     { id: 'stores', title: 'All locations', value: String(SM_STORES.length), hint: 'Locations in this account. Click to view all.', onClick: onOpenStores },
-    { id: 'devices', title: 'All devices', value: D.fmt(D.devices.length), hint: 'Devices across all your stores. Click to view all.', onClick: onOpenDevices },
+    { id: 'devices', title: 'All devices', value: D.fmt(FLEET_DEVICES), hint: 'Devices across all your stores. Click to view all.', onClick: onOpenDevices },
     kpiById('auth'),
     kpiById('atv'),
   ];
@@ -636,7 +658,7 @@ function ChartCard({ t, actions, onExplore }) {
     <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
       <TileHeader title={t.name} subtitle={`Last update: ${updated}`}
         info={t.info || 'How this metric is measured and the period it covers.'}
-        right={actions || <Legend series={data.series} />} />
+        right={actions || <Row gap={12} align="center"><Legend series={data.series} />{onExplore && <Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>{t.exploreLabel || 'Explore'}</Button>}</Row>} />
       <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}>
         <LineChart data={data} height={200} />
       </div>
@@ -670,6 +692,8 @@ const ASK_CONTEXTS = {
     intro: 'Ask across your whole fleet — analytics, security, operations and troubleshooting.',
     // Surfaced first when the panel opens; everything else collapses under "See more insights".
     featured: [
+      { cat: 'Firmware locks', icon: 'settings', q: 'Show only terminals with locked firmware. Group them by lock reason and flag which ones can be safely unlocked and updated.', desc: 'Grouped by lock reason, with the ones safe to unlock and update flagged.' },
+      { cat: 'Apps per device', icon: 'grid', q: 'List Android apps installed per device across the fleet in one view, without sending me to Reports.', desc: 'One view — apps installed per device, no separate trip to Reports.' },
       { cat: 'Business enablement', icon: 'sparkles', q: 'How is tipping configured across all my fleets?', desc: 'Overview and what it means — high-performing vs misconfiguration — linked to action points.' },
       { cat: 'Fleet security', icon: 'settings', q: 'How many SDKs / firmware are expiring?', desc: 'Current status plus immediate action points.' },
       { cat: 'Feature analysis', icon: 'settings', q: 'How many terminals have Standalone enabled? List them.', desc: 'Count, list and report link — device.enableStandalone.' },
@@ -1124,12 +1148,390 @@ function SdkHealthTile({ onExplore }) {
   );
 }
 
-/* Bento Summary (b-summary) — borderless label/value block used across explore detail pages. */
-function SdkKpi({ label, value, onClick }) {
+/* Connectivity & health tile — fleet rollup of the per-terminal Core Terminal Dashboard signals
+   (websocket failures/latency, primary interface split, weak signal, battery, firmware installs). */
+function ConnectivityTile({ notify, onExplore }) {
+  const d = D.connectivity;
+  const metric = (dot, label, value, pct, variant) => (
+    <Row style={{ justifyContent: 'space-between', gap: 10 }}>
+      <Row gap={8} style={{ minWidth: 0 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: T.ink }}>{label}</span>
+      </Row>
+      <Row gap={8}>
+        <span className="ns-num" style={{ fontSize: 13, fontWeight: 600 }}>{value}</span>
+        {pct != null && <Tag label={pct} variant={variant} />}
+      </Row>
+    </Row>
+  );
+  const iface = [
+    { n: d.iface.wifi, c: 'var(--b-color-decorative-blue)', label: 'Wi-Fi' },
+    { n: d.iface.cellular, c: 'var(--b-color-decorative-orange)', label: 'Cellular' },
+  ];
   return (
-    <div className={onClick ? 'ns-kpi' : undefined} onClick={onClick} style={{ borderRadius: T.radiusM, padding: '14px 16px', background: 'var(--b-color-background-secondary)', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, cursor: onClick ? 'pointer' : 'default' }}>
+    <div style={{ ...surface, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }} className="ns-tile">
+      <TileHeader title="Fleet health" subtitle={`Terminal telemetry · ${d.period}`}
+        info={<span><b>Find and fix at-risk terminals.</b> Spot the ones failing payments or about to drop offline — from their connectivity, signal and battery — and troubleshoot them before they cost you sales.</span>}
+        right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>Explore</Button>} />
+      <Col gap={14} style={{ padding: `0 ${T.s5}px ${T.s5}px`, flex: 1 }}>
+        <Col gap={10}>
+          {metric('var(--b-color-decorative-red)', 'Failed transactions (connectivity-linked)', D.fmt(d.failedTx.count), `${d.failedTx.connectivityLinked}% linked`, 'red')}
+          {metric('var(--b-color-decorative-orange)', 'WebSocket connection failures', D.fmt(d.wsFailures.count), `${d.wsFailures.pct}%`, 'orange')}
+          {metric('var(--b-color-decorative-orange)', 'Terminals on weak signal', D.fmt(d.weakSignal.count), `${d.weakSignal.pct}%`, 'orange')}
+        </Col>
+        <div style={{ height: 1, background: T.sepFaint }} />
+        <BentoList items={[
+          { label: 'Avg connection latency', value: <span><b>{d.avgLatencyMs} ms</b></span> },
+          { label: 'Terminals under 20% battery', value: D.fmt(d.lowBattery.count) },
+          { label: 'Firmware installs', value: d.firmwareInstalls },
+        ]} />
+        {/* primary interface mini-bar (Wi-Fi vs Cellular) */}
+        <Col gap={6}>
+          <span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>Primary connected interface</span>
+          <div style={{ display: 'flex', height: 10, borderRadius: 6, overflow: 'hidden', background: T.page }}>
+            {iface.map(s => s.n > 0 && <div key={s.label} title={`${s.label} ${s.n}%`} style={{ width: `${s.n}%`, background: s.c }} />)}
+          </div>
+          <Row gap={16} style={{ flexWrap: 'wrap' }}>
+            {iface.map(s => (
+              <Row key={s.label} gap={6}><span style={{ width: 8, height: 8, borderRadius: 2, background: s.c }} /><span style={{ fontSize: 12, color: T.sub }}>{s.label} <b className="ns-num" style={{ color: T.ink }}>{s.n}%</b></span></Row>
+            ))}
+          </Row>
+        </Col>
+      </Col>
+    </div>
+  );
+}
+
+/* Explore → full-screen Connectivity & health, mirroring the per-terminal Core Terminal Dashboard
+   (communication events, websocket failed/latency, bootups, interface split, signal & battery). */
+const CONN_SCOPES = [
+  { value: 'all', label: 'All terminals', factor: 1 },
+  { value: 'model:S1F2', label: 'S1F2 terminals', factor: 0.28 },
+  { value: 'model:AMS1', label: 'AMS1 terminals', factor: 0.34 },
+  { value: 'model:V400m', label: 'V400m terminals', factor: 0.18 },
+  // Individual terminals — derived from the failed-transaction troubleshoot list so every one is selectable/scoped.
+  ...D.connectivity.troubleshoot.map(t => ({ value: t.id, label: t.terminal, factor: 0.00004 })),
+];
+function ConnectivityDetail({ onBack, notify, initialScope, focus }) {
+  const d = D.connectivity;
+  const [range, setRange] = useState('90d');
+  const [scope, setScope] = useState(initialScope || 'all'); // device-level filter
+  const [troubleshootId, setTroubleshootId] = useState(null); // per-terminal troubleshoot modal (focused view)
+  const [listOpen, setListOpen] = useState(false); // "View all failed transactions" list popup
+  const scopeDef = CONN_SCOPES.find(s => s.value === scope) || CONN_SCOPES[0];
+  const isDevice = scope.startsWith('dev:');
+  const kpiGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: T.s3 };
+  const chartGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: T.s5 };
+  // Deterministic daily series, re-seeded per scope so the drill-down changes with the filter.
+  const c = useMemo(() => {
+    const N = 24, MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const start = new Date(2026, 6, 17).getTime(), end = new Date(2026, 8, 18).getTime();
+    const labels = Array.from({ length: N }, (_, i) => { const dt = new Date(start + (end - start) * i / (N - 1)); return MON[dt.getMonth()] + ' ' + dt.getDate(); });
+    let sk = 7; for (const ch of scope) sk = (sk * 31 + ch.charCodeAt(0)) & 0x7fffffff; // scope seed offset
+    const f = scopeDef.factor;
+    const rand = (seed) => { let x = (seed + sk) & 0x7fffffff; return () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return x / 0x7fffffff; }; };
+    // count-type series scale with scope; signal/battery are per-device readings (unscaled).
+    // o.trend = linear ramp across the window (e.g. comm events rising to a Sept peak, battery drifting down).
+    const genC = (seed, base, amp, o = {}) => { const r = rand(seed); return Array.from({ length: N }, (_, i) => { let v = (base * (1 + (o.trend || 0) * (i / (N - 1))) + (r() - 0.5) * 2 * amp) * f; if (o.spike && r() > 0.85) v += o.spike * f * r(); return Math.max(0, Math.round(v)); }); };
+    const gen = (seed, base, amp, o = {}) => { const r = rand(seed); return Array.from({ length: N }, (_, i) => { let v = base * (1 + (o.trend || 0) * (i / (N - 1))) + (r() - 0.5) * 2 * amp; if (o.spike && r() > 0.85) v += o.spike * r(); if (o.min != null) v = Math.max(o.min, v); if (o.max != null) v = Math.min(o.max, v); return Math.round(v); }); };
+    // Series tuned to the per-terminal Core Terminal Dashboard: choppy comm rising, spiky ws-fails, flat-low latency w/ spikes, uniform bootups w/ a spike, near-zero firmware, wavy battery.
+    const comm = genC(11, 380, 190, { trend: 0.9 }), wsFail = genC(23, 2, 2.2, { spike: 8 }), boot = genC(37, 26, 7, { spike: 70 }), fw = genC(53, 1, 1.4, { spike: 40 }), pay = genC(59, 240, 55), failedTx = genC(61, 90, 30, { spike: 60 });
+    const latency = gen(31, 230, 90, { min: 120, spike: 1500 });
+    const battery = gen(41, 82, 9, { min: 55, max: 96, trend: -0.1 });
+    const wifiSig = gen(43, -62, 20, { min: -92, max: -38 });
+    const cellSig = gen(47, -70, 8, { min: -95, max: -55 });
+    const wifiPct = gen(51, 62, 8, { min: 45, max: 78 });
+    const sum = (a) => a.reduce((x, y) => x + y, 0), avg = (a) => Math.round(sum(a) / a.length);
+    return {
+      labels, wifiPct, cellPct: wifiPct.map(v => 100 - v),
+      panels: [
+        // Failed transactions leads — the reason people open this page — then the connectivity signals that explain it.
+        { title: 'Failed transactions', color: 'var(--b-color-decorative-red)', pts: failedTx, min: 0 },
+        { title: 'WebSocket connection failed', color: 'var(--b-color-decorative-red)', pts: wsFail, min: 0 },
+        { title: 'WebSocket connection latency', unit: 'ms', color: 'var(--b-color-decorative-green)', pts: latency, min: 0 },
+        { title: 'Wi-Fi signal level', unit: 'dBm', color: '#3BA7A0', pts: wifiSig, min: -100, max: -20 },
+        { title: 'Cellular signal level', unit: 'dBm', color: '#7B94B5', pts: cellSig, min: -110, max: -40 },
+        { title: 'Communication events', color: 'var(--b-color-decorative-blue)', pts: comm, min: 0 },
+        { title: 'Payment requests', color: 'var(--b-color-decorative-blue)', pts: pay, min: 0 },
+        { title: 'Terminal bootups', color: '#E9A23B', pts: boot, min: 0 },
+        { title: 'Battery level', unit: '%', color: '#E7C34B', pts: battery, min: 0, max: 100 },
+      ],
+      k: { comm: sum(comm), wsFail: sum(wsFail), latency: avg(latency), boot: sum(boot), fw: sum(fw), avgBattery: avg(battery), curBattery: battery[battery.length - 1], avgWifi: avg(wifiSig), avgCell: avg(cellSig), failedTx: sum(failedTx) },
+    };
+  }, [scope]);
+  const chartCard = (p) => (
+    <div key={p.title} style={{ ...surface, overflow: 'hidden' }}>
+      <TileHeader title={p.title} subtitle={p.unit ? `Per day · ${p.unit}` : 'Per day'} />
+      <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 200 }}>
+        <LineChart data={{ labels: c.labels, min: p.min, max: p.max, unit: p.unit, series: [{ color: p.color, points: p.pts }] }} height={180} />
+      </div>
+    </div>
+  );
+  // Scope-aware KPI blocks — each carries a short explanation.
+  // Same four at-risk blocks in every scope; a filtered device shows its own readouts so the summary stays consistent.
+  const kpis = isDevice ? [
+    { label: 'WebSocket failures', value: D.fmt(c.k.wsFail), hint: 'Failed connection attempts — spikes precede an outage.' },
+    { label: 'Failed transactions', value: D.fmt(c.k.failedTx), hint: 'Declined/aborted at the terminal — often connectivity-linked.' },
+    { label: 'Avg Wi-Fi signal', value: `${c.k.avgWifi} dBm`, hint: 'Weaker than -75 dBm risks drops.' },
+    { label: 'Current battery', value: `${c.k.curBattery}%`, hint: 'Latest reported battery level.' },
+  ] : [
+    { label: 'WebSocket failures', value: `${D.fmt(d.wsFailures.count)} (${d.wsFailures.pct}%)`, hint: 'Failed persistent-connection attempts; spikes precede outages.' },
+    { label: 'Failed transactions', value: D.fmt(d.failedTx.count), hint: `Connectivity-linked failed payments (last 90 days) — ${d.failedTx.connectivityLinked}% of all failures. ≈€${d.failedTx.revenueAtRiskK}k revenue at risk.` },
+    { label: 'Terminals on weak signal', value: `${D.fmt(d.weakSignal.count)} (${d.weakSignal.pct}%)`, hint: 'Devices below the safe Wi-Fi/cellular threshold.' },
+    { label: 'Terminals under 20% battery', value: `${D.fmt(d.lowBattery.count)} (${d.lowBattery.pct}%)`, hint: 'At risk of shutting down mid-shift.' },
+  ];
+  // Primary connected interface donut (Wi-Fi vs Cellular).
+  const R = 16, C = 2 * Math.PI * R, wifiLen = C * d.iface.wifi / 100;
+  // Shared per-terminal troubleshoot modal — opened from the Failed-transactions list AND the fleet banner.
+  const troubleshootModal = (() => {
+    const tt = d.troubleshoot.find(x => x.id === troubleshootId);
+    if (!tt) return null;
+    // Deterministic per-terminal signals derived from the terminal's failure count + cause.
+    let x = 0; for (const ch of tt.id) x = (x * 31 + ch.charCodeAt(0)) & 0x7fffffff;
+    const rnd = () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return x / 0x7fffffff; };
+    const wsDrops = Math.round(tt.failed * (0.5 + rnd() * 0.4));
+    const weak = /weak|Wi-Fi|signal|Cellular/i.test(tt.cause);
+    const wifi = weak ? -(82 + Math.round(rnd() * 8)) : -(58 + Math.round(rnd() * 8));
+    const latency = 300 + Math.round(rnd() * 900) + (weak ? 400 : 0);
+    const spark = Array.from({ length: 24 }, () => Math.max(0, Math.round((tt.failed / 12) + (rnd() - 0.5) * (tt.failed / 6))));
+    const stat = (label, value) => (
+      <Col gap={2} style={{ flex: '1 1 120px', minWidth: 110 }}><span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{label}</span><span className="ns-num" style={{ fontSize: 18, fontWeight: 600 }}>{value}</span></Col>
+    );
+    // Recommended fix is chosen from the likely cause; the rest become secondary options.
+    const rec = weak ? 'Restart terminal' : 'Re-sync config';
+    const recWhy = rec === 'Restart terminal'
+      ? 'Re-establishes the network connection and clears the weak-signal / Wi-Fi-drop condition.'
+      : 'Re-pushes settings and re-boards the terminal — clears timeouts and not-boarded errors.';
+    const others = ['Restart terminal', 'Re-sync config', 'Reassign'].filter(a => a !== rec);
+    return (
+      <Modal open onClose={() => setTroubleshootId(null)} title={tt.terminal} description={`${tt.store} · ${tt.model}`} width={640}
+        footer={<Row gap={8} style={{ justifyContent: 'flex-end' }}><Button variant="secondary" onClick={() => setTroubleshootId(null)}>Close</Button></Row>}>
+        <Col gap={20}>
+          {/* 1. What & why */}
+          <Row align="flex-start" gap={16} style={{ padding: '14px 16px', borderRadius: T.radiusM, background: 'var(--b-color-background-warning-weak)' }}>
+            <Ico name="warning-filled" size={22} color="var(--b-color-background-warning-strong)" style={{ flexShrink: 0, marginTop: 2 }} />
+            <Col gap={4} style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>{tt.failed} failed payments linked to connectivity</span>
+              <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Likely cause: <b>{tt.cause}</b>. Failures line up with {D.fmt(wsDrops)} WebSocket drops — not the card or the shopper.</span>
+            </Col>
+          </Row>
+          {/* 2. Recommended fix + other actions (the task) */}
+          <Col gap={10}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Recommended fix</span>
+            <Row align="center" gap={12} style={{ padding: '14px 16px', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, flexWrap: 'wrap' }}>
+              <Col gap={2} style={{ flex: 1, minWidth: 200 }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>{rec}</span>
+                <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{recWhy}</span>
+              </Col>
+              <Button variant="primary" condensed onClick={() => notify && notify(`${rec} · ${tt.terminal}…`)}>{rec}</Button>
+            </Row>
+            <Row gap={8} align="center" style={{ flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, color: T.faint }}>Other fixes:</span>
+              {others.map(a => <Button key={a} variant="secondary" condensed onClick={() => notify && notify(`${a} · ${tt.terminal}…`)}>{a}</Button>)}
+            </Row>
+          </Col>
+          {/* 3. Evidence — why we flagged it (supporting, de-emphasised) */}
+          <Col gap={10}>
+            <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Signals · why we flagged this</span>
+            <Row gap={20} style={{ flexWrap: 'wrap' }}>
+              {stat('Failed payments', tt.failed)}
+              {stat('WebSocket drops', D.fmt(wsDrops))}
+              {stat('Avg Wi-Fi signal', `${wifi} dBm`)}
+              {stat('Avg latency', `${latency} ms`)}
+            </Row>
+            <div style={{ ...surface, overflow: 'hidden' }}>
+              <TileHeader title="Failed payments" subtitle="Per day · last 90 days" />
+              <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 150 }}>
+                <LineChart data={{ labels: c.labels, min: 0, series: [{ color: 'var(--b-color-decorative-red)', points: spark }] }} height={130} />
+              </div>
+            </div>
+          </Col>
+        </Col>
+      </Modal>
+    );
+  })();
+  // "View all failed transactions" — compact popup listing every affected terminal; Troubleshoot opens the per-terminal modal.
+  const listModal = listOpen ? (
+    <Modal open onClose={() => setListOpen(false)} title="Failed transactions" description={`${d.troubleshoot.length} terminals with connectivity-linked failures · worst first`} width={640}
+      footer={<Row gap={8} style={{ justifyContent: 'flex-end' }}><Button variant="secondary" onClick={() => setListOpen(false)}>Close</Button></Row>}>
+      <Col gap={6}>
+        {d.troubleshoot.map((tt, i) => (
+          <Row key={tt.id} gap={12} align="center" style={{ padding: '10px 12px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+            <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, fontFamily: 'var(--b-font-family-secondary)' }}>{tt.terminal}</span>
+              <span style={{ fontSize: 12, color: T.faint }}>{tt.store} · {tt.model} · {tt.cause}</span>
+            </Col>
+            <span className="ns-num" style={{ fontSize: 13, color: 'var(--b-color-label-critical)', fontWeight: 600, flexShrink: 0, width: 74, textAlign: 'right' }}>{tt.failed} failed</span>
+            <Button variant="secondary" condensed iconRight="arrow-right" onClick={() => { setListOpen(false); setTroubleshootId(tt.id); }}>Troubleshoot</Button>
+          </Row>
+        ))}
+      </Col>
+    </Modal>
+  ) : null;
+  // Focused "Failed transactions" view — only the failed-tx chart + the affected device list.
+  if (focus === 'failed') {
+    const fp = c.panels.find(p => p.title === 'Failed transactions');
+    const summaryCell = (label, value) => (
+      <Col gap={2}><span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{label}</span><span className="ns-num" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em' }}>{value}</span></Col>
+    );
+    const failedChart = (
+      <div style={{ ...surface, overflow: 'hidden' }}>
+        <TileHeader title="Failed transactions" subtitle={`Count of failed payments · ${isDevice ? scopeDef.label : 'all terminals'} · last 90 days`}
+          info="Payments declined or aborted at the terminal (not by the issuer) — a count of transactions, not a euro amount. Most correlate with connectivity events: WebSocket drops, high latency or weak signal." />
+        <Row gap={28} style={{ padding: `0 ${T.s5}px ${T.s3}px`, flexWrap: 'wrap' }}>
+          {isDevice ? summaryCell('Failed payments', D.fmt(c.k.failedTx)) : summaryCell('Connectivity-linked failures', D.fmt(d.failedTx.count))}
+          {isDevice ? summaryCell('WebSocket drops', D.fmt(c.k.wsFail)) : summaryCell('Share of all failures', `${d.failedTx.connectivityLinked}%`)}
+          {isDevice ? summaryCell('Avg Wi-Fi signal', `${c.k.avgWifi} dBm`) : summaryCell('Affected terminals', d.troubleshoot.length)}
+          {!isDevice && summaryCell('Est. revenue at risk', `≈€${d.failedTx.revenueAtRiskK}k`)}
+        </Row>
+        <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}>
+          <LineChart data={{ labels: c.labels, min: fp.min, series: [{ color: fp.color, points: fp.pts }] }} height={220} />
+        </div>
+      </div>
+    );
+    return (
+      <FullPage title="Failed transactions" subtitle={`${isDevice ? scopeDef.label : 'All terminals · all locations'} · ${periodLabel(range)}`} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
+        actions={<Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting failed transactions to CSV…')}>Export</Button></Row>} bodyBg={T.page}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s6 }}>
+          {isDevice ? (
+            <Row align="flex-start" gap={16} style={{ padding: '16px 20px', borderRadius: T.radiusL, background: 'var(--b-color-background-warning-weak)' }}>
+              <Ico name="warning-filled" size={24} color="var(--b-color-background-warning-strong)" style={{ flexShrink: 0, marginTop: 2 }} />
+              <Col gap={10} style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{D.fmt(c.k.failedTx)} failed transactions linked to connectivity</span>
+                <span style={{ fontSize: 14, color: T.sub, lineHeight: '20px' }}>On <b>{scopeDef.label}</b>, failures line up with {D.fmt(c.k.wsFail)} WebSocket drops and weak Wi-Fi (avg {c.k.avgWifi} dBm). Likely cause: connectivity — not the card or the shopper.</span>
+                <Row gap={8} style={{ flexWrap: 'wrap' }}>
+                  {['Restart terminal', 'Re-sync config', 'Reassign'].map(a => <Button key={a} variant="secondary" condensed onClick={() => notify && notify(`${a} · ${scopeDef.label}…`)}>{a}</Button>)}
+                  <Button variant="tertiary" condensed iconLeft="arrow-left" onClick={() => setScope('all')}>All terminals</Button>
+                </Row>
+              </Col>
+            </Row>
+          ) : (
+            <span style={{ fontSize: 14, color: T.sub, lineHeight: '20px' }}><b>{d.failedTx.connectivityLinked}%</b> of failed transactions correlate with connectivity events. Diagnose a terminal below to see its signals and fix it.</span>
+          )}
+          {failedChart}
+          {!isDevice && (
+            <DetailSection title="Terminals to troubleshoot" info="Terminals whose failed payments correlate with connectivity issues, worst first. Troubleshoot one to see its signals and the fix actions.">
+              <div style={{ ...surface, overflow: 'hidden' }}>
+                {d.troubleshoot.map((tt, i) => (
+                  <Row key={tt.id} gap={12} align="center" style={{ padding: '12px 16px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+                    <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, fontFamily: 'var(--b-font-family-secondary)' }}>{tt.terminal}</span>
+                      <span style={{ fontSize: 12, color: T.faint }}>{tt.store} · {tt.model} · {tt.cause}</span>
+                    </Col>
+                    <span className="ns-num" style={{ fontSize: 13, color: 'var(--b-color-label-critical)', fontWeight: 600, flexShrink: 0, width: 74, textAlign: 'right' }}>{tt.failed} failed</span>
+                    <Button variant="secondary" condensed iconRight="arrow-right" onClick={() => setTroubleshootId(tt.id)}>Troubleshoot</Button>
+                  </Row>
+                ))}
+              </div>
+            </DetailSection>
+          )}
+        </div>
+        {troubleshootModal}
+      </FullPage>
+    );
+  }
+  return (
+    <FullPage title="Fleet health" subtitle={`Terminal telemetry · ${isDevice ? scopeDef.label : scopeDef.label + ' · all locations'} · ${periodLabel(range)}`} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
+      actions={<Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting fleet health to CSV…')}>Export</Button></Row>} bodyBg={T.page}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s7 }}>
+        {/* Troubleshooting banner — why people open this page: correlate failed transactions to connectivity, then fix */}
+        {isDevice ? (
+          <Row align="flex-start" gap={16} style={{ padding: '16px 20px', borderRadius: T.radiusL, background: 'var(--b-color-background-warning-weak)' }}>
+            <Ico name="warning-filled" size={24} color="var(--b-color-background-warning-strong)" style={{ flexShrink: 0, marginTop: 2 }} />
+            <Col gap={10} style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 600 }}>{D.fmt(c.k.failedTx)} failed transactions linked to connectivity</span>
+              <span style={{ fontSize: 14, color: T.sub, lineHeight: '20px' }}>On <b>{scopeDef.label}</b>, failures line up with {D.fmt(c.k.wsFail)} WebSocket drops and weak Wi-Fi (avg {c.k.avgWifi} dBm). Likely cause: connectivity — not the card or the shopper.</span>
+              <Row gap={8} style={{ flexWrap: 'wrap' }}>
+                {['Restart terminal', 'Re-sync config', 'Reassign'].map(a => (
+                  <Button key={a} variant="secondary" condensed onClick={() => notify && notify(`${a} · ${scopeDef.label}…`)}>{a}</Button>
+                ))}
+              </Row>
+            </Col>
+          </Row>
+        ) : (
+          <Row align="flex-start" gap={16} style={{ padding: '16px 20px', borderRadius: T.radiusL, background: 'var(--b-color-background-warning-weak)' }}>
+            <Ico name="warning-filled" size={24} color="var(--b-color-background-warning-strong)" style={{ flexShrink: 0, marginTop: 2 }} />
+            <Col gap={12} style={{ flex: 1, minWidth: 0 }}>
+              <Col gap={2}>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{D.fmt(d.failedTx.count)} failed transactions — {d.failedTx.connectivityLinked}% linked to connectivity</span>
+                <span style={{ fontSize: 14, color: T.sub, lineHeight: '20px' }}>{d.troubleshoot.length} terminals have failures that correlate with connectivity issues. Review the list and troubleshoot them.</span>
+              </Col>
+              <Row>
+                <Button variant="secondary" condensed iconRight="arrow-right" onClick={() => setListOpen(true)}>View all failed transactions</Button>
+              </Row>
+            </Col>
+          </Row>
+        )}
+        <DetailSection title={isDevice ? 'Terminal telemetry' : 'Fleet telemetry'} info="Find and fix at-risk terminals — spot the ones failing payments or about to drop offline (from connectivity, signal and battery) and troubleshoot them before they cost you sales." description={`${isDevice ? scopeDef.label : 'Live device signals'} · ${periodLabel(range)}`}>
+          <div style={kpiGrid}>
+            {kpis.map(kp => <SdkKpi key={kp.label} label={kp.label} value={kp.value} hint={kp.hint} />)}
+          </div>
+        </DetailSection>
+        {/* Divider + filter bar (Bento) — separates the summary blocks above from the detailed signals below */}
+        {(() => {
+          const devOpts = CONN_SCOPES.filter(s => s.value.startsWith('dev:'));
+          const modelOptions = [{ value: 'model:S1F2', label: 'S1F2' }, { value: 'model:AMS1', label: 'AMS1' }, { value: 'model:V400m', label: 'V400m' }];
+          // Terminal options are scoped to the selected model (if any) so the two filters work together.
+          const modelKey = scope.startsWith('model:') ? scope.slice(6) : (scope.startsWith('dev:') ? scope.split(':')[1].split('-')[0] : null);
+          const termPool = modelKey ? devOpts.filter(o => o.label.startsWith(modelKey)) : devOpts;
+          const termOptions = termPool.map(o => ({ value: o.value, label: o.label }));
+          // Single-select behaviour driving one shared scope, styled as the data-grid Bento filter pills.
+          const pick = (v) => setScope(scope === v ? 'all' : v);
+          return (
+            <div style={{ borderTop: `1px solid ${T.sep}`, paddingTop: T.s6, display: 'flex', flexDirection: 'column', gap: T.s4 }}>
+              <Col gap={2}>
+                <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em' }}>Explore signals</span>
+                <span style={{ fontSize: 13, color: T.sub }}>Filter by device model and terminal ID to see exactly what happened on one device.</span>
+              </Col>
+              <Row gap={10} style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <FilterChip label="Device model" options={modelOptions} selected={scope.startsWith('model:') ? [scope] : []} onChange={pick} onClear={() => setScope('all')} />
+                <FilterChip label="Device ID" options={termOptions} selected={scope.startsWith('dev:') ? [scope] : []} onChange={pick} onClear={() => setScope('all')} />
+              </Row>
+            </div>
+          );
+        })()}
+        {/* Primary connected interface — donut (share) + active-interface-over-time (trend), merged in one box */}
+        <div style={{ ...surface, overflow: 'hidden' }}>
+          <TileHeader title="Primary connected interface" subtitle="Share of terminals by uplink · trend over time"
+            info="Which uplink each terminal is actively using — Wi-Fi vs cellular. The split and how it shifts over the period; sustained cellular use often flags Wi-Fi problems."
+            right={<Row gap={16}>
+              <Row gap={6}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--b-color-decorative-blue)' }} /><span style={{ fontSize: 12, color: T.sub }}>Wi-Fi</span></Row>
+              <Row gap={6}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--b-color-decorative-orange)' }} /><span style={{ fontSize: 12, color: T.sub }}>Cellular</span></Row>
+            </Row>} />
+          <Row gap={28} style={{ padding: `0 ${T.s5}px ${T.s5}px`, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Row gap={20} style={{ alignItems: 'center', flexShrink: 0 }}>
+              <svg width={120} height={120} viewBox="0 0 44 44" style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
+                <circle cx="22" cy="22" r={R} fill="none" stroke="var(--b-color-decorative-orange)" strokeWidth="8" />
+                <circle cx="22" cy="22" r={R} fill="none" stroke="var(--b-color-decorative-blue)" strokeWidth="8" strokeDasharray={`${wifiLen} ${C - wifiLen}`} />
+              </svg>
+              <Col gap={10}>
+                <Row gap={8}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--b-color-decorative-blue)' }} /><span style={{ fontSize: 13, color: T.ink }}>Wi-Fi (WLAN0) <b className="ns-num">{d.iface.wifi}%</b></span></Row>
+                <Row gap={8}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--b-color-decorative-orange)' }} /><span style={{ fontSize: 13, color: T.ink }}>Cellular <b className="ns-num">{d.iface.cellular}%</b></span></Row>
+              </Col>
+            </Row>
+            <div style={{ flex: 1, minWidth: 300, height: 200 }}>
+              <LineChart data={{ labels: c.labels, min: 0, max: 100, unit: '%', series: [{ color: 'var(--b-color-decorative-blue)', points: c.wifiPct }, { color: 'var(--b-color-decorative-orange)', points: c.cellPct }] }} height={190} />
+            </div>
+          </Row>
+        </div>
+        {/* All the per-terminal panels — fleet scale, or a single terminal when filtered */}
+        <DetailSection title="Device signals" info="The same panels as the Core Terminal Dashboard — communication, websocket health, bootups, signal strength, battery and payment requests." description={isDevice ? `Live signals for ${scopeDef.label}` : 'Averaged/aggregated across the fleet.'}>
+          <div style={chartGrid}>{c.panels.map(chartCard)}</div>
+        </DetailSection>
+      </div>
+      {listModal}
+      {troubleshootModal}
+    </FullPage>
+  );
+}
+
+/* Bento Summary (b-summary) — borderless label/value block used across explore detail pages. */
+function SdkKpi({ label, value, onClick, hint }) {
+  return (
+    <div className={onClick ? 'ns-kpi' : undefined} onClick={onClick} style={{ borderRadius: T.radiusM, padding: '14px 16px', background: 'var(--b-color-background-secondary)', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, cursor: onClick ? 'pointer' : 'default' }}>
       <span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{label}</span>
       <span className="ns-num" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em', color: onClick ? 'var(--b-color-link-primary)' : T.ink, textDecoration: onClick ? 'underline' : 'none', textUnderlineOffset: 3 }}>{value}</span>
+      {hint && <span style={{ fontSize: 11, color: T.faint, lineHeight: '15px' }}>{hint}</span>}
     </div>
   );
 }
@@ -1586,6 +1988,13 @@ function BusinessInsightDetail({ onBack, notify, onOpenStores, onOpenDevices, on
             right={<Legend series={trend.series} />} />
           <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}><LineChart data={trend} height={200} /></div>
         </div>
+        {/* Feature adoption — folded in from the former standalone tile (the opportunity side of business insight) */}
+        <div style={{ ...surface, overflow: 'hidden' }}>
+          <TileHeader title="Feature adoption" subtitle="DCC, tipping & installments · last 12 months"
+            info="Adoption of DCC, tipping and installments across your fleet over the last 12 months — the opportunity side of business insight."
+            right={<Legend series={D.featureAdoption.series} />} />
+          <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}><LineChart data={D.featureAdoption} height={200} /></div>
+        </div>
         {groups.map(g => (
           <Col key={g.label} gap={T.s4}>
             <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{g.label}</span>
@@ -1734,6 +2143,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
   const resetFilters = () => { setDateRange('30d'); setFScope([]); setFPlatform([]); setFStatus([]); setFModel([]); };
   const [sdkOpen, setSdkOpen] = useState(false);
   const [fwOpen, setFwOpen] = useState(false);
+  const [connOpen, setConnOpen] = useState(false);
 
   const tiles = tileIds.map(id => ALL_TILES.find(t => t.id === id)).filter(Boolean);
   const editIds = draftIds || tileIds;
@@ -1838,7 +2248,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
         {/* tile grid — dense flow so half-width tiles backfill gaps (no empty spots) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: T.s6, gridAutoFlow: 'dense' }}>
           {tiles.map(t => (
-            <div key={t.id} style={{ gridColumn: t.w === 'full' ? 'span 2' : 'span 1' }}>
+            <div key={t.id} className="ns-tile-cell" style={{ gridColumn: t.w === 'full' ? 'span 2' : 'span 1' }}>
               {t.kind === 'kpi'
                 ? <KPITile actions={tileActions(t)} onOpenStores={onOpenAllStores} onOpenDevices={onOpenAllDevices} />
                 : t.kind === 'featureInsight'
@@ -1851,8 +2261,10 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
                   ? <SdkHealthTile onExplore={() => setSdkOpen(true)} />
                 : t.kind === 'firmwareHealth'
                   ? <FirmwareHealthTile onExplore={() => setFwOpen(true)} />
+                : t.kind === 'connectivity'
+                  ? <ConnectivityTile notify={notify} onExplore={() => setConnOpen(true)} />
                 : t.kind === 'chart'
-                  ? <ChartCard t={t} actions={customize ? tileActions(t) : undefined} />
+                  ? <ChartCard t={t} actions={customize ? tileActions(t) : undefined} onExplore={t.id === 'notTradingTrend' ? () => setConnOpen('failed') : undefined} />
                 : t.kind === 'grid'
                   ? <Col gap={10}>
                       <Row style={{ minHeight: 28 }}>
@@ -1873,6 +2285,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
       <FloatingAsk onSaveTile={saveNLTile} onExplore={onOpenExplore} notify={notify} context="fleet" />
       {sdkOpen && <SdkHealthDetail onBack={() => setSdkOpen(false)} notify={notify} />}
       {fwOpen && <FirmwareDetail onBack={() => setFwOpen(false)} notify={notify} />}
+      {connOpen && <ConnectivityDetail onBack={() => setConnOpen(false)} notify={notify} focus={connOpen === 'failed' ? 'failed' : null} />}
     </div>
   );
 }
@@ -1969,7 +2382,7 @@ function ExploreModal({ tile, onBack }) {
                   const info = typeof c === 'object' ? c.info : null;
                   return (
                   <th key={ci} onClick={() => toggleSort(ci)} style={{ textAlign: ci === 0 ? 'left' : 'right', padding: '10px 14px', fontSize: 12, color: sortCol === ci ? T.ink : T.sub, fontWeight: 500, background: 'var(--b-color-background-secondary)', borderBottom: `1px solid ${T.sepFaint}`, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexDirection: ci === 0 ? 'row' : 'row-reverse' }}>{colLabel(ci)}{info && <InfoTip content={info} placement="top"><Ico name="info" size={14} color={T.faint} /></InfoTip>}<Ico name={sortCol === ci ? (sortDir === 'asc' ? 'chevron-up-small' : 'chevron-down-small') : 'expand-vertical'} size={16} color={sortCol === ci ? T.sub : T.faint} /></span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', minWidth: 0, justifyContent: ci === 0 ? 'flex-start' : 'flex-end' }}>{colLabel(ci)}{info && <InfoTip content={info} placement="top"><Ico name="info" size={14} color={T.faint} /></InfoTip>}<Ico name={sortCol === ci ? (sortDir === 'asc' ? 'chevron-up-small' : 'chevron-down-small') : 'expand-vertical'} size={16} color={sortCol === ci ? T.sub : T.faint} /></span>
                   </th>
                   );
                 })}
@@ -2043,22 +2456,32 @@ const SM_STREETS = {
 };
 // Fleet size per store is always 0 / 3 / 5 / 10; the online/last-7-days/off split is derived.
 function smBreak(t) {
-  const termOff = t >= 10 ? 2 : t >= 5 ? 1 : 0;
-  const termWeek = t >= 10 ? 2 : t >= 3 ? 1 : 0;
+  if (!t) return { termOff: 0, termWeek: 0, termOnline: 0 };
+  const termOff = Math.round(t * 0.07);      // switched off / not seen
+  const termWeek = Math.round(t * 0.08);     // only seen in the last 7 days
   return { termOff, termWeek, termOnline: Math.max(0, t - termOff - termWeek) };
 }
 const SM_DIAL = { Japan: '+81 3 5555 ', 'South Korea': '+82 2 555 ', China: '+86 21 5555 ', Singapore: '+65 6555 ', Taiwan: '+886 2 5555 ', 'Hong Kong': '+852 2555 ' };
+// Realistic apparel-retail POS density per store size: flagship/large 20-40, standard 8-15, small 3-6.
+function smStoreSize(i) {
+  const roll = i % 10;
+  if (roll === 0) return { type: 'Flagship', base: 30, varc: 8 };   // ~10%
+  if (roll < 3) return { type: 'Large', base: 18, varc: 5 };        // ~20%
+  if (roll < 7) return { type: 'Standard', base: 11, varc: 4 };     // ~40%
+  return { type: 'Express', base: 5, varc: 2 };                     // ~30%
+}
 function smBuildStores() {
   const out = [];
   const names = ['Flagship', 'Outlet', 'Pop-up', 'Concept', 'Airport', 'Central', 'Station', 'Mall', 'Riverside', 'Downtown'];
-  for (let i = 0; i < 63; i++) {
+  for (let i = 0; i < 289; i++) {
     const country = SM_COUNTRIES[i % SM_COUNTRIES.length];
     const cities = SM_CITY[country];
     const city = cities[i % cities.length];
     const roads = SM_STREETS[country];
-    const statusRoll = i % 11;
-    const status = statusRoll === 10 ? 'Closed' : (statusRoll >= 8 ? 'Inactive' : 'Active');
-    const terminals = status === 'Closed' ? 0 : [0, 3, 5, 10, 5, 0, 3, 10, 5, 3][i % 10];
+    const statusRoll = i % 13;
+    const status = statusRoll === 12 ? 'Closed' : (statusRoll >= 11 ? 'Inactive' : 'Active');
+    const sz = smStoreSize(i);
+    const terminals = status === 'Closed' ? 0 : Math.max(0, sz.base + ((i * 7) % (sz.varc * 2 + 1)) - sz.varc);
     const { termOnline, termWeek, termOff } = smBreak(terminals);
     const zip = smZipFor(country, i);
     out.push({
@@ -2085,10 +2508,15 @@ const SM_FLAGSHIP = [
   ['Hong Kong', "Canton Road 1", '', 'Hong Kong', 'Hong Kong', '+852 2555 1090'],
   ['Taipei', 'Zhongxiao E Road 1', '10041', 'Taipei', 'Taiwan', '+886 2 5555 1100'],
 ].map(function (a, i) {
-  const t = [5, 10, 3, 10, 5, 10, 3, 10, 5, 3, 5][i]; const b = smBreak(t);
+  const t = [42, 34, 30, 26, 32, 30, 26, 36, 28, 24, 30][i]; const b = smBreak(t);
   return { id: 'uq' + i, code: 'Uniqlo_' + a[0].replace(/\s+/g, '_'), name: 'Uniqlo ' + a[0], status: 'Active', country: a[4], city: a[3], street: a[1], zip: a[2], phone: a[5], merchant: 'Uniqlo APAC', terminals: t, termOnline: b.termOnline, termWeek: b.termWeek, termOff: b.termOff, storeId: 'ST' + (30000 + i * 137) + 'D22322BD5PPM' + (6000 + i) + 'ZKW' };
 });
 const SM_STORES = SM_FLAGSHIP.concat(smBuildStores());
+// Fleet totals derived from the stores so Locations, Device list and KPIs all reconcile.
+const smMobileCount = (t) => Math.round((t || 0) / 4);       // ~1 mobile/SoftPOS per 4 terminals
+const FLEET_TERMINALS = SM_STORES.reduce((n, s) => n + (s.terminals || 0), 0);
+const FLEET_MOBILES = SM_STORES.reduce((n, s) => n + smMobileCount(s.terminals), 0);
+const FLEET_DEVICES = FLEET_TERMINALS + FLEET_MOBILES;
 const SM_SV = { Active: 'green', Inactive: 'orange', Closed: 'grey' };
 const SM_TV = { Active: 'green', Inactive: 'grey', 'Inactive with modifications': 'orange', Closed: 'red' };
 const SM_NON_POS = ['Jersey'];
@@ -2419,6 +2847,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
       else { put('dcc', 'enabled', true, 'enabled DCC', 'transaction'); const m = t.match(/(\d+(?:\.\d+)?)\s*%/); if (m) put('dcc', 'markup', Number(m[1]), `set DCC markup to ${m[1]}%`, 'transaction'); }
     }
     if (/contactless/.test(t)) put('payment', 'contactless', !/off|disable/.test(t), (/off|disable/.test(t) ? 'disabled' : 'enabled') + ' contactless', 'transaction');
+    if (/surcharg/.test(t)) put('payment', 'surcharge', !/off|disable|remove|no /.test(t), (/off|disable|remove|no /.test(t) ? 'removed' : 'enabled') + ' surcharging', 'transaction');
     if (/german|deutsch/.test(t)) put('localization', 'language', 'German', 'set the language to German', 'home');
     else if (/french|français|francais/.test(t)) put('localization', 'language', 'French', 'set the language to French', 'home');
     else if (/japanese|日本/.test(t)) put('localization', 'language', 'Japanese', 'set the language to Japanese', 'home');
@@ -3286,16 +3715,16 @@ function FilterChip({ label, options, selected, onChange, onClear }) {
   const allOn = list.length > 0 && list.every(o => selected.includes(o.value));
   return (
     <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
-      <div style={{ display: 'inline-flex', alignItems: 'stretch', height: 36, borderRadius: 8, background: active ? '#364553' : T.card, border: active ? 'none' : '1px solid #8C959D', boxSizing: 'border-box', overflow: 'hidden' }}>
-        <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: active ? '0 8px 0 10px' : '0 10px', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 400, color: active ? '#fff' : T.ink }}>
+      <div style={{ display: 'inline-flex', alignItems: 'stretch', height: 36, borderRadius: 8, background: active ? 'var(--b-color-background-inverse-primary)' : T.card, border: active ? 'none' : '1px solid #8C959D', boxSizing: 'border-box', overflow: 'hidden' }}>
+        <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: active ? '0 8px 0 10px' : '0 10px', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 400, color: active ? 'var(--b-color-label-inverse-primary)' : T.ink }}>
           <span>{label}</span>
           {active
-            ? <span style={{ minWidth: 16, height: 20, padding: '0 4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#001222', borderRadius: 4, color: '#fff', fontSize: 14, fontWeight: 500 }}>{n}</span>
+            ? <span style={{ minWidth: 16, height: 20, padding: '0 4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.2)', borderRadius: 4, color: 'var(--b-color-label-inverse-primary)', fontSize: 14, fontWeight: 500 }}>{n}</span>
             : <Ico name="chevron-down-small" size={16} color={T.faint} />}
         </button>
         {active && (
-          <button onClick={() => { onClear && onClear(); }} title={`Clear ${label}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, border: 0, borderLeft: '1px solid #9DA5AC', background: 'transparent', cursor: 'pointer' }}>
-            <Ico name="cross" size={16} color="#fff" />
+          <button onClick={() => { onClear && onClear(); }} title={`Clear ${label}`} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, border: 0, borderLeft: '1px solid rgba(255,255,255,0.24)', background: 'transparent', cursor: 'pointer' }}>
+            <Ico name="cross" size={16} color="var(--b-color-label-inverse-primary)" />
           </button>
         )}
       </div>
@@ -3837,6 +4266,20 @@ function TerminalSelector({ onBack, onOrder, notify }) {
   const addToCart = (line) => { setCart(c => [...c, line]); notify && notify(`Added ${line.name} to cart`); };
   const cartCount = cart.reduce((n, i) => n + i.qty, 0);
 
+  // AI reconciled recommendation — one answer that balances cost + technical fit, and spells out
+  // what's in the box (incl. USB-A) and how fast it ships (the merchant's real blockers).
+  const [recOpen, setRecOpen] = useState(false);
+  const recPick = matches[0] || ORDER_PRODUCTS.find(p => p.id === 'sfo1') || ORDER_PRODUCTS[0];
+  const recIsSoftPOS = recPick && recPick.type === 'SoftPOS';
+  const recIncludes = (orderIncludes(recPick) || []).concat(recIsSoftPOS ? [] : ['USB-A to USB-C cable (the USB-A end plugs into most tills / POS)']);
+  const recDelivery = recIsSoftPOS
+    ? 'Available instantly — download the app, no hardware to ship'
+    : 'Ships in 2 business days · free standard delivery, or next-day for €15';
+  const recReason = recIsSoftPOS
+    ? 'Zero hardware cost and instant to deploy for your setup — cheaper than any reader, with the same contactless acceptance.'
+    : `Best balance of cost and fit at €${recPick.price}: covers ${(recPick.specs || []).join(', ')}. Cheaper readers drop offline/printing; pricier all-in-ones add screens you don't need here.`;
+  const openRec = () => { setRecOpen(true); notify && notify('Reconciled cost, technical fit and delivery into one recommendation'); };
+
   // ---------- Step 1: select matching devices (multi-select) ----------
   if (step === 'select') {
     return (
@@ -3861,6 +4304,47 @@ function TerminalSelector({ onBack, onOrder, notify }) {
             {mode === 'ask' ? (<>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4, display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Describe the business in your own words — I’ll pick the filters and narrow the list.</span>
+                {/* AI reconciled recommendation — one answer: cost + fit + what's in the box + delivery */}
+                <button type="button" className="ns-suggest" onClick={openRec}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', padding: '12px', border: `1px solid ${T.border}`, borderRadius: T.radiusM, background: T.card, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                  <Ico name="sparkles" size={16} color="#00A152" style={{ marginTop: 1, flexShrink: 0 }} />
+                  <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>Recommend the best device for me</span>
+                    <span style={{ fontSize: 12, color: T.sub, lineHeight: '16px' }}>One answer that balances cost and technical fit — with what’s in the box and how fast it ships.</span>
+                  </Col>
+                </button>
+                {recOpen && recPick && (
+                  <div style={{ ...surface, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }} className="ns-fade">
+                    <Row gap={6} align="center">
+                      <Ico name="sparkles" size={16} color="#00A152" />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#00A152', letterSpacing: '0.02em' }}>RECOMMENDED FOR YOU</span>
+                      <span style={{ flex: 1 }} />
+                      <IconButton icon="cross" variant="tertiary" condensed title="Dismiss" onClick={() => setRecOpen(false)} />
+                    </Row>
+                    <Row gap={12} align="flex-start">
+                      <div style={{ width: 56, height: 56, flexShrink: 0, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {recPick.img ? <img src={recPick.img} alt={recPick.name} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken', transform: (ORDER_IMG_SCALE[recPick.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[recPick.id]})` : undefined }} /> : <Ico name={recPick.icon || 'terminal-2'} size={28} color={T.sub} />}
+                      </div>
+                      <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{recPick.name}</span>
+                        <span style={{ fontSize: 13, color: T.sub }}>{recPick.type} · {recPick.price > 0 ? `€${recPick.price}` : 'No charge'}</span>
+                      </Col>
+                    </Row>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div><span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>Why this one</span><div style={{ fontSize: 13, color: T.ink, lineHeight: '18px' }}>{recReason}</div></div>
+                      <div><span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>Delivery</span><div style={{ fontSize: 13, color: T.ink, lineHeight: '18px' }}>{recDelivery}</div></div>
+                      <div><span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>What’s in the box</span>
+                        <Col gap={4} style={{ marginTop: 4 }}>
+                          {recIncludes.map(x => <Row key={x} gap={8} align="flex-start"><Ico name="checkmark" size={15} color="var(--b-color-decorative-green)" /><span style={{ fontSize: 13, color: T.sub, lineHeight: '17px' }}>{x}</span></Row>)}
+                        </Col>
+                      </div>
+                    </div>
+                    <Row gap={8}>
+                      <Button variant="primary" iconLeft={selected.includes(recPick.id) ? 'checkmark' : 'plus'} onClick={() => { if (!selected.includes(recPick.id)) toggleSel(recPick.id); notify && notify(`Selected ${recPick.name}`); }}>{selected.includes(recPick.id) ? 'Selected' : 'Select this device'}</Button>
+                      <Button variant="secondary" onClick={() => setRecOpen(false)}>Compare alternatives</Button>
+                    </Row>
+                  </div>
+                )}
                 <Col gap={1}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: T.faint, padding: '0 10px 4px' }}>Try</span>
                   {ASK_EXAMPLES.map(ex => (
@@ -4470,8 +4954,10 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
     SM_STORES.unshift(s); setVer(v => v + 1); setAddLocOpen(false);
     notify && notify(`Location “${data.name}” created`);
   };
-  const terminals = useMemo(() => makeTerminals(60, { seed: 2, stores: SM_STORES }), []);
-  const mobiles = useMemo(() => makeMobiles(25, { seed: 9, stores: SM_STORES }), []);
+  // Single source of truth: generate the fleet device list per store, so per-store counts,
+  // the flat "All devices" list, and the fleet KPI all reconcile (≈ FLEET_DEVICES total).
+  const terminals = useMemo(() => SM_STORES.flatMap((s, si) => makeTerminals(s.terminals || 0, { seed: si + 1, stores: [s] })), []);
+  const mobiles = useMemo(() => SM_STORES.flatMap((s, si) => makeMobiles(smMobileCount(s.terminals), { seed: si + 1, stores: [s] })), []);
   const st = SM_STORES.find(x => x.id === addStore);
   const qty = Math.max(0, parseInt(addQty, 10) || 0);
   const rt = SM_STORES.find(x => x.id === reassignTarget);
@@ -4510,7 +4996,11 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
             <Button variant="primary" disabled={!rt} onClick={() => { const n = reassign.rows.length; setReassign(null); notify && notify(`Reassigned ${n} device${n === 1 ? '' : 's'} to ${rt ? rt.code : 'location'}`); }}>Reassign</Button>
           </Row>}>
           <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Move to location</span>
-            <Dropdown value={reassignTarget} onChange={setReassignTarget} options={SM_STORES.map(x => ({ value: x.id, label: `${x.code} · ${x.city}, ${x.country}` }))} />
+            {/* Native select — its option list is drawn by the browser, so it isn't clipped by the modal's overflow */}
+            <select value={reassignTarget} onChange={(e) => setReassignTarget(e.target.value)}
+              style={{ height: 40, width: '100%', boxSizing: 'border-box', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, padding: '0 34px 0 12px', fontFamily: 'inherit', fontSize: 14, color: T.ink, cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none', backgroundColor: T.card, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundImage: 'url(data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2216%22%20height=%2216%22%20fill=%22none%22%3E%3Cpath%20fill=%22%235C6670%22%20d=%22M2.99988%204.43923L7.99988%209.43923L12.9999%204.43923L14.0605%205.49989L7.99988%2011.5605L1.93922%205.49989L2.99988%204.43923Z%22/%3E%3C/svg%3E)' }}>
+              {SM_STORES.map(x => <option key={x.id} value={x.id}>{`${x.code} · ${x.city}, ${x.country}`}</option>)}
+            </select>
           </Col>
         </Modal>
       )}
@@ -5077,8 +5567,10 @@ function AllDevicesModal({ onBack, onOpenDevice, onOpenStore, onOpenStudio, noti
   const [addStore, setAddStore] = useState((SM_STORES[0] || {}).id);
   const [addModel, setAddModel] = useState('S1F2');
   const [addQty, setAddQty] = useState('1');
-  const terminals = useMemo(() => makeTerminals(60, { seed: 2, stores: SM_STORES }), []);
-  const mobiles = useMemo(() => makeMobiles(25, { seed: 9, stores: SM_STORES }), []);
+  // Single source of truth: generate the fleet device list per store, so per-store counts,
+  // the flat "All devices" list, and the fleet KPI all reconcile (≈ FLEET_DEVICES total).
+  const terminals = useMemo(() => SM_STORES.flatMap((s, si) => makeTerminals(s.terminals || 0, { seed: si + 1, stores: [s] })), []);
+  const mobiles = useMemo(() => SM_STORES.flatMap((s, si) => makeMobiles(smMobileCount(s.terminals), { seed: si + 1, stores: [s] })), []);
   const st = SM_STORES.find(x => x.id === addStore);
   const qty = Math.max(0, parseInt(addQty, 10) || 0);
   const openLocation = (id) => setLocations({ store: SM_STORES.find(x => x.id === id) ? id : undefined });
@@ -5943,8 +6435,8 @@ function ChatBubble({ m, notify }) {
    Agent mode (expanded) = the whole panel becomes a chat: message thread + composer. */
 function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onRevert, onNewSession }) {
   // Studio JTBD: customisation + payment integration. First = scripted market-setup scenario.
-  const suggestions = ['Enable devices for international clients in Japan', 'Install an Android app on these devices', 'Upload a media asset to the home screen', 'Enable DCC and set the margin'];
-  const suggIcons = ['sparkles', 'settings', 'image', 'percent'];
+  const suggestions = ['Enable devices for international clients in Japan', 'Set up this configuration for Australia', 'Install an Android app on these devices', 'Enable DCC and set the margin'];
+  const suggIcons = ['sparkles', 'globe', 'settings', 'percent'];
   const last = messages[messages.length - 1];
   const showReply = messages.length > 1 && last && last.role === 'assistant';
   const firstTurn = messages.length <= 1;
@@ -5954,6 +6446,7 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onReve
   const [moreOpen, setMoreOpen] = useState(false);
   // Featured one-card prompt (mirrors Fleet Intelligence) + secondary prompts under "See more".
   const featuredPrompt = { cat: 'Market setup', q: 'Create a configuration for devices for international clients in Japan', desc: 'I\u2019ll enable DCC, offline payments, JCB & e-money and Japanese localisation — then update the preview.' };
+  const featuredPrompt2 = { cat: 'Region compliance', q: 'Set up this configuration for Australia', desc: 'Australia doesn\u2019t allow surcharging, so I\u2019ll remove it automatically and apply AU-compliant defaults — explaining what changed.' };
   const morePrompts = [
     { icon: 'settings', q: 'Install an Android app on these devices' },
     { icon: 'image', q: 'Upload a media asset to the home screen' },
@@ -6000,8 +6493,9 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onReve
           {firstTurn ? (
             <Col gap={T.s4}>
               <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Ask in plain language — I'll change the settings and update the preview.</span>
-              {/* Featured one-card prompt — same card design as Fleet Intelligence */}
+              {/* Featured prompt cards — same card design as Fleet Intelligence */}
               <AskPromptCard item={featuredPrompt} onClick={() => onSend(featuredPrompt.q)} />
+              <AskPromptCard item={featuredPrompt2} onClick={() => onSend(featuredPrompt2.q)} />
               {/* See more insights → the remaining prompts as insight rows */}
               <button type="button" onClick={() => setMoreOpen(o => !o)}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: '#00A152', padding: '2px 6px', borderRadius: 8 }}>
@@ -6184,6 +6678,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
       else { put('dcc', 'enabled', true, 'enabled DCC', 'transaction'); const m = t.match(/(\d+(?:\.\d+)?)\s*%/); if (m) put('dcc', 'markup', Number(m[1]), `set DCC markup to ${m[1]}%`, 'transaction'); }
     }
     if (/contactless/.test(t)) put('payment', 'contactless', !/off|disable/.test(t), (/off|disable/.test(t) ? 'disabled' : 'enabled') + ' contactless', 'transaction');
+    if (/surcharg/.test(t)) put('payment', 'surcharge', !/off|disable|remove|no /.test(t), (/off|disable|remove|no /.test(t) ? 'removed' : 'enabled') + ' surcharging', 'transaction');
     if (/german|deutsch/.test(t)) put('localization', 'language', 'German', 'set the language to German', 'home');
     else if (/french|français|francais/.test(t)) put('localization', 'language', 'French', 'set the language to French', 'home');
     else if (/japanese|日本/.test(t)) put('localization', 'language', 'Japanese', 'set the language to Japanese', 'home');
@@ -6250,6 +6745,14 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
     setField('japan', 'qrWallets', true);
     setScreen('transaction');
   };
+  // Region compliance: Australia doesn't allow surcharging, so applying an AU market drops it.
+  const startAustraliaScenario = () => {
+    setScope(s => ({ ...s, markets: Array.from(new Set([...(s.markets || []), 'Australia'])) }));
+    setOpenGroups(prev => new Set([...prev, 'payment', 'localization']));
+    setField('payment', 'surcharge', false);
+    setField('localization', 'language', 'English');
+    setScreen('transaction');
+  };
   const sendChat = (text) => {
     const q = (text != null ? text : draft).trim(); if (!q) return;
     setDraft('');
@@ -6260,6 +6763,25 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
     const reply = (t, quick) => setMessages(m => [...m, typeof t === 'string' ? { role: 'assistant', text: t, quick } : { role: 'assistant', quick, ...t }]);
     const t = q.toLowerCase();
     const step = flow && flow.step;
+
+    // Region fit — Australia: auto-remove disallowed settings (surcharging) and explain why.
+    if (!step && /australia|\baus\b|\bau\b/.test(t)) {
+      startAustraliaScenario();
+      reply({
+        text: 'Set this configuration up for Australia and applied the regional compliance rules:',
+        bullets: [
+          'Removed surcharging — it isn’t allowed in Australia, so I turned it off and locked it for this market',
+          'Kept contactless and confirm-amount on (allowed)',
+          'Set the primary language to English',
+        ],
+        outro: 'Surcharging stays off for any device scoped to Australia. Review the change list and apply when ready.',
+        docs: [
+          { label: 'Surcharging rules by region', url: 'https://docs.adyen.com/point-of-sale/surcharging', desc: 'Where surcharging is and isn’t permitted.' },
+        ],
+        action: { label: 'Review', onClick: () => setReviewOpen(true) },
+      });
+      return;
+    }
 
     // kick off the scripted scenario
     if (!step && /international|japan|日本|market[- ]?specific/.test(t)) {
@@ -6830,7 +7352,7 @@ function App() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <Header env={env} setEnv={setEnv} crumb={crumb} onToggleNav={() => setNavOpen(o => !o)} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        {navOpen && <Sidebar active={nav} onNav={(n) => { reset(); setStudioCfg(null); setNav(n); }} />}
+        {navOpen && <Sidebar active={nav} env={env} onNav={(n) => { reset(); setStudioCfg(null); setNav(n); }} />}
         <div style={{ flex: 1, overflow: 'auto', minWidth: 0, background: T.card, scrollbarGutter: 'stable' }}>
           {nav === 'device-studio' ? (
             studioCfg

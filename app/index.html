@@ -60,6 +60,8 @@
     .ns-hoverline:hover { text-decoration: underline; cursor: pointer; }
     .ns-kpi { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
     .ns-kpi:hover { background: var(--b-color-background-secondary-hover) !important; }
+    /* Dashboard tiles fill their grid cell so tiles in the same row share one height */
+    .ns-tile-cell > * { height: 100%; box-sizing: border-box; }
     /* AI chat composer — Bento "Highlight" (green) style with an animated pulsing glow */
     @keyframes ns-ask-in { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: none; } }
     @keyframes ns-ask-glow {

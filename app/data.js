@@ -34,6 +34,12 @@
     series: [{ name: 'Active, not trading', color: 'var(--b-color-decorative-red)', points: [39.2, 38.9, 38.5, 38.1, 37.6, 37.3, 37.0, 36.8, 36.6, 36.4, 36.2, 36.1] }],
     unit: '%', min: 30, max: 42,
   };
+  // Failed-transaction count trend (spike = the Jan network outage, then recovery).
+  const failedTxTrend = {
+    labels: months,
+    series: [{ name: 'Failed transactions', color: 'var(--b-color-decorative-red)', points: [2980, 2610, 3420, 2510, 2280, 2130, 1990, 2050, 1980, 1910, 1880, 1863] }],
+    min: 1500, max: 3600,
+  };
   const featureAdoption = {
     labels: months,
     series: [
@@ -66,14 +72,16 @@
       ['Tokyo Shibuya', 'Tokyo, JP', 'Not boarded', '3'],
     ],
   };
+  // Uniqlo APAC scenario — ~240 of ~3,723 terminals active-but-not-ready (~6%).
   const notTransacting = {
     columns: ['Reason', 'Terminals', 'Share'],
     rows: [
-      ['Offline / no connectivity', '104,882', '44%'],
-      ['Not boarded', '61,540', '26%'],
-      ['Configuration error', '41,190', '17%'],
-      ['Inventory / not deployed', '23,860', '10%'],
-      ['Hardware fault', '5,689', '3%'],
+      ['Offline / no connectivity', '96', '40%'],
+      ['Not boarded', '58', '24%'],
+      ['Configuration error', '38', '16%'],
+      ['Inventory / not deployed', '24', '10%'],
+      ['Software update pending', '16', '7%'],
+      ['Hardware fault', '8', '3%'],
     ],
   };
   const compliance = {
@@ -122,6 +130,33 @@
       ['e355 (mobile)', '61,220', '2.9s', '6.1s', '5.4%'],
       ['SoftPOS (Android)', '38,110', '3.2s', '6.8s', '6.9%'],
       ['NYC1 (kiosk)', '12,406', '1.9s', '3.5s', '1.3%'],
+    ],
+  };
+  /* Connectivity & health — fleet rollup of the per-terminal "Core Terminal Dashboard" signals
+     (websocket failures/latency, primary interface, signal strength, battery, firmware installs). */
+  const connectivity = {
+    period: 'Last 30 days',
+    iface: { wifi: 67, cellular: 33 },        // primary connected interface split (WLAN0 vs Cellular) — matches the Core Terminal Dashboard
+    // Counts scaled to the ~3,723-terminal fleet (weak-signal/battery are terminal counts = pct × fleet).
+    wsFailures: { count: 2410, pct: 1.9, trend: -0.4, dir: 'positive' },  // websocket connection failed (events)
+    avgLatencyMs: 318,                        // websocket connection latency (avg)
+    weakSignal: { count: 141, pct: 3.8 },     // terminals on weak Wi-Fi / cellular signal (3.8% of fleet)
+    lowBattery: { count: 56, pct: 1.5 },      // terminals with battery under 20% (1.5% of fleet)
+    firmwareInstalls: 214,                    // firmware installer events in period
+    reconnects: { count: 3960, trend: 2.1, dir: 'negative' }, // terminal reconnects / bootups
+    // Why people open this page: failed transactions that correlate with connectivity problems.
+    // count = connectivity-linked failed *payments* over the last 90 days (not euros); connectivityLinked = share of ALL failed payments that trace to connectivity; revenueAtRiskK = est. lost revenue in €k.
+    failedTx: { count: 1863, trend: 0.6, dir: 'negative', connectivityLinked: 71, revenueAtRiskK: 26 },
+    // Terminals whose failed transactions correlate with connectivity issues (troubleshoot targets).
+    troubleshoot: [
+      { id: 'dev:S1F2-000158253533474', terminal: 'S1F2-000158253533474', store: 'Uniqlo Ginza', model: 'S1F2', failed: 34, cause: 'Wi-Fi drops · weak signal (-88 dBm)' },
+      { id: 'dev:AMS1-0455120983', terminal: 'AMS1-0455120983', store: 'Uniqlo Shibuya', model: 'AMS1', failed: 21, cause: 'WebSocket timeouts · high latency' },
+      { id: 'dev:V400m-0231889014', terminal: 'V400m-0231889014', store: 'Uniqlo Seoul Gangnam', model: 'V400m', failed: 18, cause: 'Offline windows · not boarded' },
+      { id: 'dev:S1F2-000174920045518', terminal: 'S1F2-000174920045518', store: 'Uniqlo Osaka Umeda', model: 'S1F2', failed: 16, cause: 'WebSocket reconnect loop' },
+      { id: 'dev:AMS1-0455133071', terminal: 'AMS1-0455133071', store: 'Uniqlo Shinjuku', model: 'AMS1', failed: 13, cause: 'High latency (>1.5s to auth)' },
+      { id: 'dev:V400m-0231902248', terminal: 'V400m-0231902248', store: 'Uniqlo Fukuoka', model: 'V400m', failed: 11, cause: 'Cellular fallback · weak signal' },
+      { id: 'dev:S1F2-000158260011947', terminal: 'S1F2-000158260011947', store: 'Uniqlo Kyoto', model: 'S1F2', failed: 9, cause: 'Intermittent Wi-Fi drops' },
+      { id: 'dev:AMS1-0455141330', terminal: 'AMS1-0455141330', store: 'Uniqlo Nagoya', model: 'AMS1', failed: 7, cause: 'Bootup during peak · not boarded' },
     ],
   };
 
@@ -215,13 +250,13 @@
     {
       match: ['not', 'trading', 'transact'],
       question: 'Which terminals are active but not trading, and why?',
-      answer: '236,161 active terminals (36%) are not trading. The biggest driver is offline / connectivity (44%), followed by not-boarded (26%).',
-      metric: { value: '236,161', label: 'Active, not trading', trend: 1.2, dir: 'negative' },
+      answer: '~240 active terminals (~6%) are not trading. The biggest driver is offline / connectivity (40%), followed by not-boarded (24%).',
+      metric: { value: '240', label: 'Active, not trading', trend: 1.2, dir: 'negative' },
       grid: notReadyReasons,
     },
     {
-      match: ['tipping', 'gratuit'],
-      question: 'How is tipping configured across my fleet?',
+      match: ['tipping', 'gratuit', 'fleets'],
+      question: 'How is tipping configured across all my fleets?',
       answer: 'Tipping is enabled on ~30% of your tipping-capable fleet (~170,400 of ~522,900 terminals). Adoption is highest on S1F2 portables (44%) and lowest on SoftPOS (22%) and e355 (18%).',
       metric: { value: '30%', label: 'Fleet tipping adoption · ~170,400 terminals', trend: 2.0, dir: 'positive' },
       grid: { columns: [
@@ -262,6 +297,77 @@
       answer: '49,118 terminals are not on the latest firmware. e355 mobiles are furthest behind (74% up to date).',
       metric: { value: '49,118', label: 'Awaiting firmware update', trend: 5.0, dir: 'negative' },
       grid: compliance,
+    },
+    {
+      match: ['expiring', 'expire', 'expiry', 'sdk', 'firmware expir'],
+      question: 'How many SDKs / firmware are expiring?',
+      answer: '312 devices are on an SDK or firmware version that expires within 90 days — 84 of them within 30 days. When a version expires the device can no longer take payments, so plan updates before the cut-off. You can upgrade manually, or stage a scoped rollout from Firmware health.',
+      metric: { value: '312', label: 'Devices expiring within 90 days · 84 within 30', trend: 3.0, dir: 'negative' },
+      grid: { columns: [
+        'Version',
+        { label: 'Type', info: 'Whether this is a terminal firmware release or a Tap to Pay SDK version.' },
+        { label: 'Devices', info: 'Devices currently on this version.' },
+        { label: 'Expires', info: 'When this version stops being supported. After this date, affected devices can no longer take payments.' },
+        { label: 'Status', info: 'Expired = already unsupported; Expiring = within 90 days; Supported = safe.' },
+      ], rows: [
+        ['Android SDK 1.7.2', 'SDK', '38', 'in 12 days', 'Expiring'],
+        ['iOS SDK 2.1.0', 'SDK', '46', 'in 27 days', 'Expiring'],
+        ['Firmware 1.118', 'Firmware', '92', 'in 44 days', 'Expiring'],
+        ['Firmware 1.121', 'Firmware', '73', 'in 61 days', 'Expiring'],
+        ['Android SDK 1.8.0', 'SDK', '63', 'in 88 days', 'Expiring'],
+      ] },
+      note: 'Upgrading is disruptive if it risks breaking a custom integration — which is why many merchants upgrade manually. Preview compatibility and stage the rollout to one store first from Firmware health, then expand fleet-wide.',
+      actions: [
+        { label: 'Open Firmware health', icon: 'arrow-right', msg: 'Opening Firmware health…' },
+        { label: 'Preview compatibility', icon: 'checkmark', msg: 'Checking compatibility for expiring versions…' },
+      ],
+    },
+    {
+      match: ['locked firmware', 'lock reason', 'unlock', 'locked', 'safely unlocked'],
+      question: 'Show only terminals with locked firmware. Group them by lock reason and flag which ones can be safely unlocked and updated.',
+      answer: '128 terminals have firmware locked. Most are locked to protect a custom integration (61) or a certified peripheral (34). 45 of the 128 can be safely unlocked and updated now — they passed the compatibility preview; the rest need an integration or certification check first.',
+      metric: { value: '128', label: 'Terminals with locked firmware · 45 safe to update', trend: 0, dir: 'neutral' },
+      grid: { columns: [
+        { label: 'Lock reason', info: 'Why the firmware is locked. A lock stops an automatic update from changing behaviour the merchant depends on.' },
+        'Terminals',
+        { label: 'Safe to unlock & update', info: 'Whether these can be unlocked and updated now without compatibility risk, based on the impact preview.' },
+        { label: 'Recommended action', info: 'The suggested next step for this group.' },
+      ], rows: [
+        ['Custom integration', '61', '30 safe', 'Preview & unlock 30'],
+        ['Certified peripheral', '34', 'No — recertify first', 'Schedule recertification'],
+        ['Pending compliance test', '18', 'No — awaiting PCI', 'Wait for result'],
+        ['Manual lock (merchant)', '15', 'Yes — all 15', 'Unlock & update'],
+      ] },
+      note: 'A lock exists so an automatic update can’t break a working integration — that’s exactly why many merchants upgrade manually. The 45 flagged “safe” passed the compatibility preview; unlock those, stage them to one store first from Firmware health, then expand fleet-wide.',
+      actions: [
+        { label: 'Unlock & update the 45 safe terminals', icon: 'checkmark', msg: 'Staging update for 45 safe-to-unlock terminals…' },
+        { label: 'Open Firmware health', icon: 'arrow-right', msg: 'Opening Firmware health…' },
+      ],
+    },
+    {
+      match: ['apps installed', 'android apps', 'installed per device', 'apps per device', 'without sending me to reports'],
+      question: 'List Android apps installed per device across the fleet in one view, without sending me to Reports.',
+      answer: 'Across 117 Android-capable devices you have 9 distinct apps installed — 4.2 per device on average. This is the single source, so there’s no need to open Reports. Adyen Payments and the launcher are on every device; third-party apps vary by store.',
+      metric: { value: '4.2', label: 'Avg Android apps per device · 9 distinct apps · 117 devices', trend: 0.3, dir: 'neutral' },
+      grid: { columns: [
+        'App',
+        { label: 'Package', info: 'Android package name installed on the device.' },
+        { label: 'Version', info: 'Most common version across the fleet.' },
+        { label: 'Devices', info: 'Devices with this app installed.' },
+        { label: 'Coverage', info: 'Share of Android-capable devices with this app installed.' },
+      ], rows: [
+        ['Adyen Payments', 'com.adyen.ipp', '1.34.0', '117', '100%'],
+        ['Device Launcher', 'com.adyen.launcher', '3.2.1', '117', '100%'],
+        ['Terminal Manager', 'com.adyen.tm', '2.9.0', '112', '96%'],
+        ['Receipts Printer', 'com.adyen.print', '1.8.2', '88', '75%'],
+        ['Loyalty (United Arrows)', 'jp.ua.loyalty', '4.1.0', '41', '35%'],
+        ['Stock Lookup', 'com.retail.stock', '2.0.5', '33', '28%'],
+        ['Staff Clock-in', 'com.retail.clockin', '1.2.0', '22', '19%'],
+      ] },
+      note: '“Apps installed per device” used to be split between the live view and Reports. This is now the single source of truth — the number here matches the dashboard tile exactly, so you never have to cross-check Reports for one answer.',
+      actions: [
+        { label: 'Export app inventory', icon: 'download', msg: 'Exporting Android app inventory to CSV…' },
+      ],
     },
     // ---- Location AI · JTBD 1: Look up a device ----
     {
@@ -523,8 +629,8 @@
   };
 
   window.DATA = {
-    fmt, kpis, volumeTrend, authTrend, notTradingTrend, featureAdoption,
-    featureByModel, storesAttention, notTransacting, compliance, notReadyReasons, batteryHealth, transactionSpeed,
+    fmt, kpis, volumeTrend, authTrend, notTradingTrend, failedTxTrend, featureAdoption,
+    featureByModel, storesAttention, notTransacting, compliance, notReadyReasons, batteryHealth, transactionSpeed, connectivity,
     models, stores, devices, nlAnswers, sdkHealth, firmwareHealth,
   };
 })();

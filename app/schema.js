@@ -43,6 +43,7 @@
         { id: 'amountEntry', label: 'Amount entry', type: 'segmented', options: ['Keypad', 'Fixed'], default: 'Keypad' },
         { id: 'contactless', label: 'Contactless', type: 'toggle', default: true },
         { id: 'confirmAmount', label: 'Confirm amount screen', type: 'toggle', default: true },
+        { id: 'surcharge', label: 'Surcharging', type: 'toggle', default: true },
       ],
     },
     {
