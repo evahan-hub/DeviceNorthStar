@@ -334,14 +334,19 @@ function Grid({ columns, rows, onCell, dense = false, rightAlignFrom = 1, render
 }
 
 /* ---------------- full page overlay ---------------- */
-function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVariant = 'tertiary', backIcon = 'chevron-left', onClose, actions, children, tone, bodyBg }) {
+function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVariant = 'tertiary', backIcon = 'chevron-left', onClose, actions, children, tone, bodyBg, inline }) {
   useEffect(() => {
-    const onEsc = (e) => { if (e.key === 'Escape') (onClose || onBack)(); };
+    if (inline) return; // inline = rendered as a normal page (no ESC-to-close overlay behaviour)
+    const onEsc = (e) => { if (e.key === 'Escape') (onClose || onBack) && (onClose || onBack)(); };
     document.addEventListener('keydown', onEsc);
     return () => document.removeEventListener('keydown', onEsc);
   }, []);
+  const canClose = !!(onClose || onBack);
+  const root = inline
+    ? { position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', background: T.card }
+    : { position: 'fixed', inset: 0, zIndex: 400, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', background: T.card, isolation: 'isolate' };
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', background: T.card, isolation: 'isolate' }} className="ns-sheet">
+    <div style={root} className="ns-sheet">
       {/* b-modal-fullscreen · header — back left · title centered · actions/close right */}
       <div style={{ flexShrink: 0, alignSelf: 'stretch', height: 64, display: 'flex', alignItems: 'center', gap: 24, padding: '12px 24px', background: T.card, borderBottom: `1px solid ${T.sep}`, position: 'relative' }}>
         {/* left — icon-only back (Bento arrow) */}
@@ -359,10 +364,12 @@ function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVari
         {/* right — actions · separator · close */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 24, zIndex: 2 }}>
           {actions && <Row gap={8}>{actions}</Row>}
-          <Row gap={16} align="center" style={{ flexShrink: 0 }}>
-            <span style={{ width: 1, height: 26, background: T.sep, flexShrink: 0 }} />
-            <IconButton icon="cross" variant="tertiary" onClick={onClose || onBack} title="Close" />
-          </Row>
+          {canClose && (
+            <Row gap={16} align="center" style={{ flexShrink: 0 }}>
+              <span style={{ width: 1, height: 26, background: T.sep, flexShrink: 0 }} />
+              <IconButton icon="cross" variant="tertiary" onClick={onClose || onBack} title="Close" />
+            </Row>
+          )}
         </div>
       </div>
       {/* body */}
@@ -399,6 +406,7 @@ const NAV = [
     { id: 'device-intelligence', label: 'Devices Intelligence' },
     { id: 'stores', label: 'Devices & locations' },
     { id: 'device-studio', label: 'Device studio' },
+    { id: 'fleet-health', label: 'Fleet health', testOnly: true },
   ] },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
@@ -497,7 +505,7 @@ function Sidebar({ active, onNav, env }) {
                 </div>
                 {item.children && isOpen && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1, padding: '1px 0' }}>
-                    {item.children.map(c => (
+                    {item.children.filter(c => !c.testOnly || env === 'Test').map(c => (
                       <div key={c.id} className={`ns-nav ${active === c.id ? 'is-active' : ''}`} onClick={() => onNav(c.id)}
                         style={{ padding: '8px 8px 8px 40px', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: active === c.id ? 600 : 500, color: active === c.id ? T.ink : T.sub }}>
                         {c.label}
@@ -1212,7 +1220,7 @@ const CONN_SCOPES = [
   // Individual terminals — derived from the failed-transaction troubleshoot list so every one is selectable/scoped.
   ...D.connectivity.troubleshoot.map(t => ({ value: t.id, label: t.terminal, factor: 0.00004 })),
 ];
-function ConnectivityDetail({ onBack, notify, initialScope, focus }) {
+function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
   const d = D.connectivity;
   const [range, setRange] = useState('90d');
   const [scope, setScope] = useState(initialScope || 'all'); // device-level filter
@@ -1303,8 +1311,26 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus }) {
       ? 'Re-establishes the network connection and clears the weak-signal / Wi-Fi-drop condition.'
       : 'Re-pushes settings and re-boards the terminal — clears timeouts and not-boarded errors.';
     const others = ['Restart terminal', 'Re-sync config', 'Reassign'].filter(a => a !== rec);
+    // Terminal event timeline (PRD P0 #4): reboots, config-change type, online/offline, network switch, staff action.
+    const tag = (label, tone) => tone === 'neutral'
+      ? <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: T.sepFaint, color: T.sub, flexShrink: 0 }}>{label}</span>
+      : <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: `var(--b-color-background-${tone}-weak)`, color: `var(--b-color-label-on-background-${tone}-weak)`, flexShrink: 0 }}>{label}</span>;
+    const timeline = [
+      { t: 'Today · 14:32', type: 'Network', tone: 'warning', detail: weak ? 'Fell back to Cellular — Wi-Fi signal lost' : 'Reconnected on Wi-Fi' },
+      { t: 'Today · 14:31', type: 'WebSocket', tone: 'critical', detail: `Disconnected ×${Math.max(2, Math.round(wsDrops / 6))} during transactions` },
+      { t: 'Today · 08:10', type: 'Reboot', tone: 'neutral', detail: 'Scheduled nightly restart' },
+      { t: 'Yesterday · 22:40', type: 'Config change', tone: 'highlight', detail: 'Payment methods updated · applies after nightly reboot' },
+      { t: '2 days ago · 18:05', type: 'Staff action', tone: 'neutral', detail: 'Refund via admin PIN' },
+    ];
+    // Recent integration events (PRD P0 #1): high-level request/response + outcome (looked up by ID / ref).
+    const events = [
+      { req: 'Payment · €42.00', res: 'Approved', ok: true },
+      { req: 'Display · “Present card”', res: 'Shown', ok: true },
+      { req: `Payment · €${(19 + rnd() * 40).toFixed(2)}`, res: 'Failed · connection lost', ok: false },
+      { req: 'Abort', res: 'Cancelled by shopper', ok: true },
+    ];
     return (
-      <Modal open onClose={() => setTroubleshootId(null)} title={tt.terminal} description={`${tt.store} · ${tt.model}`} width={640}
+      <Modal open onClose={() => setTroubleshootId(null)} title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><button type="button" onClick={() => { setTroubleshootId(null); setListOpen(true); }} aria-label="Back to failed transactions" title="Back to failed transactions" style={{ width: 24, height: 24, border: 0, background: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, color: 'inherit', lineHeight: 0 }}><ArrowLeftGlyph /></button>{tt.terminal}</span>} description={`${tt.store} · ${tt.model}`} width={640}
         footer={<Row gap={8} style={{ justifyContent: 'flex-end' }}><Button variant="secondary" onClick={() => setTroubleshootId(null)}>Close</Button></Row>}>
         <Col gap={20}>
           {/* 1. What & why */}
@@ -1330,7 +1356,34 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus }) {
               {others.map(a => <Button key={a} variant="secondary" condensed onClick={() => notify && notify(`${a} · ${tt.terminal}…`)}>{a}</Button>)}
             </Row>
           </Col>
-          {/* 3. Evidence — why we flagged it (supporting, de-emphasised) */}
+          {/* 3. Terminal timeline — what changed and when (reboots, config, network, staff) */}
+          <Col gap={8}>
+            <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Terminal timeline</span>
+            <div style={{ ...surface, overflow: 'hidden' }}>
+              {timeline.map((ev, i) => (
+                <Row key={i} gap={12} align="flex-start" style={{ padding: '10px 14px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+                  <span style={{ fontSize: 12, color: T.faint, width: 104, flexShrink: 0, fontFamily: 'var(--b-font-family-secondary)' }}>{ev.t}</span>
+                  {tag(ev.type, ev.tone)}
+                  <span style={{ fontSize: 13, color: T.ink, flex: 1, minWidth: 0 }}>{ev.detail}</span>
+                </Row>
+              ))}
+            </div>
+          </Col>
+          {/* 4. Recent integration events — what the terminal actually did (request/response) */}
+          <Col gap={8}>
+            <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Recent integration events</span>
+            <div style={{ ...surface, overflow: 'hidden' }}>
+              {events.map((ev, i) => (
+                <Row key={i} gap={12} align="center" style={{ padding: '10px 14px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+                  <span style={{ fontSize: 13, color: T.ink, flex: 1, minWidth: 0, fontFamily: 'var(--b-font-family-secondary)' }}>{ev.req}</span>
+                  <span style={{ fontSize: 13, color: ev.ok ? T.sub : 'var(--b-color-label-critical)', fontWeight: ev.ok ? 400 : 600 }}>{ev.res}</span>
+                  {tag(ev.ok ? 'OK' : 'Failed', ev.ok ? 'positive' : 'critical')}
+                </Row>
+              ))}
+            </div>
+            <span style={{ fontSize: 12, color: T.faint }}>Looked up by terminal ID · service ID · tender / PSP reference · sensitive data redacted.</span>
+          </Col>
+          {/* 5. Signals — why we flagged it (supporting) */}
           <Col gap={10}>
             <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Signals · why we flagged this</span>
             <Row gap={20} style={{ flexWrap: 'wrap' }}>
@@ -1346,6 +1399,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus }) {
               </div>
             </div>
           </Col>
+          <span style={{ fontSize: 12, color: T.faint, lineHeight: '17px' }}>Logs are reliable for ~30 days and degrade after ~2 months. Platform-to-terminal pushes aren’t logged, so the timeline can have blind spots there.</span>
         </Col>
       </Modal>
     );
@@ -1430,10 +1484,9 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus }) {
       </FullPage>
     );
   }
-  return (
-    <FullPage title="Fleet health" subtitle={`Terminal telemetry · ${isDevice ? scopeDef.label : scopeDef.label + ' · all locations'} · ${periodLabel(range)}`} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
-      actions={<Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting fleet health to CSV…')}>Export</Button></Row>} bodyBg={T.page}>
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s7 }}>
+  // Body content shared by the Explore overlay (FullPage) and the inline Fleet health page.
+  const sections = (
+      <>
         {/* Troubleshooting banner — why people open this page: correlate failed transactions to connectivity, then fix */}
         {isDevice ? (
           <Row align="flex-start" gap={16} style={{ padding: '16px 20px', borderRadius: T.radiusL, background: 'var(--b-color-background-warning-weak)' }}>
@@ -1518,7 +1571,34 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus }) {
         <DetailSection title="Device signals" info="The same panels as the Core Terminal Dashboard — communication, websocket health, bootups, signal strength, battery and payment requests." description={isDevice ? `Live signals for ${scopeDef.label}` : 'Averaged/aggregated across the fleet.'}>
           <div style={chartGrid}>{c.panels.map(chartCard)}</div>
         </DetailSection>
+      </>
+  );
+  const headerActions = <Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting fleet health to CSV…')}>Export</Button></Row>;
+  const pageSubtitle = `${isDevice ? scopeDef.label : 'All terminals · all locations'} · ${periodLabel(range)}`;
+  // Inline page (Devices → Fleet health) — same layout as Devices Intelligence: left title + info + subtitle, actions right.
+  if (asPage) {
+    return (
+      <div style={{ padding: `${T.s7}px ${T.s7}px ${T.s7}px`, maxWidth: T.maxW, margin: '0 auto' }}>
+        <Row style={{ marginBottom: T.s5 }} align="flex-start">
+          <Col gap={4} style={{ flex: 1 }}>
+            <Row gap={6}>
+              <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Fleet health</span>
+              <InfoTip width={320} content={<span><b>Find and fix at-risk terminals.</b> Spot the ones failing payments or about to drop offline — from their connectivity, signal and battery — and troubleshoot them before they cost you sales.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
+            </Row>
+            <span style={{ fontSize: 13, color: T.sub }}>{pageSubtitle}</span>
+          </Col>
+          {headerActions}
+        </Row>
+        <Col gap={T.s7}>{sections}</Col>
+        {listModal}
+        {troubleshootModal}
       </div>
+    );
+  }
+  return (
+    <FullPage title="Fleet health" subtitle={`Terminal telemetry · ${pageSubtitle}`} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
+      actions={headerActions} bodyBg={T.page}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s7 }}>{sections}</div>
       {listModal}
       {troubleshootModal}
     </FullPage>
@@ -7336,7 +7416,10 @@ function App() {
   const pop = () => setStack(s => s.slice(0, -1));
   const reset = () => setStack([]);
 
-  const crumb = nav === 'device-studio' ? ['Devices', 'Device studio'] : nav === 'stores' ? ['Devices', 'Devices & locations'] : ['Devices', 'Devices Intelligence'];
+  // Fleet health is a Test-only page — if you leave Test while on it, fall back to Devices Intelligence.
+  useEffect(() => { if (nav === 'fleet-health' && env !== 'Test') setNav('device-intelligence'); }, [env, nav]);
+
+  const crumb = nav === 'device-studio' ? ['Devices', 'Device studio'] : nav === 'stores' ? ['Devices', 'Devices & locations'] : nav === 'fleet-health' ? ['Devices', 'Fleet health'] : ['Devices', 'Devices Intelligence'];
 
   const top = stack[stack.length - 1];
 
@@ -7363,6 +7446,8 @@ function App() {
             <DeviceLocationsPage notify={notify} onOpenStore={openStore} onOpenStudio={openStudio} />
           ) : nav === 'device-intelligence' ? (
             <DeviceIntelligence notify={notify} onOpenAllStores={openAllStores} onOpenAllDevices={openAllDevices} onOpenExplore={openExplore} onOpenStudio={openStudio} />
+          ) : nav === 'fleet-health' && env === 'Test' ? (
+            <ConnectivityDetail asPage notify={notify} />
           ) : (
             <div style={{ padding: 40, color: T.sub }}><EmptyState icon="nav-home" title={NAV.find(n => n.id === nav || (n.children || []).some(c => c.id === nav))?.label || 'Section'} description="This area is out of scope for the Device North Star prototype. Use the Devices section." /></div>
           )}
@@ -7379,7 +7464,7 @@ function App() {
 
       {/* Global Ask — available on every main page (Fleet Intelligence has its own with Save-as-tile).
           Hidden while a full-page modal is open (those carry their own docked AI). */}
-      {!top && nav !== 'device-intelligence' && (
+      {!top && nav !== 'device-intelligence' && nav !== 'fleet-health' && (
         <FloatingAsk notify={notify} context={nav === 'stores' ? 'devices' : nav === 'device-studio' ? 'studio' : 'fleet'} />
       )}
 
