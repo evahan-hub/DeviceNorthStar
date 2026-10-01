@@ -36,6 +36,52 @@ function Ico({ name, size = 16, color, style }) {
   return <Icon name={name} size={size} color={color} style={style} />;
 }
 
+/* Device event report: deterministic per-device events across every type — reboots, config changes,
+   network switches, staff actions, and connectivity/transaction errors (timestamp, type, detail, redacted ref). */
+function deviceEvents(dv) {
+  if (!dv) return [];
+  let s = 0; for (const ch of dv.id) s = (s * 31 + ch.charCodeAt(0)) & 0x7fffffff;
+  const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  const cause = dv.cause || '';
+  const weak = /Wi-?Fi|signal|Cellular/i.test(cause);
+  const errType = /Wi-?Fi|signal/i.test(cause) ? 'Weak signal / Wi-Fi drop'
+    : /WebSocket|latency|reconnect/i.test(cause) ? 'WebSocket failure'
+    : /Cellular/i.test(cause) ? 'Cellular fallback'
+    : /offline|boarded/i.test(cause) ? 'Offline / not boarded' : 'Connectivity error';
+  const base = { terminal: dv.terminal, store: dv.store, country: dv.country, model: dv.model, appVersion: dv.appVersion };
+  const out = [];
+  const push = (daysAgo, hh, mm, type, detail, ref = '') => {
+    const when = daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo}d ago`;
+    out.push({ ...base, daysAgo, ts: `${when} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, type, detail, ref });
+  };
+  // System events — happen across the whole estate (healthy devices included).
+  push(0, 8, 10, 'Reboot', 'Scheduled nightly restart');
+  if (r() < 0.45) push(1 + Math.floor(r() * 3), 22, 40, 'Config change', ['Payment methods updated · applies after nightly reboot', 'TFM settings updated', 'Merchant account reassigned'][Math.floor(r() * 3)]);
+  if (r() < 0.3) push(Math.floor(r() * 4), 18, 5, 'Staff action', 'Refund via admin PIN');
+  // Connectivity + error events — only when the device is unhealthy.
+  if (dv.status !== 'Healthy' && dv.failed) {
+    if (weak) push(0, 14, 32, 'Network', 'Fell back to cellular — Wi-Fi signal lost');
+    push(0, 14, 31, 'WebSocket', `Disconnected ×${Math.max(2, Math.round(dv.failed / 6))} during transactions`);
+    const n = Math.min(dv.failed, 10);
+    for (let i = 0; i < n; i++) {
+      const daysAgo = Math.floor(r() * 7), hh = 8 + Math.floor(r() * 12), mm = Math.floor(r() * 60);
+      push(daysAgo, hh, mm, errType, cause || errType, 'PSP •••' + Math.floor(1000 + r() * 8999));
+    }
+  }
+  return out.sort((a, b) => a.daysAgo - b.daysAgo);
+}
+
+/* Level-0 reporting: build a CSV from columns + rows and trigger a client-side download. */
+function downloadCSV(filename, columns, rows) {
+  const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [columns.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /* Hover popover rendered via a portal (position: fixed) so it never gets clipped
    by a tile/modal's overflow. Use for info icons inside scrollable/clipped cards. */
 function InfoTip({ content, children, width = 260, placement = 'auto' }) {
@@ -1225,7 +1271,32 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
   const [range, setRange] = useState('90d');
   const [scope, setScope] = useState(initialScope || 'all'); // device-level filter
   const [troubleshootId, setTroubleshootId] = useState(null); // per-terminal troubleshoot modal (focused view)
+  const [devTab, setDevTab] = useState('overview'); // device drill-down tab: overview | timeline | monitoring | logs
   const [listOpen, setListOpen] = useState(false); // "View all failed transactions" list popup
+  useEffect(() => { setDevTab('overview'); }, [troubleshootId]); // reset to Overview each time a terminal opens
+  // ---- Level 2 fleet-devices reporting: independent filters for the device list, Explore report & export ----
+  const [countryF, setCountryF] = useState([]);
+  const [modelF, setModelF] = useState([]);
+  const [versionF, setVersionF] = useState([]);
+  const [statusF, setStatusF] = useState([]);
+  const [devSearch, setDevSearch] = useState('');
+  const [devPage, setDevPage] = useState(1);
+  const [exploreOpen, setExploreOpen] = useState(false);
+  const [groupBy, setGroupBy] = useState('country');
+  const DEV_PAGE = 8;
+  const fleet = D.fleetDevices;
+  const uniq = (k) => Array.from(new Set(fleet.map(x => x[k])));
+  const toggle = (setter) => (v) => { setter(a => a.includes(v) ? a.filter(x => x !== v) : [...a, v]); setDevPage(1); };
+  const fleetFiltered = useMemo(() => fleet.filter(dv =>
+    (!countryF.length || countryF.includes(dv.country)) &&
+    (!modelF.length || modelF.includes(dv.model)) &&
+    (!versionF.length || versionF.includes(dv.appVersion)) &&
+    (!statusF.length || statusF.includes(dv.status)) &&
+    (!devSearch || dv.terminal.toLowerCase().includes(devSearch.trim().toLowerCase()))
+  ), [countryF, modelF, versionF, statusF, devSearch]);
+  // Level 3 proactive: devices trending toward failure (at-risk / offline) and those on older app versions.
+  const atRiskDevices = fleet.filter(dv => dv.status !== 'Healthy');
+  const oldVerDevices = fleet.filter(dv => dv.appVersion === '1.39.2' || dv.appVersion === '1.40.3');
   const scopeDef = CONN_SCOPES.find(s => s.value === scope) || CONN_SCOPES[0];
   const isDevice = scope.startsWith('dev:');
   const kpiGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: T.s3 };
@@ -1292,7 +1363,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
   const R = 16, C = 2 * Math.PI * R, wifiLen = C * d.iface.wifi / 100;
   // Shared per-terminal troubleshoot modal — opened from the Failed-transactions list AND the fleet banner.
   const troubleshootModal = (() => {
-    const tt = d.troubleshoot.find(x => x.id === troubleshootId);
+    const tt = d.troubleshoot.find(x => x.id === troubleshootId) || fleet.find(x => x.id === troubleshootId);
     if (!tt) return null;
     // Deterministic per-terminal signals derived from the terminal's failure count + cause.
     let x = 0; for (const ch of tt.id) x = (x * 31 + ch.charCodeAt(0)) & 0x7fffffff;
@@ -1302,6 +1373,10 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
     const wifi = weak ? -(82 + Math.round(rnd() * 8)) : -(58 + Math.round(rnd() * 8));
     const latency = 300 + Math.round(rnd() * 900) + (weak ? 400 : 0);
     const spark = Array.from({ length: 24 }, () => Math.max(0, Math.round((tt.failed / 12) + (rnd() - 0.5) * (tt.failed / 6))));
+    // Failure-history read-outs: worst day and the most recent day it failed.
+    const worstV = Math.max(...spark), worstDay = c.labels[spark.indexOf(worstV)];
+    let lastFailIdx = -1; spark.forEach((v, i) => { if (v > 0) lastFailIdx = i; });
+    const lastFailDay = lastFailIdx >= 0 ? c.labels[lastFailIdx] : '—';
     const stat = (label, value) => (
       <Col gap={2} style={{ flex: '1 1 120px', minWidth: 110 }}><span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{label}</span><span className="ns-num" style={{ fontSize: 18, fontWeight: 600 }}>{value}</span></Col>
     );
@@ -1329,11 +1404,23 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
       { req: `Payment · €${(19 + rnd() * 40).toFixed(2)}`, res: 'Failed · connection lost', ok: false },
       { req: 'Abort', res: 'Cancelled by shopper', ok: true },
     ];
+    // Level-1 device monitoring: connectivity drops over the last 7 days + Wi-Fi/cellular usage split.
+    const dayLabels = ['6d', '5d', '4d', '3d', '2d', 'Yest', 'Today'];
+    const drops7 = Array.from({ length: 7 }, () => Math.max(0, Math.round((wsDrops / 9) + (rnd() - 0.5) * (wsDrops / 4))));
+    const wifiUse = weak ? 54 : 82, cellUse = 100 - wifiUse;
+    // Level-1 extensive logs: the technical source behind the plain-language timeline.
+    const logTypes = [
+      { name: 'Network failure', count: Math.max(3, Math.round(wsDrops * 0.7)), last: 'Today · 14:32', tone: 'critical' },
+      { name: 'Reboot / restart', count: 2, last: 'Today · 08:10', tone: 'neutral' },
+      { name: 'Menu access', count: 5, last: 'Yesterday · 18:05', tone: 'neutral' },
+      { name: 'Communication log', count: Math.round(420 + rnd() * 280), last: 'Today · 14:35', tone: 'highlight' },
+      { name: 'Payment request (POSTX)', count: Math.round(tt.failed * 6 + rnd() * 40), last: 'Today · 14:30', tone: 'highlight' },
+    ];
     return (
       <Modal open onClose={() => setTroubleshootId(null)} title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><button type="button" onClick={() => { setTroubleshootId(null); setListOpen(true); }} aria-label="Back to failed transactions" title="Back to failed transactions" style={{ width: 24, height: 24, border: 0, background: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, color: 'inherit', lineHeight: 0 }}><ArrowLeftGlyph /></button>{tt.terminal}</span>} description={`${tt.store} · ${tt.model}`} width={640}
         footer={<Row gap={8} style={{ justifyContent: 'flex-end' }}><Button variant="secondary" onClick={() => setTroubleshootId(null)}>Close</Button></Row>}>
-        <Col gap={20}>
-          {/* 1. What & why */}
+        <Col gap={16}>
+          {/* What & why — always visible context */}
           <Row align="flex-start" gap={16} style={{ padding: '14px 16px', borderRadius: T.radiusM, background: 'var(--b-color-background-warning-weak)' }}>
             <Ico name="warning-filled" size={22} color="var(--b-color-background-warning-strong)" style={{ flexShrink: 0, marginTop: 2 }} />
             <Col gap={4} style={{ flex: 1, minWidth: 0 }}>
@@ -1341,24 +1428,41 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
               <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Likely cause: <b>{tt.cause}</b>. Failures line up with {D.fmt(wsDrops)} WebSocket drops — not the card or the shopper.</span>
             </Col>
           </Row>
-          {/* 2. Recommended fix + other actions (the task) */}
-          <Col gap={10}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>Recommended fix</span>
-            <Row align="center" gap={12} style={{ padding: '14px 16px', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, flexWrap: 'wrap' }}>
-              <Col gap={2} style={{ flex: 1, minWidth: 200 }}>
-                <span style={{ fontSize: 14, fontWeight: 600 }}>{rec}</span>
-                <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{recWhy}</span>
+          <UnderlineTabs value={devTab} onChange={setDevTab} tabs={[{ value: 'overview', label: 'Overview' }, { value: 'timeline', label: 'Timeline' }, { value: 'monitoring', label: 'Monitoring' }, { value: 'logs', label: 'Logs' }]} />
+
+          {/* OVERVIEW — recommended fix + headline signals */}
+          {devTab === 'overview' && (
+            <Col gap={16}>
+              <Col gap={10}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Recommended fix</span>
+                <Row align="center" gap={12} style={{ padding: '14px 16px', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, flexWrap: 'wrap' }}>
+                  <Col gap={2} style={{ flex: 1, minWidth: 200 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>{rec}</span>
+                    <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{recWhy}</span>
+                  </Col>
+                  <Button variant="primary" condensed onClick={() => notify && notify(`${rec} · ${tt.terminal}…`)}>{rec}</Button>
+                </Row>
+                <Row gap={8} align="center" style={{ flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, color: T.faint }}>Other fixes:</span>
+                  {others.map(a => <Button key={a} variant="secondary" condensed onClick={() => notify && notify(`${a} · ${tt.terminal}…`)}>{a}</Button>)}
+                </Row>
               </Col>
-              <Button variant="primary" condensed onClick={() => notify && notify(`${rec} · ${tt.terminal}…`)}>{rec}</Button>
-            </Row>
-            <Row gap={8} align="center" style={{ flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, color: T.faint }}>Other fixes:</span>
-              {others.map(a => <Button key={a} variant="secondary" condensed onClick={() => notify && notify(`${a} · ${tt.terminal}…`)}>{a}</Button>)}
-            </Row>
-          </Col>
-          {/* 3. Terminal timeline — what changed and when (reboots, config, network, staff) */}
-          <Col gap={8}>
-            <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Terminal timeline</span>
+              <Row gap={20} style={{ flexWrap: 'wrap' }}>
+                {stat('Failed payments', tt.failed)}
+                {stat('WebSocket drops', D.fmt(wsDrops))}
+                {stat('Avg Wi-Fi signal', `${wifi} dBm`)}
+                {stat('Avg latency', `${latency} ms`)}
+              </Row>
+              <Row gap={20} style={{ flexWrap: 'wrap' }}>
+                {stat('Android app', `${tt.app} ${tt.appVersion}`)}
+                {stat('OS', tt.os)}
+                {stat('Store', tt.store)}
+              </Row>
+            </Col>
+          )}
+
+          {/* TIMELINE — plain-language device events */}
+          {devTab === 'timeline' && (
             <div style={{ ...surface, overflow: 'hidden' }}>
               {timeline.map((ev, i) => (
                 <Row key={i} gap={12} align="flex-start" style={{ padding: '10px 14px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
@@ -1368,38 +1472,73 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
                 </Row>
               ))}
             </div>
-          </Col>
-          {/* 4. Recent integration events — what the terminal actually did (request/response) */}
-          <Col gap={8}>
-            <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Recent integration events</span>
-            <div style={{ ...surface, overflow: 'hidden' }}>
-              {events.map((ev, i) => (
-                <Row key={i} gap={12} align="center" style={{ padding: '10px 14px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
-                  <span style={{ fontSize: 13, color: T.ink, flex: 1, minWidth: 0, fontFamily: 'var(--b-font-family-secondary)' }}>{ev.req}</span>
-                  <span style={{ fontSize: 13, color: ev.ok ? T.sub : 'var(--b-color-label-critical)', fontWeight: ev.ok ? 400 : 600 }}>{ev.res}</span>
-                  {tag(ev.ok ? 'OK' : 'Failed', ev.ok ? 'positive' : 'critical')}
-                </Row>
-              ))}
-            </div>
-            <span style={{ fontSize: 12, color: T.faint }}>Looked up by terminal ID · service ID · tender / PSP reference · sensitive data redacted.</span>
-          </Col>
-          {/* 5. Signals — why we flagged it (supporting) */}
-          <Col gap={10}>
-            <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Signals · why we flagged this</span>
-            <Row gap={20} style={{ flexWrap: 'wrap' }}>
-              {stat('Failed payments', tt.failed)}
-              {stat('WebSocket drops', D.fmt(wsDrops))}
-              {stat('Avg Wi-Fi signal', `${wifi} dBm`)}
-              {stat('Avg latency', `${latency} ms`)}
-            </Row>
-            <div style={{ ...surface, overflow: 'hidden' }}>
-              <TileHeader title="Failed payments" subtitle="Per day · last 90 days" />
-              <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 150 }}>
-                <LineChart data={{ labels: c.labels, min: 0, series: [{ color: 'var(--b-color-decorative-red)', points: spark }] }} height={130} />
+          )}
+
+          {/* MONITORING — connectivity drops (7d) + interface usage + failed payments trend */}
+          {devTab === 'monitoring' && (
+            <Col gap={16}>
+              <div style={{ ...surface, overflow: 'hidden' }}>
+                <TileHeader title="Connectivity drops" subtitle="WebSocket disconnects · last 7 days" />
+                <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 150 }}>
+                  <LineChart data={{ labels: dayLabels, min: 0, series: [{ color: 'var(--b-color-decorative-red)', points: drops7 }] }} height={130} />
+                </div>
               </div>
-            </div>
-          </Col>
-          <span style={{ fontSize: 12, color: T.faint, lineHeight: '17px' }}>Logs are reliable for ~30 days and degrade after ~2 months. Platform-to-terminal pushes aren’t logged, so the timeline can have blind spots there.</span>
+              <Col gap={8}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Wi-Fi / cellular usage</span>
+                <div style={{ display: 'flex', height: 10, borderRadius: 6, overflow: 'hidden', background: T.page }}>
+                  <div title={`Wi-Fi ${wifiUse}%`} style={{ width: `${wifiUse}%`, background: 'var(--b-color-decorative-blue)' }} />
+                  <div title={`Cellular ${cellUse}%`} style={{ width: `${cellUse}%`, background: 'var(--b-color-decorative-orange)' }} />
+                </div>
+                <Row gap={16} style={{ flexWrap: 'wrap' }}>
+                  <Row gap={6}><span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--b-color-decorative-blue)' }} /><span style={{ fontSize: 12, color: T.sub }}>Wi-Fi <b className="ns-num" style={{ color: T.ink }}>{wifiUse}%</b></span></Row>
+                  <Row gap={6}><span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--b-color-decorative-orange)' }} /><span style={{ fontSize: 12, color: T.sub }}>Cellular <b className="ns-num" style={{ color: T.ink }}>{cellUse}%</b></span></Row>
+                </Row>
+                {weak && <span style={{ fontSize: 12, color: T.faint }}>Frequent Wi-Fi→cellular failover detected — a sign of an unstable Wi-Fi uplink.</span>}
+              </Col>
+              <div style={{ ...surface, overflow: 'hidden' }}>
+                <TileHeader title="Transaction failure history" subtitle="Failures per day · last 90 days" />
+                <div style={{ padding: `0 ${T.s5}px 8px`, height: 150 }}>
+                  <LineChart data={{ labels: c.labels, min: 0, series: [{ color: 'var(--b-color-decorative-red)', points: spark }] }} height={130} />
+                </div>
+                <div style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
+                  <span style={{ fontSize: 12, color: T.faint }}>Worst day <b className="ns-num" style={{ color: T.ink }}>{worstV}</b> failures on <b style={{ color: T.ink }}>{worstDay}</b> · last failure <b style={{ color: T.ink }}>{lastFailDay}</b>.</span>
+                </div>
+              </div>
+            </Col>
+          )}
+
+          {/* LOGS — extensive log types + integration request/response */}
+          {devTab === 'logs' && (
+            <Col gap={16}>
+              <Col gap={8}>
+                <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Log types</span>
+                <div style={{ ...surface, overflow: 'hidden' }}>
+                  {logTypes.map((lg, i) => (
+                    <Row key={i} gap={12} align="center" style={{ padding: '10px 14px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+                      {tag(lg.name, lg.tone)}
+                      <span style={{ fontSize: 12, color: T.faint, flex: 1, minWidth: 0 }}>last {lg.last}</span>
+                      <span className="ns-num" style={{ fontSize: 13, fontWeight: 600 }}>{D.fmt(lg.count)}</span>
+                      <Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => notify && notify(`Opening ${lg.name} log · ${tt.terminal}…`)}>View</Button>
+                    </Row>
+                  ))}
+                </div>
+              </Col>
+              <Col gap={8}>
+                <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Recent integration events</span>
+                <div style={{ ...surface, overflow: 'hidden' }}>
+                  {events.map((ev, i) => (
+                    <Row key={i} gap={12} align="center" style={{ padding: '10px 14px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+                      <span style={{ fontSize: 13, color: T.ink, flex: 1, minWidth: 0, fontFamily: 'var(--b-font-family-secondary)' }}>{ev.req}</span>
+                      <span style={{ fontSize: 13, color: ev.ok ? T.sub : 'var(--b-color-label-critical)', fontWeight: ev.ok ? 400 : 600 }}>{ev.res}</span>
+                      {tag(ev.ok ? 'OK' : 'Failed', ev.ok ? 'positive' : 'critical')}
+                    </Row>
+                  ))}
+                </div>
+                <span style={{ fontSize: 12, color: T.faint }}>Looked up by terminal ID · service ID · tender / PSP reference · sensitive data redacted.</span>
+              </Col>
+              <span style={{ fontSize: 12, color: T.faint, lineHeight: '17px' }}>Logs are reliable for ~30 days and degrade after ~2 months. Platform-to-terminal pushes aren’t logged, so the timeline can have blind spots there.</span>
+            </Col>
+          )}
         </Col>
       </Modal>
     );
@@ -1422,6 +1561,49 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
       </Col>
     </Modal>
   ) : null;
+  // Level-2 Explore report — bird's-eye aggregation of the (filtered) fleet, grouped by country / model / version.
+  const exploreModal = exploreOpen ? (() => {
+    const key = groupBy === 'country' ? 'country' : groupBy === 'model' ? 'model' : 'appVersion';
+    const groups = {};
+    fleetFiltered.forEach(dv => { (groups[dv[key]] = groups[dv[key]] || []).push(dv); });
+    const rows = Object.entries(groups).map(([g, list]) => {
+      const atrisk = list.filter(x => x.status !== 'Healthy');
+      const failed = list.reduce((s2, x) => s2 + x.failed, 0);
+      const avgWifi = Math.round(list.reduce((s2, x) => s2 + x.wifi, 0) / list.length);
+      return { g, total: list.length, atrisk: atrisk.length, failed, avgWifi };
+    }).sort((a, b) => b.atrisk - a.atrisk || b.failed - a.failed);
+    const th = { textAlign: 'left', padding: '8px 12px', fontSize: 12, color: T.sub, fontWeight: 600, borderBottom: `1px solid ${T.sep}`, whiteSpace: 'nowrap' };
+    const thR = { ...th, textAlign: 'right' };
+    const td = { padding: '10px 12px', fontSize: 13, color: T.ink, borderBottom: `1px solid ${T.sepFaint}`, whiteSpace: 'nowrap' };
+    const tdR = { ...td, textAlign: 'right', fontFamily: 'var(--b-font-family-secondary)' };
+    return (
+      <Modal open onClose={() => setExploreOpen(false)} title="Explore report" description={`Bird's-eye view · ${D.fmt(fleetFiltered.length)} devices${countryF.length || modelF.length || versionF.length ? ' (filtered)' : ''}`} width={720}
+        footer={<Row gap={8} style={{ justifyContent: 'space-between', width: '100%', alignItems: 'center' }}><span style={{ fontSize: 12, color: T.faint }}>Grouped totals reflect the active filters.</span><Button variant="secondary" iconLeft="download" onClick={() => { downloadCSV(`fleet-report-by-${groupBy}.csv`, [groupBy, 'Terminals', 'At risk', 'Failed payments', 'Avg Wi-Fi (dBm)'], rows.map(r => [r.g, r.total, r.atrisk, r.failed, r.avgWifi])); notify && notify('Exported report to CSV'); }}>Export</Button></Row>}>
+        <Col gap={14}>
+          <Col gap={6}>
+            <span style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>Group by</span>
+            <ChipPicker value={groupBy} onChange={setGroupBy} options={[{ value: 'country', label: 'Country' }, { value: 'model', label: 'Model' }, { value: 'appVersion', label: 'App version' }]} />
+          </Col>
+          <div style={{ ...surface, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th style={th}>{groupBy === 'appVersion' ? 'App version' : groupBy === 'model' ? 'Model' : 'Country'}</th><th style={thR}>Terminals</th><th style={thR}>At risk</th><th style={thR}>Failed payments</th><th style={thR}>Avg Wi-Fi</th></tr></thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={r.g}>
+                    <td style={{ ...td, fontWeight: 500, borderBottom: i === rows.length - 1 ? 'none' : td.borderBottom }}>{r.g}</td>
+                    <td style={{ ...tdR, borderBottom: i === rows.length - 1 ? 'none' : td.borderBottom }}>{D.fmt(r.total)}</td>
+                    <td style={{ ...tdR, borderBottom: i === rows.length - 1 ? 'none' : td.borderBottom, color: r.atrisk ? 'var(--b-color-label-critical)' : T.sub, fontWeight: r.atrisk ? 600 : 400 }}>{r.atrisk}</td>
+                    <td style={{ ...tdR, borderBottom: i === rows.length - 1 ? 'none' : td.borderBottom }}>{D.fmt(r.failed)}</td>
+                    <td style={{ ...tdR, borderBottom: i === rows.length - 1 ? 'none' : td.borderBottom }}>{r.avgWifi} dBm</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Col>
+      </Modal>
+    );
+  })() : null;
   // Focused "Failed transactions" view — only the failed-tx chart + the affected device list.
   if (focus === 'failed') {
     const fp = c.panels.find(p => p.title === 'Failed transactions');
@@ -1487,6 +1669,31 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
   // Body content shared by the Explore overlay (FullPage) and the inline Fleet health page.
   const sections = (
       <>
+        {/* Level 3 — Proactive alerts: act before these become failures (fleet scope only) */}
+        {!isDevice && (
+          <div style={{ ...surface, overflow: 'hidden' }}>
+            <Row align="center" gap={10} style={{ padding: '14px 16px 10px' }}>
+              <Ico name="notification" size={18} color="var(--b-color-label-primary)" />
+              <Col gap={0}><span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Proactive alerts</span><span style={{ fontSize: 12, color: T.sub }}>Prevent trouble — act before these terminals start failing</span></Col>
+            </Row>
+            <Row align="flex-start" gap={12} style={{ padding: '12px 16px', borderTop: `1px solid ${T.sepFaint}` }}>
+              <Ico name="warning-filled" size={18} color="var(--b-color-background-warning-strong)" style={{ flexShrink: 0, marginTop: 1 }} />
+              <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>{atRiskDevices.length} terminals likely to drop offline this week</span>
+                <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Connectivity is trending down on these devices — restart or move them to a stronger Wi-Fi before they stop trading.</span>
+              </Col>
+              <Button variant="secondary" condensed iconRight="arrow-right" onClick={() => setListOpen(true)}>Review</Button>
+            </Row>
+            <Row align="flex-start" gap={12} style={{ padding: '12px 16px', borderTop: `1px solid ${T.sepFaint}` }}>
+              <Ico name="info" size={18} color="var(--b-color-decorative-blue)" style={{ flexShrink: 0, marginTop: 1 }} />
+              <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>{oldVerDevices.length} terminals on an outdated Payments app version</span>
+                <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Versions 1.40.3 and older have known WebSocket issues — schedule an update to prevent drops.</span>
+              </Col>
+              <Button variant="secondary" condensed iconRight="arrow-right" onClick={() => { setVersionF(['1.40.3', '1.39.2']); setDevPage(1); notify && notify('Filtered to outdated versions'); }}>Show devices</Button>
+            </Row>
+          </div>
+        )}
         {/* Troubleshooting banner — why people open this page: correlate failed transactions to connectivity, then fix */}
         {isDevice ? (
           <Row align="flex-start" gap={16} style={{ padding: '16px 20px', borderRadius: T.radiusL, background: 'var(--b-color-background-warning-weak)' }}>
@@ -1571,9 +1778,85 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
         <DetailSection title="Device signals" info="The same panels as the Core Terminal Dashboard — communication, websocket health, bootups, signal strength, battery and payment requests." description={isDevice ? `Live signals for ${scopeDef.label}` : 'Averaged/aggregated across the fleet.'}>
           <div style={chartGrid}>{c.panels.map(chartCard)}</div>
         </DetailSection>
+        {/* Level 2 — Fleet devices: the device-level list with country/model/version filters, Explore report & export */}
+        {!isDevice && (() => {
+          const anyF = countryF.length || modelF.length || versionF.length || statusF.length || devSearch;
+          const clearAll = () => { setCountryF([]); setModelF([]); setVersionF([]); setStatusF([]); setDevSearch(''); setDevPage(1); };
+          const pages = Math.max(1, Math.ceil(fleetFiltered.length / DEV_PAGE));
+          const page = Math.min(devPage, pages);
+          const slice = fleetFiltered.slice((page - 1) * DEV_PAGE, page * DEV_PAGE);
+          const sv = { Healthy: 'green', 'At risk': 'yellow', Offline: 'grey' };
+          const th = { textAlign: 'left', padding: '10px 12px', fontSize: 12, color: T.sub, fontWeight: 600, borderBottom: `1px solid ${T.sep}`, whiteSpace: 'nowrap', background: 'var(--b-color-background-secondary)' };
+          const td = { padding: '11px 12px', fontSize: 13, color: T.ink, borderBottom: `1px solid ${T.sepFaint}`, whiteSpace: 'nowrap' };
+          return (
+            <DetailSection title="Fleet devices" info="Every payment device in the estate. Filter by country, model or app version, open one to troubleshoot, or export the filtered set."
+              description={`${D.fmt(fleetFiltered.length)} of ${D.fmt(fleet.length)} devices`}
+              actions={<Row gap={8}><Button variant="secondary" condensed iconLeft="download" onClick={exportEvents}>Event report</Button><Button variant="secondary" condensed iconLeft="nav-analytics" onClick={() => setExploreOpen(true)}>Explore report</Button></Row>}>
+              <Row gap={10} style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', lineHeight: 0, color: T.faint, pointerEvents: 'none' }}><Ico name="search" size={16} color={T.faint} /></span>
+                  <input value={devSearch} onChange={e => { setDevSearch(e.target.value); setDevPage(1); }} placeholder="Search terminal ID…" style={{ height: 36, width: '100%', boxSizing: 'border-box', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, padding: '0 12px 0 36px', fontFamily: 'inherit', fontSize: 14, color: T.ink, background: T.card }} />
+                </div>
+                <FilterChip label="Status" options={[{ value: 'At risk', label: 'At risk' }, { value: 'Offline', label: 'Offline' }, { value: 'Healthy', label: 'Healthy' }]} selected={statusF} onChange={toggle(setStatusF)} onClear={() => { setStatusF([]); setDevPage(1); }} />
+                <FilterChip label="Country" options={uniq('country').map(x => ({ value: x, label: x }))} selected={countryF} onChange={toggle(setCountryF)} onClear={() => { setCountryF([]); setDevPage(1); }} />
+                <FilterChip label="Model" options={uniq('model').map(x => ({ value: x, label: x }))} selected={modelF} onChange={toggle(setModelF)} onClear={() => { setModelF([]); setDevPage(1); }} />
+                <FilterChip label="App version" options={uniq('appVersion').map(x => ({ value: x, label: x }))} selected={versionF} onChange={toggle(setVersionF)} onClear={() => { setVersionF([]); setDevPage(1); }} />
+                <Button variant="tertiary" condensed onClick={() => { setStatusF(['At risk', 'Offline']); setDevPage(1); }}>Needs attention</Button>
+                {anyF ? <Button variant="tertiary" condensed onClick={clearAll}>Clear</Button> : null}
+              </Row>
+              <div style={{ ...surface, overflow: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+                  <thead><tr>
+                    <th style={th}>Terminal ID</th><th style={th}>Store</th><th style={th}>Country</th><th style={th}>Model</th><th style={th}>App version</th><th style={th}>Status</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Failed</th><th style={{ ...th, textAlign: 'right' }}>Wi-Fi</th><th style={{ ...th, width: 1 }}></th>
+                  </tr></thead>
+                  <tbody>
+                    {slice.map(dv => (
+                      <tr key={dv.id} className="ns-row">
+                        <td style={{ ...td, fontFamily: 'var(--b-font-family-secondary)', fontWeight: 500 }}>{dv.terminal}</td>
+                        <td style={td}>{dv.store}</td>
+                        <td style={td}>{dv.country}</td>
+                        <td style={td}>{dv.model}</td>
+                        <td style={{ ...td, fontFamily: 'var(--b-font-family-secondary)' }}>{dv.appVersion}</td>
+                        <td style={td}><Status variant={sv[dv.status]} label={dv.status} /></td>
+                        <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--b-font-family-secondary)', color: dv.failed ? 'var(--b-color-label-critical)' : T.faint, fontWeight: dv.failed ? 600 : 400 }}>{dv.failed || '—'}</td>
+                        <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--b-font-family-secondary)' }}>{dv.wifi} dBm</td>
+                        <td style={{ ...td, textAlign: 'right' }}>{dv.status !== 'Healthy' ? <Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => setTroubleshootId(dv.id)}>Troubleshoot</Button> : null}</td>
+                      </tr>
+                    ))}
+                    {slice.length === 0 && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: T.faint, borderBottom: 'none' }}>No devices match these filters.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: T.sub }}>{fleetFiltered.length ? `${(page - 1) * DEV_PAGE + 1}–${Math.min(page * DEV_PAGE, fleetFiltered.length)} of ${fleetFiltered.length}` : '0 results'}</span>
+                <Row gap={8}>
+                  <Button variant="secondary" condensed iconLeft="chevron-left" disabled={page <= 1} onClick={() => setDevPage(page - 1)}>Prev</Button>
+                  <Button variant="secondary" condensed iconRight="chevron-right" disabled={page >= pages} onClick={() => setDevPage(page + 1)}>Next</Button>
+                </Row>
+              </Row>
+            </DetailSection>
+          );
+        })()}
       </>
   );
-  const headerActions = <Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting fleet health to CSV…')}>Export</Button></Row>;
+  // Level-0/2 reporting: export the fleet devices currently in scope (all active filters applied) as CSV.
+  const exportCSV = () => {
+    const rows = fleetFiltered;
+    downloadCSV('fleet-health-devices.csv',
+      ['Terminal ID', 'Store', 'Country', 'Model', 'Android app', 'App version', 'OS', 'Status', 'Failed payments', 'Wi-Fi (dBm)', 'Battery %', 'Issue'],
+      rows.map(t => [t.terminal, t.store, t.country, t.model, t.app, t.appVersion, t.os, t.status, t.failed, t.wifi, t.battery, t.cause]));
+    notify && notify(`Exported ${rows.length} device${rows.length === 1 ? '' : 's'} to CSV`);
+  };
+  // Event report: event-level CSV across the filtered devices — all event types (answers "download all events/errors").
+  const exportEvents = () => {
+    const rows = fleetFiltered.flatMap(deviceEvents);
+    downloadCSV('fleet-health-events.csv',
+      ['When', 'Terminal ID', 'Store', 'Country', 'Model', 'App version', 'Event type', 'Detail', 'Reference'],
+      rows.map(e => [e.ts, e.terminal, e.store, e.country, e.model, e.appVersion, e.type, e.detail, e.ref]));
+    notify && notify(`Exported ${rows.length} event${rows.length === 1 ? '' : 's'} to CSV`);
+  };
+  const headerActions = <Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={exportCSV}>Export</Button></Row>;
   const pageSubtitle = `${isDevice ? scopeDef.label : 'All terminals · all locations'} · ${periodLabel(range)}`;
   // Inline page (Devices → Fleet health) — same layout as Devices Intelligence: left title + info + subtitle, actions right.
   if (asPage) {
@@ -1591,6 +1874,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
         </Row>
         <Col gap={T.s7}>{sections}</Col>
         {listModal}
+        {exploreModal}
         {troubleshootModal}
       </div>
     );
@@ -1600,6 +1884,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
       actions={headerActions} bodyBg={T.page}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s7 }}>{sections}</div>
       {listModal}
+      {exploreModal}
       {troubleshootModal}
     </FullPage>
   );

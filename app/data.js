@@ -148,17 +148,59 @@
     // count = connectivity-linked failed *payments* over the last 90 days (not euros); connectivityLinked = share of ALL failed payments that trace to connectivity; revenueAtRiskK = est. lost revenue in €k.
     failedTx: { count: 1863, trend: 0.6, dir: 'negative', connectivityLinked: 71, revenueAtRiskK: 26 },
     // Terminals whose failed transactions correlate with connectivity issues (troubleshoot targets).
+    // app/appVersion/os added for Level-0 reporting (Android app & versions data points).
     troubleshoot: [
-      { id: 'dev:S1F2-000158253533474', terminal: 'S1F2-000158253533474', store: 'Uniqlo Ginza', model: 'S1F2', failed: 34, cause: 'Wi-Fi drops · weak signal (-88 dBm)' },
-      { id: 'dev:AMS1-0455120983', terminal: 'AMS1-0455120983', store: 'Uniqlo Shibuya', model: 'AMS1', failed: 21, cause: 'WebSocket timeouts · high latency' },
-      { id: 'dev:V400m-0231889014', terminal: 'V400m-0231889014', store: 'Uniqlo Seoul Gangnam', model: 'V400m', failed: 18, cause: 'Offline windows · not boarded' },
-      { id: 'dev:S1F2-000174920045518', terminal: 'S1F2-000174920045518', store: 'Uniqlo Osaka Umeda', model: 'S1F2', failed: 16, cause: 'WebSocket reconnect loop' },
-      { id: 'dev:AMS1-0455133071', terminal: 'AMS1-0455133071', store: 'Uniqlo Shinjuku', model: 'AMS1', failed: 13, cause: 'High latency (>1.5s to auth)' },
-      { id: 'dev:V400m-0231902248', terminal: 'V400m-0231902248', store: 'Uniqlo Fukuoka', model: 'V400m', failed: 11, cause: 'Cellular fallback · weak signal' },
-      { id: 'dev:S1F2-000158260011947', terminal: 'S1F2-000158260011947', store: 'Uniqlo Kyoto', model: 'S1F2', failed: 9, cause: 'Intermittent Wi-Fi drops' },
-      { id: 'dev:AMS1-0455141330', terminal: 'AMS1-0455141330', store: 'Uniqlo Nagoya', model: 'AMS1', failed: 7, cause: 'Bootup during peak · not boarded' },
+      { id: 'dev:S1F2-000158253533474', terminal: 'S1F2-000158253533474', store: 'Uniqlo Ginza', country: 'Japan', model: 'S1F2', failed: 34, cause: 'Wi-Fi drops · weak signal (-88 dBm)', app: 'Payments', appVersion: '1.42.1', os: 'Android 13' },
+      { id: 'dev:AMS1-0455120983', terminal: 'AMS1-0455120983', store: 'Uniqlo Shibuya', country: 'Japan', model: 'AMS1', failed: 21, cause: 'WebSocket timeouts · high latency', app: 'Payments', appVersion: '1.41.0', os: 'Android 12' },
+      { id: 'dev:V400m-0231889014', terminal: 'V400m-0231889014', store: 'Uniqlo Seoul Gangnam', country: 'South Korea', model: 'V400m', failed: 18, cause: 'Offline windows · not boarded', app: 'Payments', appVersion: '1.42.1', os: 'Android 13' },
+      { id: 'dev:S1F2-000174920045518', terminal: 'S1F2-000174920045518', store: 'Uniqlo Osaka Umeda', country: 'Japan', model: 'S1F2', failed: 16, cause: 'WebSocket reconnect loop', app: 'Payments', appVersion: '1.40.3', os: 'Android 12' },
+      { id: 'dev:AMS1-0455133071', terminal: 'AMS1-0455133071', store: 'Uniqlo Shinjuku', country: 'Japan', model: 'AMS1', failed: 13, cause: 'High latency (>1.5s to auth)', app: 'Payments', appVersion: '1.42.1', os: 'Android 13' },
+      { id: 'dev:V400m-0231902248', terminal: 'V400m-0231902248', store: 'Uniqlo Fukuoka', country: 'Japan', model: 'V400m', failed: 11, cause: 'Cellular fallback · weak signal', app: 'Payments', appVersion: '1.41.0', os: 'Android 12' },
+      { id: 'dev:S1F2-000158260011947', terminal: 'S1F2-000158260011947', store: 'Uniqlo Kyoto', country: 'Japan', model: 'S1F2', failed: 9, cause: 'Intermittent Wi-Fi drops', app: 'Payments', appVersion: '1.42.1', os: 'Android 13' },
+      { id: 'dev:AMS1-0455141330', terminal: 'AMS1-0455141330', store: 'Uniqlo Nagoya', country: 'Japan', model: 'AMS1', failed: 7, cause: 'Bootup during peak · not boarded', app: 'Payments', appVersion: '1.39.2', os: 'Android 11' },
     ],
   };
+
+  // ---- Fleet device dataset (Level 2 reporting) — a representative estate for filtering, aggregation & the device list.
+  const FH_COUNTRIES = [['Japan', 0.6], ['South Korea', 0.2], ['Taiwan', 0.12], ['Singapore', 0.08]];
+  const FH_STORES = {
+    'Japan': ['Uniqlo Ginza', 'Uniqlo Shibuya', 'Uniqlo Shinjuku', 'Uniqlo Osaka Umeda', 'Uniqlo Kyoto', 'Uniqlo Nagoya', 'Uniqlo Fukuoka'],
+    'South Korea': ['Uniqlo Seoul Gangnam', 'Uniqlo Seoul Myeongdong', 'Uniqlo Busan Seomyeon'],
+    'Taiwan': ['Uniqlo Taipei 101', 'Uniqlo Taichung'],
+    'Singapore': ['Uniqlo Orchard', 'Uniqlo Marina Bay'],
+  };
+  const FH_MODELS = ['S1F2', 'AMS1', 'V400m', 'e355'];
+  // Older app versions skew toward at-risk — gives the version filter / proactive layer something to find.
+  const FH_VERSIONS = [['1.42.1', 0.46], ['1.41.0', 0.26], ['1.40.3', 0.17], ['1.39.2', 0.11]];
+  const FH_CAUSES = ['Wi-Fi drops · weak signal', 'WebSocket timeouts · high latency', 'Cellular fallback · weak signal', 'Offline windows · not boarded', 'WebSocket reconnect loop'];
+  const fleetDevices = (() => {
+    let s = 20260101; const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+    const wpick = (arr) => { let t = r(); for (const [v, w] of arr) { if ((t -= w) <= 0) return v; } return arr[0][0]; };
+    const out = [];
+    for (let i = 0; i < 168; i++) {
+      const country = wpick(FH_COUNTRIES);
+      const model = FH_MODELS[Math.floor(r() * FH_MODELS.length)];
+      const appVersion = wpick(FH_VERSIONS);
+      const stores = FH_STORES[country];
+      const store = stores[Math.floor(r() * stores.length)];
+      const serial = String(Math.floor(1e11 + r() * 8e11));
+      const terminal = `${model}-${serial}`;
+      const old = appVersion === '1.40.3' || appVersion === '1.39.2';
+      const roll = r() + (old ? 0.22 : 0); // older versions more likely unhealthy
+      let status = 'Healthy', failed = 0, cause = '';
+      if (roll > 0.97) { status = 'Offline'; failed = 4 + Math.floor(r() * 30); cause = 'Offline windows · not boarded'; }
+      else if (roll > 0.78) { status = 'At risk'; failed = 3 + Math.floor(r() * 26); cause = FH_CAUSES[Math.floor(r() * FH_CAUSES.length)]; }
+      const healthy = status === 'Healthy';
+      out.push({
+        id: 'fd:' + terminal, terminal, store, country, model, app: 'Payments', appVersion,
+        os: old ? (appVersion === '1.39.2' ? 'Android 11' : 'Android 12') : 'Android 13',
+        status, failed, cause,
+        wifi: healthy ? -(52 + Math.floor(r() * 16)) : -(80 + Math.floor(r() * 10)),
+        battery: 35 + Math.floor(r() * 62),
+      });
+    }
+    return out.sort((a, b) => b.failed - a.failed);
+  })();
 
   // ---- Stores & devices ----
   const models = [
@@ -631,6 +673,7 @@
   window.DATA = {
     fmt, kpis, volumeTrend, authTrend, notTradingTrend, failedTxTrend, featureAdoption,
     featureByModel, storesAttention, notTransacting, compliance, notReadyReasons, batteryHealth, transactionSpeed, connectivity,
+    fleetDevices,
     models, stores, devices, nlAnswers, sdkHealth, firmwareHealth,
   };
 })();
