@@ -328,6 +328,59 @@ function LineChart({ data, height = 180 }) {
     </div>
   );
 }
+/* Column/bar chart — same axis, gridline & tooltip styling as LineChart; grouped bars per label. */
+function BarChart({ data, height = 180 }) {
+  const [active, setActive] = useState(null);
+  const wrapRef = useRef(null);
+  const [dim, setDim] = useState({ w: 560, h: height });
+  useEffect(() => {
+    const el = wrapRef.current; if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setDim({ w: el.clientWidth || 560, h: el.clientHeight || height }));
+    ro.observe(el); return () => ro.disconnect();
+  }, [height]);
+  const w = dim.w, h = dim.h, pad = { l: 40, r: 12, t: 12, b: 24 };
+  const all = data.series.flatMap(s => s.points);
+  const rawMin = Math.min(...all), rawMax = Math.max(...all), span = (rawMax - rawMin) || 1;
+  const min = data.min != null ? data.min : (rawMin >= 0 ? 0 : rawMin - span * 0.08);
+  const max = data.max != null ? data.max : rawMax + span * 0.08;
+  const n = data.labels.length;
+  const iw = w - pad.l - pad.r, ih = h - pad.t - pad.b;
+  const y = (v) => pad.t + ih - (ih * (v - min)) / (max - min);
+  const base = pad.t + ih, slot = iw / n, ns = data.series.length;
+  const groupW = slot * 0.68, barW = Math.max(2, (groupW / ns) - (ns > 1 ? 2 : 0));
+  const ticks = 4;
+  const fmt = (v) => Math.abs(v) >= 1000 ? +(v / 1000).toFixed(1) + 'k' : Math.round(v);
+  const onMove = (e) => { const el = wrapRef.current; if (!el) return; const r = el.getBoundingClientRect(); setActive(Math.max(0, Math.min(n - 1, Math.floor((e.clientX - r.left - pad.l) / slot)))); };
+  const leftPct = active != null ? Math.max(10, Math.min(90, ((pad.l + slot * (active + 0.5)) / w) * 100)) : 0;
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%', height: '100%', minHeight: height }} onMouseMove={onMove} onMouseLeave={() => setActive(null)}>
+      <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} preserveAspectRatio="none" style={{ display: 'block' }}>
+        {Array.from({ length: ticks + 1 }).map((_, i) => {
+          const gy = pad.t + (ih * i) / ticks, val = max - ((max - min) * i) / ticks;
+          return <g key={i}><line x1={pad.l} x2={w - pad.r} y1={gy} y2={gy} stroke="var(--lume-grid)" strokeWidth="1" vectorEffect="non-scaling-stroke" /><text x={pad.l - 6} y={gy + 3} textAnchor="end" fontSize="10" fill="var(--lume-axis)">{fmt(val)}</text></g>;
+        })}
+        {(() => { const step = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 64)))); return data.labels.map((l, i) => i % step === 0 ? <text key={i} x={pad.l + slot * (i + 0.5)} y={h - 7} textAnchor="middle" fontSize="10" fill="var(--lume-axis)">{l}</text> : null); })()}
+        {active != null && <rect x={pad.l + slot * active} y={pad.t} width={slot} height={ih} fill="var(--b-color-background-secondary)" opacity="0.6" />}
+        {data.series.map((s, si) => s.points.map((p, i) => {
+          const gx = pad.l + slot * i + (slot - groupW) / 2 + si * (groupW / ns), yv = y(p);
+          return <rect key={si + '-' + i} x={gx} y={yv} width={barW} height={Math.max(0, base - yv)} rx={Math.min(3, barW / 2)} fill={s.color} />;
+        }))}
+      </svg>
+      {active != null && (
+        <div className="ns-fade" style={{ position: 'absolute', left: `${leftPct}%`, top: 4, transform: 'translateX(-50%)', pointerEvents: 'none', background: 'var(--b-color-background-inverse-primary)', color: 'var(--b-color-label-inverse-primary)', borderRadius: 8, padding: '8px 10px', boxShadow: 'var(--b-shadow-high)', zIndex: 5, whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>{data.labels[active]}</div>
+          {data.series.map(s => (
+            <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '18px' }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
+              <span style={{ flex: 1 }}>{s.name}</span>
+              <span className="ns-num" style={{ fontWeight: 600, marginLeft: 12 }}>{D.fmt(s.points[active])}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function Legend({ series }) {
   return (
     <Row gap={16} style={{ flexWrap: 'wrap' }}>
@@ -395,9 +448,14 @@ function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVari
     <div style={root} className="ns-sheet">
       {/* b-modal-fullscreen · header — back left · title centered · actions/close right */}
       <div style={{ flexShrink: 0, alignSelf: 'stretch', height: 64, display: 'flex', alignItems: 'center', gap: 24, padding: '12px 24px', background: T.card, borderBottom: `1px solid ${T.sep}`, position: 'relative' }}>
-        {/* left — icon-only back (Bento arrow) */}
+        {/* left — back: labeled "← Previous page" when a backLabel is given, else icon-only */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', zIndex: 2 }}>
-          {onBack && <GlyphButton title={backLabel && backLabel !== 'Back' ? backLabel : 'Back'} onClick={onBack}><ArrowLeftGlyph /></GlyphButton>}
+          {onBack && (backLabel && backLabel !== 'Back'
+            ? <button type="button" onClick={onBack} title={backLabel} className="ns-accord-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px 0 6px', border: 0, background: 'transparent', cursor: 'pointer', color: T.ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, borderRadius: 8, maxWidth: '100%' }}>
+                <span style={{ lineHeight: 0, flexShrink: 0 }}><ArrowLeftGlyph /></span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{backLabel}</span>
+              </button>
+            : <GlyphButton title="Back" onClick={onBack}><ArrowLeftGlyph /></GlyphButton>)}
         </div>
         {/* center — title + optional subtitle + badge */}
         <div style={{ position: 'absolute', left: '50%', top: 0, height: '100%', transform: 'translateX(-50%)', maxWidth: '52%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
@@ -627,7 +685,7 @@ function SummaryGrid({ items, cols = 4, style }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, gap: T.s3, ...style }}>
       {items.map((k, i) => (
-        <div key={k.id || i} className="ns-kpi" onClick={k.onClick} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px', borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)', cursor: k.onClick ? 'pointer' : 'default' }}>
+        <div key={k.id || i} className="ns-kpi" onClick={k.onClick} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', gap: 10, padding: '14px 16px', borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)', cursor: k.onClick ? 'pointer' : 'default' }}>
           <Row gap={6}>
             <span style={{ fontSize: 12, color: T.sub, fontWeight: 500, flex: 1, minWidth: 0 }}>{k.title}</span>
             {k.hint && <InfoTip content={k.hint} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>}
@@ -1271,6 +1329,9 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
   const [range, setRange] = useState('90d');
   const [scope, setScope] = useState(initialScope || 'all'); // device-level filter
   const [troubleshootId, setTroubleshootId] = useState(null); // per-terminal troubleshoot full-page drill-down
+  const [studioScope, setStudioScope] = useState(null); // Config → Device Studio simulator (opened over the device overview)
+  const [trendMetrics, setTrendMetrics] = useState([0]); // Fleet trends chart — selected signals (indices into c.panels)
+  const [trendGran, setTrendGran] = useState('day'); // Fleet trends granularity — day | week | month (re-buckets the series)
   const scrollToDevices = () => { const el = document.getElementById('fleet-devices'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   // ---- Level 2 fleet-devices reporting: independent filters for the device list, Explore report & export ----
   const [countryF, setCountryF] = useState([]);
@@ -1428,209 +1489,24 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
     );
   };
   // Shared per-terminal troubleshoot modal — opened from the Failed-transactions list AND the fleet banner.
+  // Streamlined device detail — same holistic layout as Devices & locations (DeviceDetail).
   const troubleshootModal = (() => {
     const tt = d.troubleshoot.find(x => x.id === troubleshootId) || fleet.find(x => x.id === troubleshootId);
     if (!tt) return null;
-    // Deterministic per-terminal signals derived from the terminal's failure count + cause.
-    let x = 0; for (const ch of tt.id) x = (x * 31 + ch.charCodeAt(0)) & 0x7fffffff;
-    const rnd = () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return x / 0x7fffffff; };
-    const wsDrops = Math.round(tt.failed * (0.5 + rnd() * 0.4));
-    const weak = /weak|Wi-Fi|signal|Cellular/i.test(tt.cause);
-    const healthy = tt.status === 'Healthy' || !tt.failed; // devices opened from the list that have no linked failures
-    const wifi = weak ? -(82 + Math.round(rnd() * 8)) : -(58 + Math.round(rnd() * 8));
-    const latency = 300 + Math.round(rnd() * 900) + (weak ? 400 : 0);
-    const spark = Array.from({ length: 24 }, () => Math.max(0, Math.round((tt.failed / 12) + (rnd() - 0.5) * (tt.failed / 6))));
-    // Failure-history read-outs: worst day and the most recent day it failed.
-    const worstV = Math.max(...spark), worstDay = c.labels[spark.indexOf(worstV)];
-    let lastFailIdx = -1; spark.forEach((v, i) => { if (v > 0) lastFailIdx = i; });
-    const lastFailDay = lastFailIdx >= 0 ? c.labels[lastFailIdx] : '—';
-    const stat = (label, value) => (
-      <Col gap={2} style={{ flex: '1 1 120px', minWidth: 110 }}><span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{label}</span><span className="ns-num" style={{ fontSize: 18, fontWeight: 600 }}>{value}</span></Col>
-    );
-    // Recommended fix is chosen from the likely cause; the rest become secondary options.
-    const rec = weak ? 'Restart terminal' : 'Re-sync config';
-    const recWhy = rec === 'Restart terminal'
-      ? 'Re-establishes the network connection and clears the weak-signal / Wi-Fi-drop condition.'
-      : 'Re-pushes settings and re-boards the terminal — clears timeouts and not-boarded errors.';
-    const others = ['Restart terminal', 'Re-sync config', 'Reassign'].filter(a => a !== rec);
-    // Terminal event timeline (PRD P0 #4): reboots, config-change type, online/offline, network switch, staff action.
-    const tag = (label, tone) => tone === 'neutral'
-      ? <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: T.sepFaint, color: T.sub, flexShrink: 0 }}>{label}</span>
-      : <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: `var(--b-color-background-${tone}-weak)`, color: `var(--b-color-label-on-background-${tone}-weak)`, flexShrink: 0 }}>{label}</span>;
-    const timeline = [
-      { t: 'Today · 14:32', type: 'Network', tone: 'warning', detail: weak ? 'Fell back to Cellular — Wi-Fi signal lost' : 'Reconnected on Wi-Fi' },
-      { t: 'Today · 14:31', type: 'WebSocket', tone: 'critical', detail: `Disconnected ×${Math.max(2, Math.round(wsDrops / 6))} during transactions` },
-      { t: 'Today · 08:10', type: 'Reboot', tone: 'neutral', detail: 'Scheduled nightly restart' },
-      { t: 'Yesterday · 22:40', type: 'Config change', tone: 'highlight', detail: 'Payment methods updated · applies after nightly reboot' },
-      { t: '2 days ago · 18:05', type: 'Staff action', tone: 'neutral', detail: 'Refund via admin PIN' },
-    ];
-    // Recent integration events (PRD P0 #1): high-level request/response + outcome (looked up by ID / ref).
-    const events = [
-      { req: 'Payment · €42.00', res: 'Approved', ok: true },
-      { req: 'Display · “Present card”', res: 'Shown', ok: true },
-      { req: `Payment · €${(19 + rnd() * 40).toFixed(2)}`, res: 'Failed · connection lost', ok: false },
-      { req: 'Abort', res: 'Cancelled by shopper', ok: true },
-    ];
-    // Level-1 device monitoring: connectivity drops over the last 7 days + Wi-Fi/cellular usage split.
-    const dayLabels = ['6d', '5d', '4d', '3d', '2d', 'Yest', 'Today'];
-    const drops7 = Array.from({ length: 7 }, () => Math.max(0, Math.round((wsDrops / 9) + (rnd() - 0.5) * (wsDrops / 4))));
-    const wifiUse = weak ? 54 : 82, cellUse = 100 - wifiUse;
-    // Level-1 extensive logs: the technical source behind the plain-language timeline.
-    const logTypes = [
-      { name: 'Network failure', count: Math.max(3, Math.round(wsDrops * 0.7)), last: 'Today · 14:32', tone: 'critical' },
-      { name: 'Reboot / restart', count: 2, last: 'Today · 08:10', tone: 'neutral' },
-      { name: 'Menu access', count: 5, last: 'Yesterday · 18:05', tone: 'neutral' },
-      { name: 'Communication log', count: Math.round(420 + rnd() * 280), last: 'Today · 14:35', tone: 'highlight' },
-      { name: 'Payment request (POSTX)', count: Math.round(tt.failed * 6 + rnd() * 40), last: 'Today · 14:30', tone: 'highlight' },
-    ];
-    return (
-      <FullPage title={tt.terminal} subtitle={`${tt.store} · ${tt.model}`} onBack={() => { setTroubleshootId(null); setTimeout(scrollToDevices, 60); }} backLabel="Devices" backIcon={<ArrowLeftGlyph />} onClose={() => setTroubleshootId(null)} bodyBg={T.page}>
-        <div style={{ maxWidth: 1040, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, width: '100%', boxSizing: 'border-box' }}>
-        <Col gap={16}>
-          {/* What & why — always visible context (healthy-aware so any device opens cleanly) */}
-          {healthy ? (
-            <Row align="flex-start" gap={16} style={{ padding: '14px 16px', borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)' }}>
-              <Ico name="checkmark-circle" size={22} color="var(--b-color-label-success)" style={{ flexShrink: 0, marginTop: 2 }} />
-              <Col gap={4} style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontSize: 14, fontWeight: 600 }}>No connectivity-linked failures — this terminal looks healthy</span>
-                <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Use the logs, timeline and signals below if you're investigating a specific payment or issue.</span>
-              </Col>
-            </Row>
-          ) : (
-            <Row align="flex-start" gap={16} style={{ padding: '14px 16px', borderRadius: T.radiusM, background: 'var(--b-color-background-warning-weak)' }}>
-              <Ico name="warning-filled" size={22} color="var(--b-color-background-warning-strong)" style={{ flexShrink: 0, marginTop: 2 }} />
-              <Col gap={4} style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontSize: 14, fontWeight: 600 }}>{tt.failed} failed payments linked to connectivity</span>
-                <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Likely cause: <b>{tt.cause}</b>. Failures line up with {D.fmt(wsDrops)} WebSocket drops — not the card or the shopper.</span>
-              </Col>
-            </Row>
-          )}
-          {/* One page (no tabs): overview → timeline → monitoring → logs */}
-          <Col gap={12}>
-            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Overview</span>
-            <Col gap={16}>
-              {!healthy ? <Col gap={10}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Recommended fix</span>
-                <Row align="center" gap={12} style={{ padding: '14px 16px', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, flexWrap: 'wrap' }}>
-                  <Col gap={2} style={{ flex: 1, minWidth: 200 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600 }}>{rec}</span>
-                    <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{recWhy}</span>
-                  </Col>
-                  <Button variant="primary" condensed onClick={() => notify && notify(`${rec} · ${tt.terminal}…`)}>{rec}</Button>
-                </Row>
-                <Row gap={8} align="center" style={{ flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 13, color: T.faint }}>Other fixes:</span>
-                  {others.map(a => <Button key={a} variant="secondary" condensed onClick={() => notify && notify(`${a} · ${tt.terminal}…`)}>{a}</Button>)}
-                </Row>
-              </Col> : <span style={{ fontSize: 13, color: T.sub }}>No action needed — this terminal is healthy. The logs, timeline and signals below are for reference.</span>}
-              <Row gap={20} style={{ flexWrap: 'wrap' }}>
-                {stat('Failed payments', tt.failed)}
-                {stat('WebSocket drops', D.fmt(wsDrops))}
-                {stat('Avg Wi-Fi signal', `${wifi} dBm`)}
-                {stat('Avg latency', `${latency} ms`)}
-              </Row>
-              <Row gap={20} style={{ flexWrap: 'wrap' }}>
-                {stat('Android app', `${tt.app} ${tt.appVersion}`)}
-                {stat('OS', tt.os)}
-                {stat('Store', tt.store)}
-              </Row>
-            </Col>
-          </Col>
-
-          {/* LOGS — logs-first for self-service: reference search + advanced logs */}
-          <Col gap={12}>
-            <Row style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-              <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Logs</span>
-              <Button variant="secondary" condensed iconLeft="download" onClick={() => notify && notify(`Downloading logs · ${tt.terminal}…`)}>Download logs</Button>
-            </Row>
-            <div style={{ position: 'relative', maxWidth: 440 }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', lineHeight: 0, color: T.faint, pointerEvents: 'none' }}><Ico name="search" size={16} color={T.faint} /></span>
-              <input placeholder="Search by service ID / tender / PSP reference…" onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value.trim()) notify && notify(`Searching logs for “${e.target.value.trim()}”…`); }} style={{ height: 36, width: '100%', boxSizing: 'border-box', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, padding: '0 12px 0 36px', fontFamily: 'inherit', fontSize: 14, color: T.ink, background: T.card }} />
-            </div>
-            <Col gap={16}>
-              <Col gap={8}>
-                <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Log types</span>
-                <div style={{ ...surface, overflow: 'hidden' }}>
-                  {logTypes.map((lg, i) => (
-                    <Row key={i} gap={12} align="center" style={{ padding: '10px 14px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
-                      {tag(lg.name, lg.tone)}
-                      <span style={{ fontSize: 12, color: T.faint, flex: 1, minWidth: 0 }}>last {lg.last}</span>
-                      <span className="ns-num" style={{ fontSize: 13, fontWeight: 600 }}>{D.fmt(lg.count)}</span>
-                      <Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => notify && notify(`Opening ${lg.name} log · ${tt.terminal}…`)}>View</Button>
-                    </Row>
-                  ))}
-                </div>
-              </Col>
-              <Col gap={8}>
-                <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Recent integration events</span>
-                <div style={{ ...surface, overflow: 'hidden' }}>
-                  {events.map((ev, i) => (
-                    <Row key={i} gap={12} align="center" style={{ padding: '10px 14px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
-                      <span style={{ fontSize: 13, color: T.ink, flex: 1, minWidth: 0, fontFamily: 'var(--b-font-family-secondary)' }}>{ev.req}</span>
-                      <span style={{ fontSize: 13, color: ev.ok ? T.sub : 'var(--b-color-label-critical)', fontWeight: ev.ok ? 400 : 600 }}>{ev.res}</span>
-                      {tag(ev.ok ? 'OK' : 'Failed', ev.ok ? 'positive' : 'critical')}
-                    </Row>
-                  ))}
-                </div>
-                <span style={{ fontSize: 12, color: T.faint }}>Looked up by terminal ID · service ID · tender / PSP reference · sensitive data redacted.</span>
-              </Col>
-              <span style={{ fontSize: 12, color: T.faint, lineHeight: '17px' }}>Logs are reliable for ~30 days and degrade after ~2 months. Platform-to-terminal pushes aren’t logged, so the timeline can have blind spots there.</span>
-            </Col>
-          </Col>
-
-          {/* TIMELINE — plain-language device events */}
-          <Col gap={12}>
-            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Terminal timeline</span>
-            <div style={{ ...surface, overflow: 'hidden' }}>
-              {timeline.map((ev, i) => (
-                <Row key={i} gap={12} align="flex-start" style={{ padding: '10px 14px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
-                  <span style={{ fontSize: 12, color: T.faint, width: 104, flexShrink: 0, fontFamily: 'var(--b-font-family-secondary)' }}>{ev.t}</span>
-                  {tag(ev.type, ev.tone)}
-                  <span style={{ fontSize: 13, color: T.ink, flex: 1, minWidth: 0 }}>{ev.detail}</span>
-                </Row>
-              ))}
-            </div>
-          </Col>
-
-          {/* MONITORING — connectivity drops (7d) + interface usage + failed payments trend */}
-          <Col gap={12}>
-            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Monitoring</span>
-            <Col gap={16}>
-              <div style={{ ...surface, overflow: 'hidden' }}>
-                <TileHeader title="Connectivity drops" subtitle="WebSocket disconnects · last 7 days" />
-                <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 150 }}>
-                  <LineChart data={{ labels: dayLabels, min: 0, series: [{ color: 'var(--b-color-decorative-red)', points: drops7 }] }} height={130} />
-                </div>
-              </div>
-              <Col gap={8}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Wi-Fi / cellular usage</span>
-                <div style={{ display: 'flex', height: 10, borderRadius: 6, overflow: 'hidden', background: T.page }}>
-                  <div title={`Wi-Fi ${wifiUse}%`} style={{ width: `${wifiUse}%`, background: 'var(--b-color-decorative-blue)' }} />
-                  <div title={`Cellular ${cellUse}%`} style={{ width: `${cellUse}%`, background: 'var(--b-color-decorative-orange)' }} />
-                </div>
-                <Row gap={16} style={{ flexWrap: 'wrap' }}>
-                  <Row gap={6}><span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--b-color-decorative-blue)' }} /><span style={{ fontSize: 12, color: T.sub }}>Wi-Fi <b className="ns-num" style={{ color: T.ink }}>{wifiUse}%</b></span></Row>
-                  <Row gap={6}><span style={{ width: 8, height: 8, borderRadius: 2, background: 'var(--b-color-decorative-orange)' }} /><span style={{ fontSize: 12, color: T.sub }}>Cellular <b className="ns-num" style={{ color: T.ink }}>{cellUse}%</b></span></Row>
-                </Row>
-                {weak && <span style={{ fontSize: 12, color: T.faint }}>Frequent Wi-Fi→cellular failover detected — a sign of an unstable Wi-Fi uplink.</span>}
-              </Col>
-              <div style={{ ...surface, overflow: 'hidden' }}>
-                <TileHeader title="Transaction failure history" subtitle="Failures per day · last 90 days" />
-                <div style={{ padding: `0 ${T.s5}px 8px`, height: 150 }}>
-                  <LineChart data={{ labels: c.labels, min: 0, series: [{ color: 'var(--b-color-decorative-red)', points: spark }] }} height={130} />
-                </div>
-                <div style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
-                  <span style={{ fontSize: 12, color: T.faint }}>Worst day <b className="ns-num" style={{ color: T.ink }}>{worstV}</b> failures on <b style={{ color: T.ink }}>{worstDay}</b> · last failure <b style={{ color: T.ink }}>{lastFailDay}</b>.</span>
-                </div>
-              </div>
-            </Col>
-          </Col>
-
-        </Col>
-        </div>
-      </FullPage>
-    );
+    const store = SM_STORES.find(s => s.name === tt.store || s.code === tt.store) || { code: tt.store, country: tt.country };
+    const dotFor = tt.status === 'Healthy' ? 'var(--b-color-decorative-green)' : tt.status === 'Offline' ? 'var(--b-color-decorative-red)' : 'var(--b-color-decorative-orange)';
+    const row = {
+      id: tt.id, _type: 'Terminal', model: tt.model, serial: tt.terminal, version: tt.appVersion,
+      dot: dotFor, lastActivity: 'Today', lastTx: tt.failed ? 'Today' : '\u2014',
+      store: tt.store, storeId: store.id || null, country: tt.country, address: store.street || '\u2014', integration: 'Standalone',
+      __battery: tt.battery, __wifi: tt.wifi, __cause: tt.cause || '', __failed: tt.failed || 0,
+    };
+    return <DeviceDetail row={row} store={store}
+      onBack={() => { setTroubleshootId(null); setTimeout(scrollToDevices, 60); }}
+      onOpenStudio={(sc) => setStudioScope(sc)} notify={notify} />;
   })();
+  // Config → Device Studio simulator, opened over the device overview; back returns to the overview.
+  const studioModal = studioScope ? <DeviceStudio scope={studioScope} onBack={() => setStudioScope(null)} notify={notify} /> : null;
 
   // Level-2 Explore report — bird's-eye aggregation of the (filtered) fleet, grouped by country / model / version.
   const exploreModal = exploreOpen ? (() => {
@@ -1648,7 +1524,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
     const td = { padding: '10px 12px', fontSize: 13, color: T.ink, borderBottom: `1px solid ${T.sepFaint}`, whiteSpace: 'nowrap' };
     const tdR = { ...td, textAlign: 'right', fontFamily: 'var(--b-font-family-secondary)' };
     return (
-      <Modal open onClose={() => setExploreOpen(false)} title="Explore report" description={`Bird's-eye view · ${D.fmt(fleetFiltered.length)} devices${countryF.length || modelF.length || versionF.length ? ' (filtered)' : ''}`} width={720}
+      <Modal open onClose={() => setExploreOpen(false)} title="Summary report" description={`Bird's-eye view · ${D.fmt(fleetFiltered.length)} devices${countryF.length || modelF.length || versionF.length ? ' (filtered)' : ''}`} width={720}
         footer={<Row gap={8} style={{ justifyContent: 'space-between', width: '100%', alignItems: 'center' }}><span style={{ fontSize: 12, color: T.faint }}>Grouped totals reflect the active filters.</span><Button variant="secondary" iconLeft="download" onClick={() => { downloadCSV(`fleet-report-by-${groupBy}.csv`, [groupBy, 'Terminals', 'At risk', 'Failed payments', 'Avg Wi-Fi (dBm)'], rows.map(r => [r.g, r.total, r.atrisk, r.failed, r.avgWifi])); notify && notify('Exported report to CSV'); }}>Export</Button></Row>}>
         <Col gap={14}>
           <Col gap={6}>
@@ -1752,23 +1628,22 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
           )}
         </div>
         {troubleshootModal}
+        {studioModal}
       </FullPage>
     );
   }
-  // Flat action row — colored dot · label + value + badge + hint · action button. No inner box (sits on the card).
-  const actionRow = (dot, label, value, badge, variant, hint, action, onClick, first) => (
-    <Row align="center" gap={12} style={{ padding: '14px 0', borderTop: first ? 'none' : `1px solid ${T.sepFaint}`, flexWrap: 'wrap' }}>
-      <span style={{ width: 10, height: 10, borderRadius: '50%', background: dot, flexShrink: 0 }} />
-      <Col gap={2} style={{ flex: 1, minWidth: 200 }}>
-        <Row gap={8} align="center" style={{ flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{label}</span>
-          <span className="ns-num" style={{ fontSize: 14, fontWeight: 600 }}>{value}</span>
-          {badge && <Tag label={badge} variant={variant} />}
-        </Row>
-        <span style={{ fontSize: 12, color: T.sub, lineHeight: '17px' }}>{hint}</span>
-      </Col>
-      <Button variant="secondary" condensed iconRight="arrow-right" onClick={onClick}>{action}</Button>
-    </Row>
+  // Action block — a card: dot + label + badge · big value · hint · action button pinned to the bottom.
+  const actionBlock = (dot, label, value, badge, variant, hint, action, onClick) => (
+    <Col gap={10} className="ns-kpi" style={{ padding: '14px 16px', borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)', minWidth: 0 }}>
+      <Row gap={7} align="center">
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: T.sub, fontWeight: 500, flex: 1, minWidth: 0 }}>{label}</span>
+        {badge && <Tag label={badge} variant={variant} />}
+      </Row>
+      <span className="ns-num" style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.01em' }}>{value}</span>
+      <span style={{ fontSize: 12, color: T.sub, lineHeight: '17px', flex: 1 }}>{hint}</span>
+      <div style={{ marginTop: 2 }}><Button variant="secondary" condensed iconRight="arrow-right" onClick={onClick}>{action}</Button></div>
+    </Col>
   );
   // Body content shared by the Explore overlay (FullPage) and the inline Fleet health page.
   const sections = (
@@ -1789,35 +1664,29 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
                     { label: 'At risk', n: statusCounts['At risk'], c: 'var(--b-color-decorative-orange)' },
                     { label: 'Offline', n: statusCounts.Offline, c: '#9AA4AE' },
                   ];
-                  const RR = 18, CC = 2 * Math.PI * RR; let acc = 0; // r+stroke/2 must stay inside the 44 viewBox or the ring clips
-                  const healthyPct = Math.round(statusCounts.Healthy / total * 100);
+                  const pctOf = (n) => Math.round(n / total * 100);
+                  const healthyPct = pctOf(statusCounts.Healthy);
                   return (
-                    <Row gap={24} align="center" style={{ flexWrap: 'wrap' }}>
-                      <div style={{ position: 'relative', width: 118, height: 118, flexShrink: 0 }}>
-                        <svg width={118} height={118} viewBox="0 0 44 44" style={{ transform: 'rotate(-90deg)' }}>
-                          <circle cx="22" cy="22" r={RR} fill="none" stroke="var(--b-color-background-tertiary)" strokeWidth="7" />
-                          {segs.map(s => { const len = CC * s.n / total; const off = -acc; acc += len; return <circle key={s.label} cx="22" cy="22" r={RR} fill="none" stroke={s.c} strokeWidth="7" strokeDasharray={`${len} ${CC - len}`} strokeDashoffset={off} strokeLinecap="butt" />; })}
-                        </svg>
-                        <Col gap={0} style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center' }}>
-                          <span className="ns-num" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{D.fmt(total)}</span>
-                          <span style={{ fontSize: 11, color: T.sub }}>terminals</span>
-                        </Col>
-                      </div>
-                      <Col gap={9} style={{ minWidth: 128 }}>
-                        {segs.map(s => (
-                          <Row key={s.label} gap={8} align="center">
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.c, flexShrink: 0 }} />
-                            <span style={{ fontSize: 12, color: T.sub, flex: 1 }}>{s.label}</span>
-                            <span className="ns-num" style={{ fontSize: 13, fontWeight: 600 }}>{D.fmt(s.n)}</span>
-                            <span style={{ fontSize: 11, color: T.faint, width: 34, textAlign: 'right' }}>{Math.round(s.n / total * 100)}%</span>
-                          </Row>
-                        ))}
-                      </Col>
-                      <Col gap={4} style={{ flex: 1, minWidth: 220 }}>
+                    <Col gap={16}>
+                      {/* header — title + narrative */}
+                      <Row gap={16} align="baseline" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 13, fontWeight: 600 }}>Fleet status</span>
-                        <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{healthyPct}% of your {D.fmt(total)} terminals are healthy. {D.fmt(atRiskDevices.length)} need attention before they affect sales.</span>
-                      </Col>
-                    </Row>
+                        <span style={{ fontSize: 12, color: T.sub, lineHeight: '18px', flex: '1 1 260px', textAlign: 'right', minWidth: 220 }}>{healthyPct}% of your {D.fmt(total)} terminals are healthy · {D.fmt(atRiskDevices.length)} need attention before they affect sales.</span>
+                      </Row>
+                      {/* segmented status bar (Cloudflare-style) */}
+                      <div style={{ display: 'flex', width: '100%', height: 12, borderRadius: 6, overflow: 'hidden', background: 'var(--b-color-background-tertiary)' }}>
+                        {segs.map(s => s.n > 0 && <div key={s.label} title={`${s.label} · ${D.fmt(s.n)}`} style={{ width: (s.n / total * 100) + '%', background: s.c }} />)}
+                      </div>
+                      {/* stat columns — label · big % · count (proportions already shown in the bar above) */}
+                      <Row gap={0} style={{ flexWrap: 'wrap' }}>
+                        {segs.map((s, i) => (
+                          <Col key={s.label} gap={6} style={{ flex: '1 1 150px', minWidth: 140, paddingRight: 20, borderLeft: i ? `1px solid ${T.sepFaint}` : 'none', paddingLeft: i ? 20 : 0 }}>
+                            <Row gap={7} align="center"><span style={{ width: 8, height: 8, borderRadius: '50%', background: s.c, flexShrink: 0 }} /><span style={{ fontSize: 12, color: T.sub }}>{s.label}</span></Row>
+                            <Row gap={8} align="baseline"><span className="ns-num" style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.01em' }}>{pctOf(s.n)}%</span><span style={{ fontSize: 12, color: T.faint }}>{D.fmt(s.n)} terminals</span></Row>
+                          </Col>
+                        ))}
+                      </Row>
+                    </Col>
                   );
                 })()}
               </div>
@@ -1825,18 +1694,22 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
               <div style={{ ...kpiGrid, borderTop: `1px solid ${T.sepFaint}`, paddingTop: 18, paddingBottom: 4 }}>
                 {kpis.map(kp => (
                   <Col key={kp.label} gap={2} style={{ minWidth: 0 }}>
-                    <span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{kp.label}</span>
+                    <Row gap={5} align="center">
+                      <span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{kp.label}</span>
+                      {kp.hint && <InfoTip content={kp.hint} placement="top"><Ico name="info" size={16} color={T.faint} /></InfoTip>}
+                    </Row>
                     <span className="ns-num" style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.01em' }}>{kp.value}</span>
-                    {kp.hint && <span style={{ fontSize: 11, color: T.faint, lineHeight: '15px' }}>{kp.hint}</span>}
                   </Col>
                 ))}
               </div>
-              {/* Actions zone — what to act on, flat list */}
-              <Col gap={0} style={{ borderTop: `1px solid ${T.sepFaint}`, marginTop: 18, paddingTop: 6 }}>
-                <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', paddingBottom: 2 }}>What to act on</span>
-                {actionRow('var(--b-color-decorative-red)', 'Failed transactions', D.fmt(failedTotal), `${d.failedTx.connectivityLinked}% linked`, 'red', `Across ${D.fmt(failedDeviceCount)} terminals · ≈€${revenueAtRiskK}k at risk`, 'View all', scrollToDevices, true)}
-                {actionRow('var(--b-color-decorative-orange)', 'Needs attention', D.fmt(atRiskDevices.length), 'at risk · offline', 'orange', 'Terminals at risk or offline — fix before they cost sales', 'Review', () => { setStatusF(['At risk', 'Offline']); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
-                {actionRow('var(--b-color-decorative-blue)', 'Outdated app version', D.fmt(oldVerDevices.length), '≤ 1.40.3', 'blue', 'Known WebSocket issues — schedule an update', 'Show devices', () => { setVersionF(['1.40.3', '1.39.2']); setStatusF([]); setCountryF([]); setModelF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
+              {/* Actions zone — what to act on, 3 blocks side by side */}
+              <Col gap={10} style={{ borderTop: `1px solid ${T.sepFaint}`, marginTop: 18, paddingTop: 14 }}>
+                <span style={{ fontSize: 12, color: T.sub, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>What to act on</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: T.s3 }}>
+                  {actionBlock('var(--b-color-decorative-red)', 'Failed transactions', D.fmt(failedTotal), `${d.failedTx.connectivityLinked}% linked`, 'red', `Across ${D.fmt(failedDeviceCount)} terminals · ≈€${revenueAtRiskK}k at risk`, 'View all', scrollToDevices)}
+                  {actionBlock('var(--b-color-decorative-orange)', 'Needs attention', D.fmt(atRiskDevices.length), 'at risk · offline', 'orange', 'Terminals at risk or offline — fix before they cost sales', 'Review', () => { setStatusF(['At risk', 'Offline']); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
+                  {actionBlock('var(--b-color-decorative-blue)', 'Outdated app version', D.fmt(oldVerDevices.length), '≤ 1.40.3', 'blue', 'Known WebSocket issues — schedule an update', 'Show devices', () => { setVersionF(['1.40.3', '1.39.2']); setStatusF([]); setCountryF([]); setModelF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
+                </div>
               </Col>
             </Col>
           </div>
@@ -1854,11 +1727,65 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
             </Col>
           </Row>
         )}
+        {/* Trends — controls on the left, chart on the right (ElevenLabs-style analytics block). */}
+        {!isDevice && (() => {
+          const sel = (trendMetrics.length ? trendMetrics : [0]).filter(i => c.panels[i]);
+          const panels = (sel.length ? sel : [0]).map(i => c.panels[i]);
+          const nPts = range === '7d' ? 7 : range === '30d' ? 12 : c.labels.length;
+          // Granularity buckets the sliced points: day = raw, week ≈ 3 points, month ≈ 12 points.
+          const bSize = { day: 1, week: 3, month: 12 }[trendGran] || 1;
+          const chunk = (arr) => { if (bSize <= 1) return [arr.slice()]; const out = []; for (let i = 0; i < arr.length; i += bSize) out.push(arr.slice(i, i + bSize)); return out.length ? out : [arr.slice()]; };
+          const rawLabels = c.labels.slice(-nPts);
+          const labels = bSize <= 1 ? rawLabels : chunk(rawLabels).map(ch => ch[ch.length - 1]);
+          // Counts sum per bucket; gauge metrics (unit = ms/dBm/%) average per bucket.
+          const roll = (pts, agg) => bSize <= 1 ? pts : chunk(pts).map(ch => agg === 'avg' ? Math.round(ch.reduce((a, b) => a + b, 0) / ch.length) : ch.reduce((a, b) => a + b, 0));
+          // Calm blue-forward palette (not each metric's native red/orange) — matches the reference chart.
+          const TREND_COLORS = ['#006BD7', '#9CC9F5', '#17315A', '#5BB4C4', '#C7DEF7'];
+          const tColor = (idx) => TREND_COLORS[idx % TREND_COLORS.length];
+          const series = panels.map((p, idx) => ({ color: tColor(idx), points: roll(p.pts.slice(-nPts), p.unit ? 'avg' : 'sum'), name: p.title }));
+          const single = panels.length === 1;
+          const granWord = trendGran === 'week' ? 'Weekly' : trendGran === 'month' ? 'Monthly' : 'Daily';
+          // Count metrics show a running total; gauge metrics (ms/dBm/%) show an average instead.
+          const total = single ? (panels[0].unit ? Math.round(series[0].points.reduce((a, b) => a + b, 0) / series[0].points.length) : series[0].points.reduce((a, b) => a + b, 0)) : null;
+          // Compact inline control (Stripe-style): small muted label + dropdown; controls flex to fill the width.
+          const pill = (label, el, grow = 1) => (
+            <Row gap={6} align="center" style={{ flex: `${grow} 1 0`, minWidth: 150 }}>
+              <span style={{ fontSize: 12, color: T.faint, fontWeight: 500, flexShrink: 0 }}>{label}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>{el}</div>
+            </Row>
+          );
+          return (
+            <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
+              <TileHeader title="Fleet trends" subtitle={`Daily telemetry · ${periodLabel(range)}`}
+                info="Track any fleet signal over time. Pick one or more metrics; the chart updates below."
+                right={<Row gap={8} align="center">
+                  <div style={{ width: 150 }}><Dropdown value={range} onChange={setRange} options={[{ value: '7d', label: 'Last 7 days' }, { value: '30d', label: 'Last 30 days' }, { value: '90d', label: 'Last 90 days' }]} /></div>
+                  <Button variant="secondary" iconLeft="download" onClick={() => downloadCSV('fleet-trends.csv', ['Date', ...panels.map(p => p.title)], labels.map((l, i) => [l, ...series.map(s => s.points[i])]))}>Export</Button>
+                </Row>} />
+              <Col gap={16} style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
+                {/* compact filter bar — fills the width */}
+                <Row gap={16} align="center" style={{ flexWrap: 'wrap' }}>
+                  {pill('Metric', <MultiDropdown values={sel.map(String)} onChange={(vals) => setTrendMetrics(vals.length ? vals.map(Number) : [0])} options={c.panels.map((p, i) => ({ value: String(i), label: p.title }))} />, 1.6)}
+                  {pill('Granularity', <Dropdown value={trendGran} onChange={setTrendGran} options={[{ value: 'day', label: 'By day' }, { value: 'week', label: 'By week' }, { value: 'month', label: 'By month' }]} />)}
+                  {pill('Breakdown', <Dropdown value="none" onChange={() => {}} options={[{ value: 'none', label: 'None' }]} />)}
+                </Row>
+                <Col gap={10}>
+                  {single
+                    ? <span style={{ fontSize: 13, color: T.sub }}>{granWord} {panels[0].title.toLowerCase()} <b className="ns-num" style={{ color: T.ink, fontWeight: 600 }}>· {panels[0].unit ? 'Avg' : 'Total'} {D.fmt(total)}</b></span>
+                    : <Row gap={16} style={{ flexWrap: 'wrap' }}>{panels.map((p, idx) => <Row key={p.title} gap={6} align="center"><span style={{ width: 8, height: 8, borderRadius: 2, background: tColor(idx), flexShrink: 0 }} /><span style={{ fontSize: 13, color: T.sub }}>{p.title}</span></Row>)}</Row>}
+                  <div style={{ minHeight: 240 }}>
+                    <BarChart data={{ labels, min: single && panels[0].min != null ? panels[0].min : undefined, series }} height={240} />
+                  </div>
+                </Col>
+              </Col>
+            </div>
+          );
+        })()}
         {/* Section 2 — Devices: the self-service spine. Search any terminal, filter, open it for logs & troubleshooting. */}
         <div id="fleet-devices" style={{ scrollMarginTop: 16 }}>
           <DetailSection title="Devices" info="Every payment device in the estate. Search a terminal, filter by status/country/model/version, and open any device to view its logs and troubleshoot — or export the filtered set."
             description={`${D.fmt(fleetFiltered.length)} of ${D.fmt(fleet.length)} devices`}
-            actions={<Row gap={8}><Button variant="secondary" condensed iconLeft="download" onClick={exportEvents}>Event report</Button><Button variant="secondary" condensed iconLeft="nav-analytics" onClick={() => setExploreOpen(true)}>Explore report</Button></Row>}>
+            actions={<Row gap={8}><Button variant="secondary" condensed iconLeft="download" onClick={exportEvents}>Event report</Button><Button variant="secondary" condensed iconLeft="nav-analytics" onClick={() => setExploreOpen(true)}>Summary report</Button></Row>}>
             {renderDevicesBody()}
           </DetailSection>
         </div>
@@ -1869,12 +1796,12 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
     const modelOptions = [{ value: 'model:S1F2', label: 'S1F2' }, { value: 'model:AMS1', label: 'AMS1' }, { value: 'model:V400m', label: 'V400m' }];
     const pick = (v) => setScope(scope === v ? 'all' : v);
     return (
-      <FullPage title="Explore trends" subtitle={`Fleet telemetry signals over time · ${periodLabel(range)}`} onClose={() => setTrendsOpen(false)} bodyBg={T.page}>
+      <FullPage title="Explore trends" subtitle={`Fleet telemetry signals over time · ${periodLabel(range)}`} onBack={() => setTrendsOpen(false)} backLabel="Fleet health overview" backIcon={<ArrowLeftGlyph />} onClose={() => setTrendsOpen(false)} bodyBg={T.page}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: T.s6 }}>
           {/* Explore signals — filters that drive the charts below */}
           <Col gap={T.s4}>
             <Col gap={2}>
-              <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Explore signals</span>
+              <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Signals</span>
               <span style={{ fontSize: 13, color: T.sub }}>Filter by event type, country, model and app version. (To inspect one device, open it from the Devices list.)</span>
             </Col>
             <Row gap={10} style={{ alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1935,16 +1862,18 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage }) {
         {exploreModal}
         {trendsModal}
         {troubleshootModal}
+        {studioModal}
       </div>
     );
   }
   return (
-    <FullPage title="Fleet health" subtitle={`Terminal telemetry · ${pageSubtitle}`} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
+    <FullPage title="Fleet health" subtitle={`Terminal telemetry · ${pageSubtitle}`} onBack={onBack} backLabel="Device intelligence" backIcon={<ArrowLeftGlyph />} onClose={onBack}
       actions={headerActions} bodyBg={T.page}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s7 }}>{sections}</div>
       {exploreModal}
       {trendsModal}
       {troubleshootModal}
+      {studioModal}
     </FullPage>
   );
 }
@@ -2085,7 +2014,7 @@ function SdkHealthDetail({ onBack, notify }) {
   const kpiGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: T.s3 };
   const [range, setRange] = useState('30d');
   return (
-    <FullPage title="SDK & OS health — Tap to Pay & card readers" subtitle={`All locations · ${d.totalDevices} devices · ${periodLabel(range)}`} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
+    <FullPage title="SDK & OS health — Tap to Pay & card readers" subtitle={`All locations · ${d.totalDevices} devices · ${periodLabel(range)}`} onBack={onBack} backLabel="Device intelligence" backIcon={<ArrowLeftGlyph />} onClose={onBack}
       actions={<Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting SDK & OS health to CSV…')}>Export</Button></Row>} bodyBg={T.page}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s7 }}>
         <DetailSection title="SDK versions" info="Adyen SDK versions running across the fleet. Expiry drives whether devices keep accepting payments." description={`As of ${d.asOf} · single fleet of ${d.totalDevices} devices`}>
@@ -2203,7 +2132,7 @@ function FirmwareDetail({ onBack, notify }) {
   const miniLabel = { fontSize: 11, color: T.faint, fontWeight: 600 };
   const num = (n) => n === 0 ? <span style={{ color: T.faint }}>–</span> : <span className="ns-num">{n}</span>;
   return (
-    <FullPage title="Terminal software" subtitle={`All locations · ${periodLabel(range)}`} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
+    <FullPage title="Terminal software" subtitle={`All locations · ${periodLabel(range)}`} onBack={onBack} backLabel="Device intelligence" backIcon={<ArrowLeftGlyph />} onClose={onBack}
       actions={<Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="primary" iconLeft="plus" onClick={() => notify && notify('Schedule update…')}>Schedule update</Button></Row>} bodyBg={T.page}>
       <div style={{ maxWidth: 1240, margin: '0 auto', padding: `${T.s5}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s6 }}>
         <UnderlineTabs value={tab} onChange={setTab} tabs={[{ value: 'updates', label: 'Updates' }, { value: 'releases', label: 'Releases' }, { value: 'defaults', label: 'Default versions' }]} />
@@ -2395,7 +2324,7 @@ function BusinessInsightDetail({ onBack, notify, onOpenStores, onOpenDevices, on
   };
   return (
     <FullPage title="Business insight" subtitle={rangeLabel} tone="nav-analytics"
-      onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+      onBack={onBack} backLabel="Device intelligence" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
       actions={<Row gap={8}>
         <RangeChip value={range} onChange={setRange} options={RANGES} />
         <Button variant="secondary" iconLeft="download" onClick={say('Exporting business insight…')}>Export</Button>
@@ -2806,7 +2735,7 @@ function ExploreModal({ tile, onBack }) {
                   const info = typeof c === 'object' ? c.info : null;
                   return (
                   <th key={ci} onClick={() => toggleSort(ci)} style={{ textAlign: ci === 0 ? 'left' : 'right', padding: '10px 14px', fontSize: 12, color: sortCol === ci ? T.ink : T.sub, fontWeight: 500, background: 'var(--b-color-background-secondary)', borderBottom: `1px solid ${T.sepFaint}`, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', minWidth: 0, justifyContent: ci === 0 ? 'flex-start' : 'flex-end' }}>{colLabel(ci)}{info && <InfoTip content={info} placement="top"><Ico name="info" size={14} color={T.faint} /></InfoTip>}<Ico name={sortCol === ci ? (sortDir === 'asc' ? 'chevron-up-small' : 'chevron-down-small') : 'expand-vertical'} size={16} color={sortCol === ci ? T.sub : T.faint} /></span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', minWidth: 0, justifyContent: ci === 0 ? 'flex-start' : 'flex-end' }}>{colLabel(ci)}{info && <InfoTip content={info} placement="top"><Ico name="info" size={16} color={T.faint} /></InfoTip>}<Ico name={sortCol === ci ? (sortDir === 'asc' ? 'chevron-up-small' : 'chevron-down-small') : 'expand-vertical'} size={16} color={sortCol === ci ? T.sub : T.faint} /></span>
                   </th>
                   );
                 })}
@@ -4020,7 +3949,7 @@ function SMStorePage({ store, storeMenuOpen, onToggleMenu, onCloseMenu, onEdit, 
         <div style={{ flex: 1, minWidth: 0, maxWidth: 760, paddingBottom: 40 }}>
           <Row gap={20} style={{ marginBottom: 24 }}>
             <span style={{ width: 56, height: 56, flexShrink: 0, border: `1px solid ${T.sep}`, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Ico name="store" size={24} color={T.ink} /></span>
-            <div style={{ minWidth: 0, fontSize: 17, fontWeight: 600 }}>{store.code}</div>
+            <div style={{ minWidth: 0, fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{store.code}</div>
           </Row>
 
           <h2 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>Details</h2>
@@ -4968,7 +4897,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
       <Col gap={4}>
         <Row gap={10} align="center">
           <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--b-color-background-secondary)', color: T.ink, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{n}</span>
-          <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>{title}</span>
+          <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{title}</span>
         </Row>
         {sub && <span style={{ fontSize: 12, color: T.faint, marginLeft: 34 }}>{sub}</span>}
       </Col>
@@ -5031,7 +4960,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
           <div style={{ flex: '1 1 340px', minWidth: 300 }}>
             <div style={{ background: '#F6F7F9', borderRadius: T.radiusL, padding: 24, display: 'flex', flexDirection: 'column', gap: 20, position: 'sticky', top: 20 }}>
               <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>Order summary</span>
+                <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Order summary</span>
                 <button onClick={() => setStep('cart')} style={{ border: 0, background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--b-color-link-primary)' }}>Edit</button>
               </Row>
               <Col gap={24}>
@@ -5418,6 +5347,160 @@ function AddLocationModal({ onClose, onCreate }) {
   );
 }
 
+/* Holistic device detail — identity, live state, final resolved config, terminal logs, event
+   timeline and problem history. "Config" opens the Device Studio preview scoped to this device. */
+function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify }) {
+  if (!row) return null;
+  const isMobile = row._type === 'Mobile';
+  const serial = row.serial || row.install || '—';
+  const dot = row.dot || '';
+  const statusWord = dot.includes('green') ? 'Online' : dot.includes('orange') ? 'Idle' : 'Offline';
+  const health = statusWord === 'Online' ? 'Healthy' : statusWord === 'Idle' ? 'At risk' : 'Offline';
+  const sv = statusWord === 'Online' ? 'green' : statusWord === 'Idle' ? 'orange' : 'grey';
+  // deterministic per-device derived telemetry
+  let h = 0; for (const ch of row.id) h = (h * 31 + ch.charCodeAt(0)) & 0x7fffffff;
+  const rnd = (n) => { h = (h * 1103515245 + 12345) & 0x7fffffff; return Math.floor((h / 0x7fffffff) * n); };
+  const termId = (row.model + '-' + serial).replace(/[^A-Za-z0-9-]/g, '');
+  const uniqueId = 'UID-' + String(serial).replace(/\D/g, '').slice(-8).padStart(8, '0');
+  const software = isMobile ? `SDK ${row.sdkVersion || '3.14.0'}` : `Firmware ${row.version || '1.42.1'}`;
+  const battery = isMobile ? null : (row.__battery != null ? row.__battery + '%' : (health === 'Offline' ? '—' : (42 + rnd(56)) + '%'));
+  const signal = row.__wifi != null ? (row.__wifi + ' dBm') : (health === 'Offline' ? 'No connection' : -(55 + rnd(24)) + ' dBm');
+  const conn = health === 'Offline' ? 'Offline' : (rnd(2) ? 'Wi-Fi' : 'Cellular');
+  const ssid = store ? (store.code.replace(/[^A-Za-z0-9]/g, '').slice(0, 10) + '-POS') : 'Store-POS';
+  const locName = store ? store.code : (row.store || '—');
+  const addr = (store && store.street) || row.address || '—';
+  const city = (store && store.city) || '';
+  const country = (store && store.country) || row.country || '—';
+
+  // human-readable event log + problem history (reuses the fleet-health event builder)
+  const dvFailed = row.__failed != null ? row.__failed : (health === 'Healthy' ? 0 : 3 + rnd(12));
+  const dvCause = row.__cause !== undefined ? row.__cause : (health === 'Healthy' ? '' : ['Wi-Fi drops · weak signal', 'WebSocket timeouts · high latency', 'Offline windows · not boarded'][rnd(3)]);
+  const dv = { id: row.id, terminal: termId, store: locName, country, model: row.model, appVersion: row.version || row.sdkVersion || '1.42.1', status: health, failed: dvFailed, cause: dvCause };
+  const events = deviceEvents(dv);
+  const problems = events.filter(e => /failure|signal|Cellular|Offline|error/i.test(e.type));
+
+  // final resolved configuration (schema defaults + inheritance source)
+  const cfg = buildSettingsRows(store || { code: locName, id: row.storeId || 'x' });
+  const cats = [];
+  cfg.forEach(c => { let g = cats.find(x => x.cat === c.category); if (!g) { g = { cat: c.category, rows: [] }; cats.push(g); } g.rows.push(c); });
+
+  const openStudio = () => onOpenStudio && onOpenStudio({ type: 'device', deviceIds: [row.id], model: row.model, name: row.model, deviceType: isMobile ? 'SoftPOS' : 'Terminal', storeId: row.storeId });
+  const fact = (k, v, mono) => (
+    <Row key={k} style={{ justifyContent: 'space-between', gap: 16, padding: '9px 0', borderBottom: `1px solid ${T.sepFaint}` }}>
+      <span style={{ fontSize: 13, color: T.sub, flexShrink: 0 }}>{k}</span>
+      <span style={{ fontSize: 13, fontWeight: 500, color: T.ink, textAlign: 'right', fontFamily: mono ? 'var(--b-font-family-secondary)' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v}</span>
+    </Row>
+  );
+  const dotEl = <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot || 'var(--b-color-decorative-grey)', flexShrink: 0 }} />;
+
+  return (
+    <FullPage title={row.model} subtitle={`${serial} · ${locName}`} tone="nav-devices" badge={<Tag label={statusWord} variant={sv} />}
+      onBack={onBack} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+      actions={<>
+        <MenuButton variant="secondary" condensed={false} icon="options-vertical" label="Actions" items={[
+          { value: 'restart', label: 'Restart', icon: 'refresh' }, { value: 'replace', label: 'Replace device', icon: 'refresh' }, { value: 'return', label: 'Return device', icon: 'arrow-right' },
+        ]} onSelect={(v) => notify && notify(v === 'restart' ? 'Restart command sent' : v === 'replace' ? 'Replacement ordered' : 'Return label generated')} />
+        <Button variant="secondary" iconLeft="settings" onClick={openStudio}>Config</Button>
+      </>}>
+      <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', gap: T.s6, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* left column — identity, location, network, final config */}
+        <Col gap={T.s6} style={{ flex: '2 1 460px', minWidth: 320 }}>
+          {health !== 'Healthy' && (
+            <Alert type={health === 'Offline' ? 'warning' : 'critical'} variant="default"
+              title={health === 'Offline' ? 'This device is offline' : 'This device is at risk of failing payments'}
+              description={dv.cause ? `${dv.cause}. ${dv.failed} connectivity-linked failed transactions recently.` : 'Check connectivity and recent events below.'} />
+          )}
+          <Section title="Device info" description="Identity and live state — all identifiers linked.">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0 32px' }}>
+              {fact('Status', <Row gap={6} style={{ justifyContent: 'flex-end' }}>{dotEl}<span>{statusWord}</span></Row>)}
+              {fact('Model', `${row.model} (${isMobile ? 'SoftPOS' : 'Terminal'})`)}
+              {fact('Serial number', serial, true)}
+              {fact('Terminal ID', termId, true)}
+              {fact('Unique ID', uniqueId, true)}
+              {fact('Integration', row.integration || 'Standalone')}
+              {fact('Software', software, true)}
+              {!isMobile && fact('Battery', battery)}
+              {fact('Last activity', row.lastActivity || '—')}
+              {fact('Last transaction', row.lastTx || '—')}
+            </div>
+          </Section>
+          <Section title="Location" actions={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => onOpenStore && row.storeId && onOpenStore(row.storeId)}>Open location</Button>}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0 32px' }}>
+              {fact('Location', locName)}
+              {fact('Country/Region', country)}
+              {fact('Address', addr)}
+              {fact('City', city || '—')}
+            </div>
+          </Section>
+          <Section title="Network">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0 32px' }}>
+              {fact('Connection', conn)}
+              {fact('Signal strength', signal)}
+              {fact('Wi-Fi network', conn === 'Cellular' ? '—' : ssid)}
+              {fact('Connection status', health === 'Offline' ? 'Disconnected' : 'Connected')}
+            </div>
+          </Section>
+          <Section title="Final configuration" description="The resolved settings applied to this device, with where each value comes from."
+            actions={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={openStudio}>Open in Device Studio</Button>}>
+            <div style={{ ...surface, overflow: 'hidden', maxHeight: 420, overflowY: 'auto' }}>
+              {cats.map((g, gi) => (
+                <div key={g.cat}>
+                  <div style={{ padding: '10px 14px', background: 'var(--b-color-background-secondary)', borderTop: gi ? `1px solid ${T.sep}` : 'none', fontSize: 12, fontWeight: 600, color: T.sub }}>{g.cat}</div>
+                  {g.rows.map(r => {
+                    const override = store && r.level === store.code;
+                    return (
+                      <Row key={r.setting} style={{ justifyContent: 'space-between', gap: 12, padding: '10px 14px', borderTop: `1px solid ${T.sepFaint}` }}>
+                        <Col gap={1} style={{ minWidth: 0 }}>
+                          <span style={{ fontSize: 13, fontFamily: 'var(--b-font-family-secondary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.setting}</span>
+                          <span style={{ fontSize: 12, color: T.sub }}>{r.value || '–'}</span>
+                        </Col>
+                        <Tag label={override ? 'Overridden · Store' : 'Inherited'} variant={override ? 'orange' : 'grey'} />
+                      </Row>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </Section>
+        </Col>
+        {/* right column — event log + problem history */}
+        <Col gap={T.s6} style={{ flex: '1 1 320px', minWidth: 300 }}>
+          <Section title="Problem history" description={problems.length ? `${problems.length} connectivity / payment issues` : 'No issues on record'}>
+            {problems.length === 0
+              ? <EmptyState icon="checkmark-circle" title="All clear" description="No connectivity or payment problems recorded for this device." />
+              : <Col gap={0}>
+                  {problems.slice(0, 6).map((e, i) => (
+                    <Row key={i} gap={10} align="flex-start" style={{ padding: '10px 0', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: i === 0 && health !== 'Healthy' ? 'var(--b-color-decorative-red)' : 'var(--b-color-decorative-grey)', flexShrink: 0, marginTop: 6 }} />
+                      <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                        <Row style={{ justifyContent: 'space-between', gap: 8 }}><span style={{ fontSize: 13, fontWeight: 600 }}>{e.type}</span><Tag label={i === 0 && health !== 'Healthy' ? 'Ongoing' : 'Resolved'} variant={i === 0 && health !== 'Healthy' ? 'red' : 'green'} /></Row>
+                        <span style={{ fontSize: 12, color: T.sub }}>{e.detail}</span>
+                        <span style={{ fontSize: 11, color: T.faint }}>{e.ts}{e.ref ? ` · ${e.ref}` : ''}</span>
+                      </Col>
+                    </Row>
+                  ))}
+                </Col>}
+          </Section>
+          <Section title="Reader event log" description="Terminal logs — reboots, config changes, network and errors."
+            actions={<Button variant="tertiary" condensed iconRight="external-link" onClick={() => notify && notify('Opening full device log…')}>View full log</Button>}>
+            <Col gap={0}>
+              {events.slice(0, 12).map((e, i) => (
+                <Row key={i} gap={10} align="flex-start" style={{ padding: '10px 0', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+                  <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{e.type}</span>
+                    <span style={{ fontSize: 12, color: T.sub }}>{e.detail}</span>
+                  </Col>
+                  <span style={{ fontSize: 11, color: T.faint, whiteSpace: 'nowrap', flexShrink: 0 }}>{e.ts}</span>
+                </Row>
+              ))}
+            </Col>
+          </Section>
+        </Col>
+      </div>
+    </FullPage>
+  );
+}
+
 /* Device-first "Device locations" page — the full device list with Location as a column.
    "View all locations" flips to the store (location) list. */
 function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
@@ -5432,6 +5515,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
   const [reassign, setReassign] = useState(null); // { rows } while the reassign modal is open
   const [reassignTarget, setReassignTarget] = useState((SM_STORES[0] || {}).id);
   const [addLocOpen, setAddLocOpen] = useState(false);
+  const [detailRow, setDetailRow] = useState(null); // clicked device → holistic Device detail overlay
   const [ver, setVer] = useState(0); // bumped after creating a location so the table refreshes
   const createLocation = (data) => {
     const s = { id: 'loc' + Date.now(), code: data.name, name: data.name, status: 'Active', country: data.country, city: data.city, street: data.address, zip: data.zip, phone: '', merchant: data.merchant, terminals: 0, termOnline: 0, termWeek: 0, termOff: 0, storeId: 'ST' + Date.now() + 'ZKW' };
@@ -5448,6 +5532,8 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
   // Open the Locations modal, optionally deep-linked to a single location's detail (where Edit store lives).
   const openLocation = (id) => setLocations({ store: SM_STORES.find(x => x.id === id) ? id : undefined });
   const openDeviceStudio = (r) => onOpenStudio && onOpenStudio({ type: 'device', deviceIds: [r.id], model: r.model, name: r.model, deviceType: r._type === 'Mobile' ? 'SoftPOS' : 'Terminal', storeId: r.storeId });
+  // Clicking a device opens the holistic Device detail (info + config + logs); "Config" there opens Device Studio.
+  const openDeviceDetail = (r) => setDetailRow(r);
   // Configure one/many devices → Device Studio scoped to the selection.
   const configureDevices = (rows) => {
     if (!onOpenStudio || !rows || !rows.length) return;
@@ -5459,8 +5545,8 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
     <>
       <DeviceExplorer terminals={terminals} mobiles={mobiles} onOpenStore={openLocation} storeLabel="Location" notify={notify}
         view={view} onView={setView} onReassign={(rows) => setReassign({ rows })} onConfigure={configureDevices}
-        locationView={<LocationDeviceTable key={ver} stores={SM_STORES.slice()} deviceTotal={terminals.length + mobiles.length} onOpenLocation={openLocation} onOpenDevice={openDeviceStudio} onConfigureStore={configureStore} onCloseLocation={(s) => notify && notify(`Closing ${s.code}…`)} notify={notify} />}
-        onOpenDevice={openDeviceStudio}
+        locationView={<LocationDeviceTable key={ver} stores={SM_STORES.slice()} deviceTotal={terminals.length + mobiles.length} onOpenLocation={openLocation} onOpenDevice={openDeviceDetail} onConfigureStore={configureStore} onCloseLocation={(s) => notify && notify(`Closing ${s.code}…`)} notify={notify} />}
+        onOpenDevice={openDeviceDetail}
         title="Devices & locations" subtitle="Set up locations and order, replace and return devices."
         info={<span>“<b>Location</b>” replaces the old “Store” concept so it can represent any level of your Adyen account structure — a <b>business line</b>, a <b>merchant account</b> acting as a single shop, or a physical store. One umbrella term for wherever a device operates.</span>}
         actions={<>
@@ -5472,6 +5558,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
               </>}
         </>} />
       {addLocOpen && <AddLocationModal onClose={() => setAddLocOpen(false)} onCreate={createLocation} />}
+      {detailRow && <DeviceDetail row={detailRow} store={SM_STORES.find(x => x.id === detailRow.storeId)} onBack={() => setDetailRow(null)} onOpenStudio={onOpenStudio} onOpenStore={openLocation} notify={notify} />}
       {reassign && (
         <Modal open onClose={() => setReassign(null)} title="Reassign devices" width={460}
           description={`Move ${reassign.rows.length} device${reassign.rows.length === 1 ? '' : 's'} to a different location. Each device always belongs to exactly one location.`}
@@ -5733,7 +5820,7 @@ function SMEditPanel({ s, setState, editStore, ev, editZip, editZipBad, editPhon
           <span style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 6 }}>Description</span>
           <input type="text" value={pick('name', editStore.name)} onChange={efSetter('name')} style={fieldStyle} />
         </label>
-        <div style={{ fontSize: 16, fontWeight: 600, marginTop: 4 }}>Address</div>
+        <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', marginTop: 4 }}>Address</div>
         <label style={{ display: 'block' }}><span style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 6 }}>Address line 1</span><input type="text" value={pick('street', editStore.street)} onChange={efSetter('street')} style={fieldStyle} /></label>
         <label style={{ display: 'block' }}><span style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 6 }}>Address line 2</span><input type="text" value={pick('addr2', '')} onChange={efSetter('addr2')} style={fieldStyle} /></label>
         <label style={{ display: 'block' }}><span style={{ display: 'block', fontSize: 14, fontWeight: 500, marginBottom: 6 }}>Address line 3</span><input type="text" value={pick('addr3', '')} onChange={efSetter('addr3')} style={fieldStyle} /></label>
@@ -6183,7 +6270,7 @@ function DeviceModal({ deviceId, onBack, onOpenStudio, notify }) {
   return (
     <FullPage title={d.serial} subtitle={`${d.model} · ${d.storeName}`} tone="terminal-1" badge={StatusFor(d.status)} onBack={onBack} backLabel="Store"
       actions={<>
-        <MenuButton variant="secondary" icon="options-vertical" label="Actions" items={[
+        <MenuButton variant="secondary" condensed={false} icon="options-vertical" label="Actions" items={[
           { value: 'replace', label: 'Replace device', icon: 'refresh' }, { value: 'return', label: 'Return device', icon: 'arrow-right' }, { divider: true }, { value: 'restart', label: 'Restart', icon: 'refresh' },
         ]} onSelect={(v) => notify(v === 'replace' ? 'Replacement ordered' : v === 'return' ? 'Return label generated' : 'Restart command sent')} />
         <Button variant="primary" iconLeft="settings" onClick={() => onOpenStudio({ type: 'device', deviceIds: [d.id], storeId: d.storeId, deviceType: d.className === 'softpos' ? 'SoftPOS' : 'Terminal', model: d.model })}>Open in Device Studio</Button>
@@ -7532,7 +7619,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
   );
 
   return (
-    <FullPage title={initialScope.type === 'device' ? (initialScope.model || initialScope.name || 'Device') : 'Device Studio'} onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />}
+    <FullPage title={initialScope.type === 'device' ? (initialScope.model || initialScope.name || 'Device') : 'Device Studio'} onBack={onBack} backLabel={initialScope.type === 'device' ? 'Device overview' : initialScope.type === 'store' ? 'Store settings' : 'Back'} backIcon={<ArrowLeftGlyph />}
       badge={<Row gap={4}>
         <InfoTip width={320} content={isDeviceScreen
           ? <span>The <b>Device screen</b> edits device‑only settings (connectivity, hardware, passcodes). Store‑level policy (receipts, payments, language, branding) shows as <b>Inherited · Store</b> and is read‑only until you override it here.</span>
@@ -7864,17 +7951,14 @@ function StudioPreview({ config, onBack, onEdit }) {
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: T.s4, alignItems: 'stretch' }}>
         {/* live preview — full height */}
         <div style={{ ...surface, flex: '1.4 1 380px', minWidth: 320, overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className="ns-tile">
-          <Row style={{ padding: `${T.s3}px ${T.s4}px`, borderBottom: `1px solid ${T.sepFaint}`, gap: T.s3, flexShrink: 0 }}>
-            <Row gap={6} style={{ flexShrink: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Live preview</span>
-              <InfoTip content="Preview reflects this configuration applied across every device it targets.">
-                <Ico name="info" size={16} color={T.ink} />
-              </InfoTip>
-            </Row>
-            <div style={{ flex: 1, minWidth: 0, maxWidth: 320, marginLeft: 'auto' }}>
-              <SegmentedControl condensed className="ns-seg-full" style={{ display: 'flex', width: '100%' }} value={screen} onChange={setScreen} options={PREVIEW_SCREENS} />
-            </div>
+          <Row gap={6} style={{ padding: `${T.s3}px ${T.s4}px`, borderBottom: `1px solid ${T.sepFaint}`, flexShrink: 0 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Live preview</span>
+            <InfoTip content="Preview reflects this configuration applied across every device it targets.">
+              <Ico name="info" size={16} color={T.ink} />
+            </InfoTip>
           </Row>
+          {/* Screen-flow tab bar — same as the Device Studio editor */}
+          <FlowTabs value={screen} onChange={setScreen} options={PREVIEW_SCREENS} />
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s6, display: 'flex', justifyContent: 'center', alignItems: 'center', background: T.card }}>
             <Simulator vals={vals} screen={screen} deviceId={previewId} txAmount deviceType={deviceType} tx={tx} />
           </div>
