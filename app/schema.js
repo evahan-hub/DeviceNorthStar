@@ -47,6 +47,19 @@
       ],
     },
     {
+      id: 'loyalty', level: 'policy', category: 'PaymentFeatures', title: 'Loyalty program', icon: 'star-fill', preview: 'loyalty',
+      desc: 'Enrol shoppers and earn / redeem points right on the terminal.',
+      fields: [
+        { id: 'enabled', label: 'Enable loyalty', type: 'toggle', default: true },
+        { id: 'programName', label: 'Program name', type: 'text', default: 'Uniqlo Rewards', dependsOn: { enabled: true }, valueInput: true },
+        { id: 'enrolMethod', label: 'Enrolment method', type: 'segmented', options: ['QR', 'Phone', 'Email'], default: 'QR', dependsOn: { enabled: true } },
+        { id: 'enrolPrompt', label: 'Enrolment prompt', type: 'text', default: 'Join Uniqlo Rewards', dependsOn: { enabled: true }, valueInput: true },
+        { id: 'allowSkip', label: 'Allow shopper to skip', type: 'toggle', default: true, dependsOn: { enabled: true } },
+        { id: 'showTier', label: 'Show membership tier', type: 'toggle', default: true, dependsOn: { enabled: true } },
+        { id: 'pointsOnReceipt', label: 'Show points on receipt', type: 'toggle', default: true, dependsOn: { enabled: true } },
+      ],
+    },
+    {
       id: 'japan', level: 'policy', category: 'PaymentFeatures', title: 'Japan market (F&B)', icon: 'globe', preview: 'transaction', market: 'Japan',
       desc: 'Local acceptance and tax rules for the Japanese market.',
       fields: [

@@ -173,34 +173,53 @@
   // Older app versions skew toward at-risk — gives the version filter / proactive layer something to find.
   const FH_VERSIONS = [['1.42.1', 0.46], ['1.41.0', 0.26], ['1.40.3', 0.17], ['1.39.2', 0.11]];
   const FH_CAUSES = ['Wi-Fi drops · weak signal', 'WebSocket timeouts · high latency', 'Cellular fallback · weak signal', 'Offline windows · not boarded', 'WebSocket reconnect loop'];
+  // Realistic small estate: each store has 4–10 payment devices (one store maxes out at 10 POS).
   const fleetDevices = (() => {
     let s = 20260101; const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
     const wpick = (arr) => { let t = r(); for (const [v, w] of arr) { if ((t -= w) <= 0) return v; } return arr[0][0]; };
+    const storeList = [];
+    for (const [country] of FH_COUNTRIES) for (const name of FH_STORES[country]) storeList.push({ store: name, country });
     const out = [];
-    for (let i = 0; i < 168; i++) {
-      const country = wpick(FH_COUNTRIES);
-      const model = FH_MODELS[Math.floor(r() * FH_MODELS.length)];
-      const appVersion = wpick(FH_VERSIONS);
-      const stores = FH_STORES[country];
-      const store = stores[Math.floor(r() * stores.length)];
-      const serial = String(Math.floor(1e11 + r() * 8e11));
-      const terminal = `${model}-${serial}`;
-      const old = appVersion === '1.40.3' || appVersion === '1.39.2';
-      const roll = r() + (old ? 0.22 : 0); // older versions more likely unhealthy
-      let status = 'Healthy', failed = 0, cause = '';
-      if (roll > 0.97) { status = 'Offline'; failed = 4 + Math.floor(r() * 30); cause = 'Offline windows · not boarded'; }
-      else if (roll > 0.78) { status = 'At risk'; failed = 3 + Math.floor(r() * 26); cause = FH_CAUSES[Math.floor(r() * FH_CAUSES.length)]; }
-      const healthy = status === 'Healthy';
-      out.push({
-        id: 'fd:' + terminal, terminal, store, country, model, app: 'Payments', appVersion,
-        os: old ? (appVersion === '1.39.2' ? 'Android 11' : 'Android 12') : 'Android 13',
-        status, failed, cause,
-        wifi: healthy ? -(52 + Math.floor(r() * 16)) : -(80 + Math.floor(r() * 10)),
-        battery: 35 + Math.floor(r() * 62),
-      });
+    for (const st of storeList) {
+      const n = 4 + Math.floor(r() * 7); // 4..10 devices per store
+      for (let i = 0; i < n; i++) {
+        const model = FH_MODELS[Math.floor(r() * FH_MODELS.length)];
+        const appVersion = wpick(FH_VERSIONS);
+        const serial = String(Math.floor(1e11 + r() * 8e11));
+        const terminal = `${model}-${serial}`;
+        const old = appVersion === '1.40.3' || appVersion === '1.39.2';
+        const roll = r() + (old ? 0.08 : 0); // older versions skew slightly more unhealthy
+        let status = 'Healthy', cause = '';
+        if (roll > 0.94) { status = 'Offline'; cause = 'Offline windows · not boarded'; }
+        else if (roll > 0.84) { status = 'At risk'; cause = FH_CAUSES[Math.floor(r() * FH_CAUSES.length)]; }
+        const healthy = status === 'Healthy';
+        const weakCause = /weak|signal|Cellular/i.test(cause);
+        const lowBat = r() < 0.03;
+        out.push({
+          id: 'fd:' + terminal, terminal, store: st.store, country: st.country, model, app: 'Payments', appVersion,
+          os: old ? (appVersion === '1.39.2' ? 'Android 11' : 'Android 12') : 'Android 13',
+          status, cause,
+          failed: healthy ? 0 : 2 + Math.floor(r() * 18), // connectivity-linked failed payments on this terminal
+          wifi: healthy ? -(52 + Math.floor(r() * 16)) : weakCause ? -(80 + Math.floor(r() * 12)) : -(66 + Math.floor(r() * 8)),
+          battery: lowBat ? 5 + Math.floor(r() * 14) : 42 + Math.floor(r() * 56),
+        });
+      }
     }
     return out.sort((a, b) => b.failed - a.failed);
   })();
+  // Derive the fleet-level tile metrics FROM the device dataset so the tile and the Fleet health page always match.
+  const FH_N = fleetDevices.length;
+  const FH_FAILED = fleetDevices.reduce((a, dv) => a + dv.failed, 0);
+  const FH_WEAK = fleetDevices.filter(dv => dv.wifi <= -75).length;
+  const FH_LOWBAT = fleetDevices.filter(dv => dv.battery < 20).length;
+  const pctOf = (n) => +((n / FH_N) * 100).toFixed(1);
+  connectivity.failedTx.count = FH_FAILED;
+  connectivity.failedTx.revenueAtRiskK = Math.max(1, Math.round(FH_FAILED * 42 / 1000));
+  connectivity.weakSignal = { count: FH_WEAK, pct: pctOf(FH_WEAK) };
+  connectivity.lowBattery = { count: FH_LOWBAT, pct: pctOf(FH_LOWBAT) };
+  connectivity.wsFailures = { count: Math.round(FH_FAILED * 1.3), pct: 1.9, trend: -0.4, dir: 'positive' };
+  connectivity.firmwareInstalls = Math.max(1, Math.round(FH_N * 0.12));
+  connectivity.reconnects = { count: Math.round(FH_N * 2.4), trend: 2.1, dir: 'negative' };
 
   // ---- Stores & devices ----
   const models = [

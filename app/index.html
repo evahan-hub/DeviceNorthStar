@@ -58,6 +58,12 @@
     .ns-clickable { cursor: pointer; }
     .ns-tile { transition: border-color var(--b-animation-duration-moderate) var(--b-animation-easing-standard), box-shadow var(--b-animation-duration-moderate) var(--b-animation-easing-standard); }
     .ns-hoverline:hover { text-decoration: underline; cursor: pointer; }
+    .ns-accord-row { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
+    .ns-accord-row:hover { background: var(--b-color-background-secondary); }
+    .ns-flowtabs { scrollbar-width: thin; }
+    .ns-flowtabs::-webkit-scrollbar { height: 6px; }
+    .ns-flowtabs::-webkit-scrollbar-thumb { background: var(--b-color-outline-secondary); border-radius: 6px; }
+    .ns-flowtabs::-webkit-scrollbar-track { background: transparent; }
     .ns-kpi { transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
     .ns-kpi:hover { background: var(--b-color-background-secondary-hover) !important; }
     /* Dashboard tiles fill their grid cell so tiles in the same row share one height */
@@ -175,6 +181,17 @@
   <div id="root"><div class="ns-loading">Loading Device North Star…</div></div>
 
   <!-- React (UMD) must load before the Bento bundle, which references a global `React`. -->
+  <!-- Debug: surface the real error message/stack (prod React minifies them) -->
+  <script>
+    window.addEventListener('error', function (e) {
+      console.log('WINDOW ERROR >>', e.message, '@', (e.filename || '') + ':' + e.lineno + ':' + e.colno, e.error && e.error.stack ? ('\n' + e.error.stack) : '');
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      console.log('UNHANDLED REJECTION >>', (r && (r.stack || r.message)) || (function () { try { return JSON.stringify(r); } catch (x) { return String(r); } })());
+    });
+  </script>
+
   <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
 
