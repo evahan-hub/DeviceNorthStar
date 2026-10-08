@@ -654,9 +654,21 @@ const DATA_PERIODS = [
   { value: 'today', label: 'Today' }, { value: '7d', label: 'Last 7 days' }, { value: '30d', label: 'Last 30 days' }, { value: '90d', label: 'Last 90 days' }, { value: '12m', label: 'Last 12 months' },
 ];
 const fmtRangeDate = (s) => { const d = new Date(s); return isNaN(d.getTime()) ? s : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }); };
+// Elastic-style relative units (singularised when n === 1).
+const REL_UNITS = [
+  { value: 'seconds', label: 'seconds' }, { value: 'minutes', label: 'minutes' }, { value: 'hours', label: 'hours' },
+  { value: 'days', label: 'days' }, { value: 'weeks', label: 'weeks' }, { value: 'months', label: 'months' }, { value: 'years', label: 'years' },
+];
+const relLabel = (n, unit) => `Last ${n} ${+n === 1 ? unit.replace(/s$/, '') : unit}`;
 const periodLabel = (v) => {
   if (typeof v === 'string' && v.startsWith('custom:')) { const p = v.split(':'); return `${fmtRangeDate(p[1])} – ${fmtRangeDate(p[2])}`; }
+  if (typeof v === 'string' && v.startsWith('rel:')) { const p = v.split(':'); return relLabel(p[1], p[2]); }
   return (DATA_PERIODS.find(p => p.value === v) || DATA_PERIODS.find(p => p.value === '30d')).label;
+};
+// Resolve a range value to a label against a given option set (handles rel:/custom: generically).
+const rangeLabel = (v, options) => {
+  if (typeof v === 'string' && (v.startsWith('custom:') || v.startsWith('rel:'))) return periodLabel(v);
+  const o = (options || []).find(x => x.value === v); return o ? o.label : v;
 };
 
 /* ---- Dashboard layout persistence ----
@@ -1335,14 +1347,26 @@ const CONN_SCOPES = [
 function storeWatchReason(s) {
   if (s.wsDrops >= 500) return { key: 'ws', label: 'WebSocket failures', variant: 'red' };
   if (s.offline > 0) return { key: 'offline', label: 'Offline', variant: 'red' };
-  if ((s.failed || 0) >= 60) return { key: 'failed', label: 'Failed payments', variant: 'orange' };
+  if ((s.failed || 0) >= 60) return { key: 'failed', label: 'Failed transactions', variant: 'orange' };
   if (s.minWifi <= -85) return { key: 'weak', label: 'Weak signal', variant: 'orange' };
   if (s.atRisk > 0) return { key: 'risk', label: 'At risk', variant: 'orange' };
   return { key: 'stable', label: 'Stable', variant: 'grey' };
 }
 const WATCH_REASON_OPTS = [
-  { value: 'ws', label: 'WebSocket failures' }, { value: 'offline', label: 'Offline terminals' }, { value: 'failed', label: 'Failed payments' },
+  { value: 'ws', label: 'WebSocket failures' }, { value: 'offline', label: 'Offline terminals' }, { value: 'failed', label: 'Failed transactions' },
   { value: 'weak', label: 'Weak signal' }, { value: 'risk', label: 'At risk' }, { value: 'stable', label: 'Stable' },
+];
+// A device's dominant issue ("Why") — the reason behind its status, for the device-list Reason filter + column.
+function deviceReason(dv) {
+  if (dv.status === 'Offline') return { key: 'offline', label: 'Offline', variant: 'grey' };
+  if (/websocket/i.test(dv.cause || '')) return { key: 'ws', label: 'WebSocket failures', variant: 'red' };
+  if (/weak|signal|cellular/i.test(dv.cause || '')) return { key: 'weak', label: 'Weak signal', variant: 'orange' };
+  if (dv.status === 'At risk') return { key: 'failed', label: 'Failed transactions', variant: 'orange' };
+  return { key: 'healthy', label: 'Healthy', variant: 'green' };
+}
+const DEV_REASON_OPTS = [
+  { value: 'ws', label: 'WebSocket failures' }, { value: 'weak', label: 'Weak signal' },
+  { value: 'failed', label: 'Failed transactions' }, { value: 'offline', label: 'Offline' }, { value: 'healthy', label: 'Healthy' },
 ];
 // Guided fix steps for a store's dominant connectivity issue.
 function storeFixSteps(key, s) {
@@ -1443,6 +1467,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   const [versionF, setVersionF] = useState([]);
   const [statusF, setStatusF] = useState(['At risk', 'Offline']); // default view = terminals with connectivity-linked failed transactions
   const [storeF, setStoreF] = useState([]); // filter the device list to specific store(s) — driven by the store leaderboards
+  const [reasonF, setReasonF] = useState([]); // device-list "Why" / reason filter (alongside Status)
   const [devSearch, setDevSearch] = useState('');
   // Explore-signals filters (drive the Device signals charts): country/version re-seed, event type filters panels.
   const [sigCountry, setSigCountry] = useState([]);
@@ -1466,11 +1491,15 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
     (!modelF.length || modelF.includes(dv.model)) &&
     (!versionF.length || versionF.includes(dv.appVersion)) &&
     (!statusF.length || statusF.includes(dv.status)) &&
+    (!reasonF.length || reasonF.includes(deviceReason(dv).key)) &&
     (!storeF.length || storeF.includes(dv.store)) &&
     (!devSearch || dv.terminal.toLowerCase().includes(devSearch.trim().toLowerCase()))
-  ), [countryF, modelF, versionF, statusF, storeF, devSearch]);
+  ), [countryF, modelF, versionF, statusF, reasonF, storeF, devSearch]);
   // Drill from a store leaderboard into the device list, scoped to that store.
-  const focusStore = (name) => { setStoreF([name]); setStatusF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); };
+  const focusStore = (name) => { setStoreF([name]); setStatusF([]); setReasonF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); };
+  // Drill from "Failed transactions" → the terminals with failed transactions. Only At-risk terminals accrue
+  // failed transactions (offline aren't trading, healthy have none), so At risk == the failed-transaction set.
+  const focusFailed = () => { setStatusF(['At risk']); setReasonF([]); setStoreF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); };
   // Level 3 proactive: devices trending toward failure (at-risk / offline) and those on older app versions.
   const atRiskDevices = fleet.filter(dv => dv.status !== 'Healthy');
   const oldVerDevices = fleet.filter(dv => dv.appVersion === '1.39.2' || dv.appVersion === '1.40.3');
@@ -1538,16 +1567,14 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
     { label: 'Current battery', value: `${c.k.curBattery}%`, hint: 'Latest reported battery level.' },
   ] : [
     { label: 'WebSocket failures', value: `${D.fmt(d.wsFailures.count)} (${d.wsFailures.pct}%)`, hint: 'Failed persistent-connection attempts; spikes precede outages.' },
-    { label: 'Failed transactions', value: D.fmt(failedTotal), hint: `Connectivity-linked failed payments across ${failedDeviceCount} terminals — ≈€${revenueAtRiskK}k revenue at risk.` },
+    { label: 'Failed transactions', value: D.fmt(failedTotal), hint: `Connectivity-linked failed transactions across ${failedDeviceCount} terminals — ≈€${revenueAtRiskK}k revenue at risk.` },
     { label: 'Terminals on weak signal', value: `${D.fmt(d.weakSignal.count)} (${d.weakSignal.pct}%)`, hint: 'Devices below the safe Wi-Fi/cellular threshold.' },
     { label: 'Terminals under 20% battery', value: `${D.fmt(d.lowBattery.count)} (${d.lowBattery.pct}%)`, hint: 'At risk of shutting down mid-shift.' },
   ];
-  // Primary connected interface donut (Wi-Fi vs Cellular).
-  const R = 16, C = 2 * Math.PI * R, wifiLen = C * d.iface.wifi / 100;
   // Shared device-list body (filters + table + pagination) — reused by the inline Devices section and the "View all" modal.
   const renderDevicesBody = () => {
-    const anyF = countryF.length || modelF.length || versionF.length || statusF.length || storeF.length || devSearch;
-    const clearAll = () => { setCountryF([]); setModelF([]); setVersionF([]); setStatusF([]); setStoreF([]); setDevSearch(''); setDevPage(1); };
+    const anyF = reasonF.length || countryF.length || modelF.length || versionF.length || statusF.length || storeF.length || devSearch;
+    const clearAll = () => { setReasonF([]); setCountryF([]); setModelF([]); setVersionF([]); setStatusF([]); setStoreF([]); setDevSearch(''); setDevPage(1); };
     const pages = Math.max(1, Math.ceil(fleetFiltered.length / DEV_PAGE));
     const page = Math.min(devPage, pages);
     const slice = fleetFiltered.slice((page - 1) * DEV_PAGE, page * DEV_PAGE);
@@ -1562,6 +1589,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
             <input value={devSearch} onChange={e => { setDevSearch(e.target.value); setDevPage(1); }} placeholder="Search terminal ID…" style={{ height: 36, width: '100%', boxSizing: 'border-box', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, padding: '0 12px 0 36px', fontFamily: 'inherit', fontSize: 14, color: T.ink, background: T.card }} />
           </div>
           <FilterChip label="Status" options={[{ value: 'At risk', label: 'At risk' }, { value: 'Offline', label: 'Offline' }, { value: 'Healthy', label: 'Healthy' }]} selected={statusF} onChange={toggle(setStatusF)} onClear={() => { setStatusF([]); setDevPage(1); }} />
+          <FilterChip label="Reason" options={DEV_REASON_OPTS} selected={reasonF} onChange={toggle(setReasonF)} onClear={() => { setReasonF([]); setDevPage(1); }} />
           <FilterChip label="Store" options={uniq('store').sort().map(x => ({ value: x, label: x }))} selected={storeF} onChange={toggle(setStoreF)} onClear={() => { setStoreF([]); setDevPage(1); }} />
           <FilterChip label="Country" options={uniq('country').map(x => ({ value: x, label: x }))} selected={countryF} onChange={toggle(setCountryF)} onClear={() => { setCountryF([]); setDevPage(1); }} />
           <FilterChip label="Model" options={uniq('model').map(x => ({ value: x, label: x }))} selected={modelF} onChange={toggle(setModelF)} onClear={() => { setModelF([]); setDevPage(1); }} />
@@ -1569,13 +1597,13 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
           {anyF ? <Button variant="tertiary" condensed onClick={clearAll}>Clear filters</Button> : null}
         </Row>
         <div style={{ ...surface, overflow: 'auto', marginTop: T.s4 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 940 }}>
             <thead><tr>
-              <th style={th}>Terminal ID</th><th style={th}>Store</th><th style={th}>Country</th><th style={th}>Model</th><th style={th}>App version</th><th style={th}>Status</th>
+              <th style={th}>Terminal ID</th><th style={th}>Store</th><th style={th}>Country</th><th style={th}>Model</th><th style={th}>App version</th><th style={th}>Status</th><th style={th}>Why</th>
               <th style={{ ...th, textAlign: 'right' }}>Failed</th><th style={{ ...th, textAlign: 'right' }}>Wi-Fi</th><th style={{ ...th, width: 1 }}></th>
             </tr></thead>
             <tbody>
-              {slice.map(dv => (
+              {slice.map(dv => { const dr = deviceReason(dv); return (
                 <tr key={dv.id} className="ns-row" style={{ cursor: 'pointer' }} onClick={() => setTroubleshootId(dv.id)}>
                   <td style={{ ...td, fontFamily: 'var(--b-font-family-secondary)', fontWeight: 500 }}>{dv.terminal}</td>
                   <td style={td}>{dv.store}</td>
@@ -1583,12 +1611,13 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
                   <td style={td}>{dv.model}</td>
                   <td style={{ ...td, fontFamily: 'var(--b-font-family-secondary)' }}>{dv.appVersion}</td>
                   <td style={td}><Status variant={sv[dv.status]} label={dv.status} /></td>
+                  <td style={td}>{dr.key === 'healthy' ? <span style={{ color: T.faint }}>—</span> : <Tag label={dr.label} variant={dr.variant} />}</td>
                   <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--b-font-family-secondary)', color: dv.failed ? 'var(--b-color-label-critical)' : T.faint, fontWeight: dv.failed ? 600 : 400 }}>{dv.failed || '—'}</td>
                   <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--b-font-family-secondary)' }}>{dv.wifi} dBm</td>
                   <td style={{ ...td, textAlign: 'right', width: 1 }}><button type="button" title={dv.status !== 'Healthy' ? 'Troubleshoot' : 'View logs'} onClick={(e) => { e.stopPropagation(); setTroubleshootId(dv.id); }} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: T.faint, lineHeight: 0, padding: 4, display: 'inline-flex', borderRadius: 6 }}><Ico name="chevron-right" size={18} /></button></td>
                 </tr>
-              ))}
-              {slice.length === 0 && <tr><td colSpan={9} style={{ ...td, textAlign: 'center', color: T.faint, borderBottom: 'none' }}>No devices match these filters.</td></tr>}
+              ); })}
+              {slice.length === 0 && <tr><td colSpan={10} style={{ ...td, textAlign: 'center', color: T.faint, borderBottom: 'none' }}>No devices match these filters.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1639,7 +1668,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
     const tdR = { ...td, textAlign: 'right', fontFamily: 'var(--b-font-family-secondary)' };
     return (
       <Modal open onClose={() => setExploreOpen(false)} title="Summary report" description={`Bird's-eye view · ${D.fmt(fleetFiltered.length)} devices${countryF.length || modelF.length || versionF.length ? ' (filtered)' : ''}`} width={720}
-        footer={<Row gap={8} style={{ justifyContent: 'space-between', width: '100%', alignItems: 'center' }}><span style={{ fontSize: 12, color: T.faint }}>Grouped totals reflect the active filters.</span><Button variant="secondary" iconLeft="download" onClick={() => { downloadCSV(`fleet-report-by-${groupBy}.csv`, [groupBy, 'Terminals', 'At risk', 'Failed payments', 'Avg Wi-Fi (dBm)'], rows.map(r => [r.g, r.total, r.atrisk, r.failed, r.avgWifi])); notify && notify('Exported report to CSV'); }}>Export</Button></Row>}>
+        footer={<Row gap={8} style={{ justifyContent: 'space-between', width: '100%', alignItems: 'center' }}><span style={{ fontSize: 12, color: T.faint }}>Grouped totals reflect the active filters.</span><Button variant="secondary" iconLeft="download" onClick={() => { downloadCSV(`fleet-report-by-${groupBy}.csv`, [groupBy, 'Terminals', 'At risk', 'Failed transactions', 'Avg Wi-Fi (dBm)'], rows.map(r => [r.g, r.total, r.atrisk, r.failed, r.avgWifi])); notify && notify('Exported report to CSV'); }}>Export</Button></Row>}>
         <Col gap={14}>
           <Col gap={6}>
             <span style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>Group by</span>
@@ -1647,7 +1676,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
           </Col>
           <div style={{ ...surface, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr><th style={th}>{groupBy === 'appVersion' ? 'App version' : groupBy === 'model' ? 'Model' : 'Country'}</th><th style={thR}>Terminals</th><th style={thR}>At risk</th><th style={thR}>Failed payments</th><th style={thR}>Avg Wi-Fi</th></tr></thead>
+              <thead><tr><th style={th}>{groupBy === 'appVersion' ? 'App version' : groupBy === 'model' ? 'Model' : 'Country'}</th><th style={thR}>Terminals</th><th style={thR}>At risk</th><th style={thR}>Failed transactions</th><th style={thR}>Avg Wi-Fi</th></tr></thead>
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={r.g}>
@@ -1669,7 +1698,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   const exportCSV = () => {
     const rows = fleetFiltered;
     downloadCSV('fleet-health-devices.csv',
-      ['Terminal ID', 'Store', 'Country', 'Model', 'Android app', 'App version', 'OS', 'Status', 'Failed payments', 'Wi-Fi (dBm)', 'Battery %', 'Issue'],
+      ['Terminal ID', 'Store', 'Country', 'Model', 'Android app', 'App version', 'OS', 'Status', 'Failed transactions', 'Wi-Fi (dBm)', 'Battery %', 'Issue'],
       rows.map(t => [t.terminal, t.store, t.country, t.model, t.app, t.appVersion, t.os, t.status, t.failed, t.wifi, t.battery, t.cause]));
     notify && notify(`Exported ${rows.length} device${rows.length === 1 ? '' : 's'} to CSV`);
   };
@@ -1691,10 +1720,10 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
     );
     const failedChart = (
       <div style={{ ...surface, overflow: 'hidden' }}>
-        <TileHeader title="Failed transactions" subtitle={`Count of failed payments · ${isDevice ? scopeDef.label : 'all terminals'} · last 90 days`}
+        <TileHeader title="Failed transactions" subtitle={`Count of failed transactions · ${isDevice ? scopeDef.label : 'all terminals'} · last 90 days`}
           info="Payments declined or aborted at the terminal (not by the issuer) — a count of transactions, not a euro amount. Most correlate with connectivity events: WebSocket drops, high latency or weak signal." />
         <Row gap={28} style={{ padding: `0 ${T.s5}px ${T.s3}px`, flexWrap: 'wrap' }}>
-          {isDevice ? summaryCell('Failed payments', D.fmt(c.k.failedTx)) : summaryCell('Connectivity-linked failures', D.fmt(d.failedTx.count))}
+          {isDevice ? summaryCell('Failed transactions', D.fmt(c.k.failedTx)) : summaryCell('Connectivity-linked failures', D.fmt(d.failedTx.count))}
           {isDevice ? summaryCell('WebSocket drops', D.fmt(c.k.wsFail)) : summaryCell('Share of all failures', `${d.failedTx.connectivityLinked}%`)}
           {isDevice ? summaryCell('Avg Wi-Fi signal', `${c.k.avgWifi} dBm`) : summaryCell('Affected terminals', d.troubleshoot.length)}
           {!isDevice && summaryCell('Est. revenue at risk', `≈€${d.failedTx.revenueAtRiskK}k`)}
@@ -1725,7 +1754,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
           )}
           {failedChart}
           {!isDevice && (
-            <DetailSection title="Terminals to troubleshoot" info="Terminals whose failed payments correlate with connectivity issues, worst first. Troubleshoot one to see its signals and the fix actions.">
+            <DetailSection title="Terminals to troubleshoot" info="Terminals whose failed transactions correlate with connectivity issues, worst first. Troubleshoot one to see its signals and the fix actions.">
               <div style={{ ...surface, overflow: 'hidden' }}>
                 {d.troubleshoot.map((tt, i) => (
                   <Row key={tt.id} gap={12} align="center" style={{ padding: '12px 16px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
@@ -1852,9 +1881,9 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
               <Col gap={10} style={{ borderTop: `1px solid ${T.sepFaint}`, marginTop: 18, paddingTop: 14 }}>
                 <span style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}>What to act on</span>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: T.s3 }}>
-                  {actionBlock('var(--b-color-decorative-red)', 'Failed transactions', D.fmt(failedTotal), `${d.failedTx.connectivityLinked}% linked`, 'red', `Across ${D.fmt(failedDeviceCount)} terminals · ≈€${revenueAtRiskK}k at risk`, 'View all', scrollToDevices)}
-                  {actionBlock('var(--b-color-decorative-orange)', 'Needs attention', D.fmt(atRiskDevices.length), 'at risk · offline', 'orange', 'Terminals at risk or offline — fix before they cost sales', 'Review', () => { setStatusF(['At risk', 'Offline']); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
-                  {actionBlock('var(--b-color-decorative-blue)', 'Outdated app version', D.fmt(oldVerDevices.length), '≤ 1.40.3', 'blue', 'Known WebSocket issues — schedule an update', 'Show devices', () => { setVersionF(['1.40.3', '1.39.2']); setStatusF([]); setCountryF([]); setModelF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
+                  {actionBlock('var(--b-color-decorative-red)', 'Failed transactions', D.fmt(failedTotal), `${d.failedTx.connectivityLinked}% linked`, 'red', `Across ${D.fmt(failedDeviceCount)} terminals · ≈€${revenueAtRiskK}k at risk`, 'View all', focusFailed)}
+                  {actionBlock('var(--b-color-decorative-orange)', 'Needs attention', D.fmt(atRiskDevices.length), 'at risk · offline', 'orange', 'Terminals at risk or offline — fix before they cost sales', 'Review', () => { setReasonF([]); setStatusF(['At risk', 'Offline']); setStoreF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
+                  {actionBlock('var(--b-color-decorative-blue)', 'Outdated app version', D.fmt(oldVerDevices.length), '≤ 1.40.3', 'blue', 'Known WebSocket issues — schedule an update', 'Show devices', () => { setReasonF([]); setVersionF(['1.40.3', '1.39.2']); setStatusF([]); setStoreF([]); setCountryF([]); setModelF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
                 </div>
               </Col>
             </Col>
@@ -1888,6 +1917,48 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
         )}
       </>
   );
+  // Failing stores — WebSocket-drop trend for the worst-performing stores (reused in both Explore modals).
+  const failingStoresCard = () => {
+    const FAIL_COLORS = ['#006BD7', '#E9A23B', '#D64550', '#3BA7A0', '#7B94B5', '#9C6ADE', '#2E7D5B'];
+    const ranked = [...CONN_STORES].sort((a, b) => b.wsDrops - a.wsDrops);
+    const sel = failStores == null ? ranked.slice(0, 5).map(s => s.key) : failStores;
+    const chosen = sel.map(k => ranked.find(s => s.key === k)).filter(Boolean);
+    const npts = c.labels.length;
+    const series = chosen.map((s, idx) => {
+      let h = 0; for (const ch of s.store) h = (h * 31 + ch.charCodeAt(0)) & 0x7fffffff;
+      const rr = () => { h = (h * 1103515245 + 12345) & 0x7fffffff; return h / 0x7fffffff; };
+      const base = s.wsDrops / npts;
+      // Scenario: Uniqlo Tokyo Flagship is the outlier — stable until mid-period, then a sharp WebSocket-failure surge.
+      const outlier = /Tokyo Flagship/i.test(s.store);
+      const pts = c.labels.map((_, i) => {
+        const t = i / (npts - 1);
+        if (outlier) { const surge = t < 0.55 ? 0 : (t - 0.55) / 0.45; return Math.max(0, Math.round(base * 0.3 + base * 4 * Math.pow(surge, 1.7) + (rr() - 0.5) * base * 0.4)); }
+        return Math.max(0, Math.round(base * (0.55 + 0.9 * t) + (rr() - 0.5) * base));
+      });
+      return { color: outlier ? 'var(--b-color-decorative-red)' : FAIL_COLORS[idx % FAIL_COLORS.length], points: pts, name: s.store };
+    });
+    const legend = (
+      <Row gap={16} style={{ flexWrap: 'wrap' }}>
+        {chosen.map((s, idx) => (
+          <button key={s.key} onClick={() => setStoreInfo(s.storeId)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: series[idx].color, flexShrink: 0 }} />
+            <span style={{ fontSize: 13, color: /Tokyo Flagship/i.test(s.store) ? 'var(--b-color-label-critical)' : T.sub, fontWeight: /Tokyo Flagship/i.test(s.store) ? 600 : 400, textDecoration: 'underline', textUnderlineOffset: 2 }}>{s.store}</span>
+          </button>
+        ))}
+      </Row>
+    );
+    return (
+      <div style={{ ...surface, overflow: 'hidden' }}>
+        <TileHeader title="Failing stores" subtitle={`WebSocket drops over time · ${periodLabel(range)}`}
+          info="Connection drops over the period for the stores you pick — tap a store name to open it."
+          right={<div style={{ minWidth: 180, display: 'flex', justifyContent: 'flex-end' }}><MultiDropdown ghost summaryNoun="stores" values={sel} onChange={(v) => setFailStores(v.length ? v : ranked.slice(0, 5).map(s => s.key))} options={ranked.map(s => ({ value: s.key, label: s.store }))} /></div>} />
+        <Col gap={12} style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
+          <div style={{ height: 260 }}><LineChart data={{ labels: c.labels, min: 0, series }} height={260} /></div>
+          {legend}
+        </Col>
+      </div>
+    );
+  };
   // "Explore" full-page modal — the trend charts & signal filters, opened from the Fleet health section header.
   const trendsModal = trendsOpen ? (() => {
     const modelOptions = [{ value: 'model:S1F2', label: 'S1F2' }, { value: 'model:AMS1', label: 'AMS1' }, { value: 'model:V400m', label: 'V400m' }];
@@ -1914,81 +1985,10 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
               ))}
             </div>
           </div>
-          {/* Fleet trends + Primary connected interface — side by side */}
-          <Row gap={T.s6} align="stretch" style={{ flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 460px', minWidth: 320 }}>{trendsCard(true)}</div>
-            <div style={{ flex: '1 1 380px', minWidth: 320 }}>
-              <div style={{ ...surface, overflow: 'hidden', height: '100%' }}>
-                <TileHeader title="Primary connected interface" subtitle="Share of terminals by uplink · trend over time"
-                  info="Which uplink each terminal is actively using — Wi-Fi vs cellular. The split and how it shifts over the period; sustained cellular use often flags Wi-Fi problems."
-                  right={<Row gap={16}>
-                    <Row gap={6}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--b-color-decorative-blue)' }} /><span style={{ fontSize: 12, color: T.sub }}>Wi-Fi</span></Row>
-                    <Row gap={6}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--b-color-decorative-orange)' }} /><span style={{ fontSize: 12, color: T.sub }}>Cellular</span></Row>
-                  </Row>} />
-                <Row gap={24} style={{ padding: `0 ${T.s5}px ${T.s5}px`, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <Row gap={18} style={{ alignItems: 'center', flexShrink: 0 }}>
-                    <svg width={110} height={110} viewBox="0 0 44 44" style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
-                      <circle cx="22" cy="22" r={R} fill="none" stroke="var(--b-color-decorative-orange)" strokeWidth="8" />
-                      <circle cx="22" cy="22" r={R} fill="none" stroke="var(--b-color-decorative-blue)" strokeWidth="8" strokeDasharray={`${wifiLen} ${C - wifiLen}`} />
-                    </svg>
-                    <Col gap={10}>
-                      <Row gap={8}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--b-color-decorative-blue)' }} /><span style={{ fontSize: 13, color: T.ink }}>Wi-Fi (WLAN0) <b className="ns-num">{d.iface.wifi}%</b></span></Row>
-                      <Row gap={8}><span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--b-color-decorative-orange)' }} /><span style={{ fontSize: 13, color: T.ink }}>Cellular <b className="ns-num">{d.iface.cellular}%</b></span></Row>
-                    </Col>
-                  </Row>
-                  <div style={{ flex: 1, minWidth: 220, height: 200 }}>
-                    <LineChart data={{ labels: c.labels, min: 0, max: 100, unit: '%', series: [{ color: 'var(--b-color-decorative-blue)', points: c.wifiPct }, { color: 'var(--b-color-decorative-orange)', points: c.cellPct }] }} height={190} />
-                  </div>
-                </Row>
-              </div>
-            </div>
-          </Row>
+          {/* Fleet trends — full width (Primary connected interface lives on the device Device signals tab) */}
+          {trendsCard(true)}
           {/* Failing stores — WebSocket-drop trend for the worst-performing stores */}
-          {(() => {
-            const FAIL_COLORS = ['#006BD7', '#E9A23B', '#D64550', '#3BA7A0', '#7B94B5', '#9C6ADE', '#2E7D5B'];
-            const ranked = [...CONN_STORES].sort((a, b) => b.wsDrops - a.wsDrops);
-            const sel = failStores == null ? ranked.slice(0, 5).map(s => s.key) : failStores;
-            const chosen = sel.map(k => ranked.find(s => s.key === k)).filter(Boolean);
-            const npts = c.labels.length;
-            const series = chosen.map((s, idx) => {
-              let h = 0; for (const ch of s.store) h = (h * 31 + ch.charCodeAt(0)) & 0x7fffffff;
-              const rr = () => { h = (h * 1103515245 + 12345) & 0x7fffffff; return h / 0x7fffffff; };
-              const base = s.wsDrops / npts;
-              // Scenario: Uniqlo Tokyo Flagship is the outlier — stable until mid-period, then a sharp WebSocket-failure surge.
-              const outlier = /Tokyo Flagship/i.test(s.store);
-              const pts = c.labels.map((_, i) => {
-                const t = i / (npts - 1);
-                if (outlier) { const surge = t < 0.55 ? 0 : (t - 0.55) / 0.45; return Math.max(0, Math.round(base * 0.3 + base * 4 * Math.pow(surge, 1.7) + (rr() - 0.5) * base * 0.4)); }
-                return Math.max(0, Math.round(base * (0.55 + 0.9 * t) + (rr() - 0.5) * base));
-              });
-              return { color: outlier ? 'var(--b-color-decorative-red)' : FAIL_COLORS[idx % FAIL_COLORS.length], points: pts, name: s.store };
-            });
-            return (
-              <div style={{ ...surface, overflow: 'hidden' }}>
-                <TileHeader title="Failing stores" subtitle={`WebSocket drops over time · ${periodLabel(range)}`}
-                  info="Connection drops over the period for the stores you pick — tap a store name to open it."
-                  right={<div style={{ minWidth: 180, display: 'flex', justifyContent: 'flex-end' }}><MultiDropdown ghost summaryNoun="stores" values={sel} onChange={(v) => setFailStores(v.length ? v : ranked.slice(0, 5).map(s => s.key))} options={ranked.map(s => ({ value: s.key, label: s.store }))} /></div>} />
-                {(() => {
-                  const legend = (
-                    <Row gap={16} style={{ flexWrap: 'wrap' }}>
-                      {chosen.map((s, idx) => (
-                        <button key={s.key} onClick={() => setStoreInfo(s.storeId)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
-                          <span style={{ width: 10, height: 10, borderRadius: 3, background: series[idx].color, flexShrink: 0 }} />
-                          <span style={{ fontSize: 13, color: /Tokyo Flagship/i.test(s.store) ? 'var(--b-color-label-critical)' : T.sub, fontWeight: /Tokyo Flagship/i.test(s.store) ? 600 : 400, textDecoration: 'underline', textUnderlineOffset: 2 }}>{s.store}</span>
-                        </button>
-                      ))}
-                    </Row>
-                  );
-                  return (
-                    <Col gap={12} style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
-                      <div style={{ height: 260 }}><LineChart data={{ labels: c.labels, min: 0, series }} height={260} /></div>
-                      {legend}
-                    </Col>
-                  );
-                })()}
-              </div>
-            );
-          })()}
+          {failingStoresCard()}
         </div>
         {customizeOpen && (
           <Modal open onClose={() => setCustomizeOpen(false)} title="Customize signals" width={460}
@@ -2150,6 +2150,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       onBack={() => { setStoresListOpen(false); setStoreInfo(null); }} backLabel="Fleet health overview" backIcon={<ArrowLeftGlyph />} onClose={() => { setStoresListOpen(false); setStoreInfo(null); }} bodyBg={T.page}
       actions={<RangeChip value={range} onChange={setRange} options={DATA_PERIODS} />}>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s5, width: '100%', boxSizing: 'border-box' }}>
+        {failingStoresCard()}
         {(() => {
           const byM = boardBy === 'merchant';
           const total = byM ? CONN_MERCHANTS.length : CONN_STORES.length;
@@ -3276,7 +3277,7 @@ const CONN_FLEET = (() => {
       const healthy = status === 'Healthy';
       const weakCause = /weak|signal|Cellular/i.test(cause);
       const uplink = isMobile ? 'Cellular' : 'Wi-Fi';
-      // Only at-risk terminals (still trading) accrue failed payments; offline ones aren't boarded/trading, so 0.
+      // Only at-risk terminals (still trading) accrue failed transactions; offline ones aren't boarded/trading, so 0.
       const failed = status === 'At risk' ? 1 + Math.floor(r() * 7) : 0;
       const wifi = healthy ? -(52 + Math.floor(r() * 16)) : weakCause ? -(80 + Math.floor(r() * 12)) : -(66 + Math.floor(r() * 8));
       const battery = r() < 0.03 ? 5 + Math.floor(r() * 14) : 42 + Math.floor(r() * 56);
@@ -3477,7 +3478,7 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
   const sMeta = ({ '1h': { n: 12, u: 'm', s: 5 }, '24h': { n: 24, u: 'h', s: 1 }, '7d': { n: 7, u: 'd', s: 1 }, '30d': { n: 30, u: 'd', s: 1 }, '90d': { n: 30, u: 'd', s: 3 } })[sRange] || { n: 7, u: 'd', s: 1 };
   const sN = sMeta.n;
   const sLabels = Array.from({ length: sN }, (_, i) => { const back = (sN - 1 - i) * sMeta.s; if (i === sN - 1) return sMeta.u === 'd' ? 'Today' : 'Now'; if (sMeta.u === 'd' && sMeta.s === 1 && i === sN - 2) return 'Yest'; return back + sMeta.u; });
-  const sRangeLabel = (S_RANGES.find(o => o.value === sRange) || S_RANGES[2]).label;
+  const sRangeLabel = rangeLabel(sRange, S_RANGES);
   let hz = (seed * 2654435761) & 0x7fffffff; for (const ch of sRange) hz = (hz * 31 + ch.charCodeAt(0)) & 0x7fffffff;
   const rz = () => { hz = (hz * 1103515245 + 12345) & 0x7fffffff; return hz / 0x7fffffff; };
   const sMk = (base, amp, o = {}) => sLabels.map((_, i) => { let v = base * (1 + (o.trend || 0) * (i / Math.max(1, sN - 1))) + (rz() - 0.5) * 2 * amp; if (o.spike && rz() > 0.85) v += o.spike * rz(); if (o.min != null) v = Math.max(o.min, v); if (o.max != null) v = Math.min(o.max, v); return Math.round(v); });
@@ -3498,7 +3499,7 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
     { title: 'Cellular Signal Level', unit: 'dBm', color: '#7B94B5', points: sMk(-70, 8, { min: -110, max: -40 }), min: -110, max: -40 },
     { title: 'Battery level', unit: '%', color: '#E7C34B', points: sMk(80, 9, { min: 40, max: 100, trend: -0.1 }), min: 0, max: 100 },
   ];
-  const S_DEFAULT = ['Communication Events', 'Websocket connection failed', 'Websocket connection latency', 'WiFi Signal Level'];
+  const S_DEFAULT = ['Communication Events', 'Websocket connection failed', 'Websocket connection latency', 'WiFi Signal Level', 'Primary connected interface'];
   const allSTitles = sPanels.map(p => p.title);
   const shownSTitles = sShown == null ? S_DEFAULT.filter(t => allSTitles.includes(t)) : sShown;
   const shownSPanels = sPanels.filter(p => shownSTitles.includes(p.title));
@@ -3602,7 +3603,7 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
           <Section title="Device signals" style={{ border: 'none', background: 'transparent' }} headerBorder={false} padded={false}
             description={`Telemetry across ${store.terminals} device${store.terminals === 1 ? '' : 's'} · ${shownSTitles.length} of ${allSTitles.length} signals · ${sRangeLabel}`}
             actions={<Row gap={8} align="center">
-              <div style={{ width: 160 }}><Dropdown value={sRange} onChange={setSRange} options={S_RANGES} /></div>
+              <RangeChip value={sRange} onChange={setSRange} options={S_RANGES} />
               <Button variant="secondary" iconLeft="settings" onClick={() => setSCustomize(true)}>Customize ({shownSTitles.length}/{allSTitles.length})</Button>
             </Row>}>
             {shownSPanels.length === 0
@@ -4596,17 +4597,20 @@ function makeMobiles(count, opts) {
 /* Single-select filter chip (e.g. date range) — 36px bordered button + popover, Luma filter-bar style. */
 function RangeChip({ value, onChange, options, icon = 'timer' }) {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState('quick'); // quick | relative | absolute
+  const [relN, setRelN] = useState(15);
+  const [relUnit, setRelUnit] = useState('minutes');
   const [from, setFrom] = useState(null); // Date | null
   const [to, setTo] = useState(null);
   const [view, setView] = useState(() => { const d = new Date(); d.setDate(1); return d; }); // first month shown
   const ref = useOutside(open, () => setOpen(false));
-  const isCustom = typeof value === 'string' && value.startsWith('custom:');
-  const label = isCustom ? periodLabel(value) : (options.find(o => o.value === value) || options[0]).label;
+  const label = rangeLabel(value, options);
   const sameDay = (a, b) => a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const pick = (d) => { if (!from || (from && to)) { setFrom(d); setTo(null); } else if (d < from) { setTo(from); setFrom(d); } else setTo(d); };
   const clear = () => { setFrom(null); setTo(null); };
-  const apply = () => { if (from && to) { onChange(`custom:${iso(from)}:${iso(to)}`); setOpen(false); } };
+  const applyAbs = () => { if (from && to) { onChange(`custom:${iso(from)}:${iso(to)}`); setOpen(false); } };
+  const applyRel = () => { const n = Math.max(1, parseInt(relN, 10) || 1); onChange(`rel:${n}:${relUnit}`); setOpen(false); };
   const monthDays = (base) => { const y = base.getFullYear(), m = base.getMonth(); const startDow = (new Date(y, m, 1).getDay() + 6) % 7; const n = new Date(y, m + 1, 0).getDate(); const cells = []; for (let i = 0; i < startDow; i++) cells.push(null); for (let d = 1; d <= n; d++) cells.push(new Date(y, m, d)); return cells; };
   const fld = (d) => d ? `${String(d.getMonth() + 1).padStart(2, '0')} / ${String(d.getDate()).padStart(2, '0')} / ${d.getFullYear()}` : 'MM / DD / YYYY';
   const renderMonth = (base) => (
@@ -4624,38 +4628,56 @@ function RangeChip({ value, onChange, options, icon = 'timer' }) {
     </div>
   );
   const nextMonth = (base, n) => { const d = new Date(base); d.setMonth(d.getMonth() + n); return d; };
+  const tabBtn = (id, lab) => <button onClick={() => setTab(id)} style={{ flex: 1, padding: '8px 10px', border: 0, borderBottom: `2px solid ${tab === id ? 'var(--b-color-label-primary)' : 'transparent'}`, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: tab === id ? 600 : 500, color: tab === id ? T.ink : T.sub }}>{lab}</button>;
   return (
     <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
       <button onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 10px 0 12px', border: '1px solid #8C959D', borderRadius: 8, background: T.card, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, color: T.ink, boxSizing: 'border-box' }}>
         <Ico name={icon} size={16} color={T.sub} /><span>{label}</span><Ico name="chevron-down-small" size={16} color={T.faint} />
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 600, display: 'flex', background: '#fff', boxShadow: '0px 6px 12px rgba(0,18,34,0.08), 0px 2px 4px rgba(0,18,34,0.04), 0px 0px 0px 1px #DADDDF', borderRadius: 12 }}>
-          {/* presets */}
-          <div style={{ width: 160, borderRight: `1px solid ${T.sepFaint}`, padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {options.map(o => (
-              <button key={o.value} className="b-menu-item" onClick={() => { onChange(o.value); setOpen(false); }} style={{ display: 'block', width: '100%', padding: '7px 10px', border: 0, background: o.value === value ? 'var(--b-color-background-selected, #EEEAFE)' : 'transparent', color: o.value === value ? 'var(--b-color-link-primary)' : T.ink, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: o.value === value ? 600 : 400, textAlign: 'left' }}>{o.label}</button>
-            ))}
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 600, background: '#fff', boxShadow: '0px 6px 12px rgba(0,18,34,0.08), 0px 2px 4px rgba(0,18,34,0.04), 0px 0px 0px 1px #DADDDF', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', borderBottom: `1px solid ${T.sepFaint}` }}>
+            {tabBtn('quick', 'Quick')}{tabBtn('relative', 'Relative')}{tabBtn('absolute', 'Absolute')}
           </div>
-          {/* calendar */}
-          <div style={{ padding: 16 }}>
-            <Row gap={16} style={{ marginBottom: 14, flexWrap: 'wrap' }}>
-              <Col gap={3}><span style={{ fontSize: 12, color: T.sub }}>Start</span><div style={{ height: 34, minWidth: 130, border: `1px solid ${from ? 'var(--b-color-link-primary)' : T.sep}`, borderRadius: 8, display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: 13, fontFamily: 'var(--b-font-family-secondary)', color: from ? T.ink : T.faint }}>{fld(from)}</div></Col>
-              <Col gap={3}><span style={{ fontSize: 12, color: T.sub }}>End</span><div style={{ height: 34, minWidth: 130, border: `1px solid ${T.sep}`, borderRadius: 8, display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: 13, fontFamily: 'var(--b-font-family-secondary)', color: to ? T.ink : T.faint }}>{fld(to)}</div></Col>
-            </Row>
-            <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <button onClick={() => setView(nextMonth(view, -1))} style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 4, lineHeight: 0, borderRadius: 6 }}><Ico name="chevron-left" size={16} color={T.sub} /></button>
-              <button onClick={() => setView(nextMonth(view, 1))} style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 4, lineHeight: 0, borderRadius: 6 }}><Ico name="chevron-right" size={16} color={T.sub} /></button>
-            </Row>
-            <Row gap={24} align="flex-start">
-              {renderMonth(view)}
-              {renderMonth(nextMonth(view, 1))}
-            </Row>
-            <Row gap={8} style={{ justifyContent: 'flex-end', marginTop: 14 }}>
-              <Button variant="secondary" condensed onClick={clear}>Clear</Button>
-              <Button variant="primary" condensed disabled={!from || !to} onClick={apply}>Apply</Button>
-            </Row>
-          </div>
+          {tab === 'quick' && (
+            <div style={{ width: 220, padding: 8, display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 320, overflowY: 'auto' }}>
+              {options.map(o => (
+                <button key={o.value} className="b-menu-item" onClick={() => { onChange(o.value); setOpen(false); }} style={{ display: 'block', width: '100%', padding: '7px 10px', border: 0, background: o.value === value ? 'var(--b-color-background-selected, #EEEAFE)' : 'transparent', color: o.value === value ? 'var(--b-color-link-primary)' : T.ink, borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13.5, fontWeight: o.value === value ? 600 : 400, textAlign: 'left' }}>{o.label}</button>
+              ))}
+            </div>
+          )}
+          {tab === 'relative' && (
+            <div style={{ width: 300, padding: 16 }}>
+              <div style={{ fontSize: 12, color: T.sub, marginBottom: 8 }}>Last…</div>
+              <Row gap={8} style={{ alignItems: 'center' }}>
+                <input type="number" min={1} value={relN} onChange={(e) => setRelN(e.target.value)} style={{ width: 80, height: 36, border: `1px solid ${T.sep}`, borderRadius: 8, padding: '0 10px', fontFamily: 'inherit', fontSize: 14, color: T.ink, boxSizing: 'border-box' }} />
+                <div style={{ flex: 1, minWidth: 0 }}><Dropdown value={relUnit} onChange={setRelUnit} options={REL_UNITS} /></div>
+              </Row>
+              <Row gap={8} style={{ justifyContent: 'flex-end', marginTop: 14 }}>
+                <Button variant="primary" condensed onClick={applyRel}>Apply</Button>
+              </Row>
+            </div>
+          )}
+          {tab === 'absolute' && (
+            <div style={{ padding: 16 }}>
+              <Row gap={16} style={{ marginBottom: 14, flexWrap: 'wrap' }}>
+                <Col gap={3}><span style={{ fontSize: 12, color: T.sub }}>Start</span><div style={{ height: 34, minWidth: 130, border: `1px solid ${from ? 'var(--b-color-link-primary)' : T.sep}`, borderRadius: 8, display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: 13, fontFamily: 'var(--b-font-family-secondary)', color: from ? T.ink : T.faint }}>{fld(from)}</div></Col>
+                <Col gap={3}><span style={{ fontSize: 12, color: T.sub }}>End</span><div style={{ height: 34, minWidth: 130, border: `1px solid ${T.sep}`, borderRadius: 8, display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: 13, fontFamily: 'var(--b-font-family-secondary)', color: to ? T.ink : T.faint }}>{fld(to)}</div></Col>
+              </Row>
+              <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <button onClick={() => setView(nextMonth(view, -1))} style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 4, lineHeight: 0, borderRadius: 6 }}><Ico name="chevron-left" size={16} color={T.sub} /></button>
+                <button onClick={() => setView(nextMonth(view, 1))} style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 4, lineHeight: 0, borderRadius: 6 }}><Ico name="chevron-right" size={16} color={T.sub} /></button>
+              </Row>
+              <Row gap={24} align="flex-start">
+                {renderMonth(view)}
+                {renderMonth(nextMonth(view, 1))}
+              </Row>
+              <Row gap={8} style={{ justifyContent: 'flex-end', marginTop: 14 }}>
+                <Button variant="secondary" condensed onClick={clear}>Clear</Button>
+                <Button variant="primary" condensed disabled={!from || !to} onClick={applyAbs}>Apply</Button>
+              </Row>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -6000,7 +6022,7 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
   const dMeta = ({ '1h': { n: 12, u: 'm', s: 5 }, '24h': { n: 24, u: 'h', s: 1 }, '7d': { n: 7, u: 'd', s: 1 }, '30d': { n: 30, u: 'd', s: 1 }, '90d': { n: 30, u: 'd', s: 3 } })[devRange] || { n: 7, u: 'd', s: 1 };
   const dN = dMeta.n;
   const dLabels = Array.from({ length: dN }, (_, i) => { const back = (dN - 1 - i) * dMeta.s; if (i === dN - 1) return dMeta.u === 'd' ? 'Today' : 'Now'; if (dMeta.u === 'd' && dMeta.s === 1 && i === dN - 2) return 'Yest'; return back + dMeta.u; });
-  const devRangeLabel = (RANGE_OPTIONS.find(o => o.value === devRange) || RANGE_OPTIONS[2]).label;
+  const devRangeLabel = rangeLabel(devRange, RANGE_OPTIONS);
   let hs = 0; for (const ch of (row.id + devRange)) hs = (hs * 31 + ch.charCodeAt(0)) & 0x7fffffff;
   const rr = () => { hs = (hs * 1103515245 + 12345) & 0x7fffffff; return hs / 0x7fffffff; };
   const dropBase = health === 'Healthy' ? 0.5 : (dvFailed / 3 + 1);
@@ -6024,7 +6046,7 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
     ...(battNum != null ? [{ title: 'Battery level', unit: '%', color: '#E7C34B', points: mk(battNum, 9, { min: 0, max: 100, trend: -0.1 }), min: 0, max: 100 }] : []),
   ];
   // Default to the 4 most important signals; the block is customizable (remembered across devices).
-  const DEV_DEFAULT = ['Communication Events', 'Websocket connection failed', 'Websocket connection latency', 'WiFi Signal Level'];
+  const DEV_DEFAULT = ['Communication Events', 'Websocket connection failed', 'Websocket connection latency', 'WiFi Signal Level', 'Primary connected interface'];
   const allDevTitles = devPanels.map(p => p.title);
   const devShownTitles = devShown == null ? DEV_DEFAULT.filter(t => allDevTitles.includes(t)) : devShown;
   const shownPanels = devPanels.filter(p => devShownTitles.includes(p.title));
@@ -6119,7 +6141,7 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
           <Section title="Device signals" description={`Per-device telemetry · ${devShownTitles.length} of ${allDevTitles.length} signals · ${devRangeLabel}`}
             style={{ border: 'none', background: 'transparent' }} headerBorder={false} padded={false}
             actions={<Row gap={8} align="center">
-              <div style={{ width: 160 }}><Dropdown value={devRange} onChange={setDevRange} options={RANGE_OPTIONS} /></div>
+              <RangeChip value={devRange} onChange={setDevRange} options={RANGE_OPTIONS} />
               <Button variant="secondary" iconLeft="settings" onClick={() => setDevCustomize(true)}>Customize ({devShownTitles.length}/{allDevTitles.length})</Button>
             </Row>}>
             {shownPanels.length === 0
