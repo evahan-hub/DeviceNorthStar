@@ -1343,31 +1343,42 @@ const CONN_SCOPES = [
 ];
 /* Store/merchant leaderboard — connects fleet metrics to "which store". Rows are pre-sorted by the caller.
    Columns: store · merchant · devices · WebSocket drops · lowest Wi-Fi · needs-attention count. Click → drill. */
-// Why a store/merchant is on the watchlist — its dominant issue as a short, intuitive tag.
+// Why a store is on the watchlist — its dominant ROOT CAUSE (same IA as devices: causes only, never the
+// consequence). "Failed transactions" / "At risk" are outcomes, so they live with status/attention, not here.
 function storeWatchReason(s) {
-  if (s.wsDrops >= 500) return { key: 'ws', label: 'WebSocket failures', variant: 'red' };
-  if (s.offline > 0) return { key: 'offline', label: 'Offline', variant: 'red' };
-  if ((s.failed || 0) >= 60) return { key: 'failed', label: 'Failed transactions', variant: 'orange' };
+  if (s.wsDrops >= 300) return { key: 'ws', label: 'WebSocket failures', variant: 'red' };
   if (s.minWifi <= -85) return { key: 'weak', label: 'Weak signal', variant: 'orange' };
-  if (s.atRisk > 0) return { key: 'risk', label: 'At risk', variant: 'orange' };
+  if (s.offline > 0) return { key: 'notboarded', label: 'Not boarded', variant: 'grey' };
+  if (s.wsDrops >= 80) return { key: 'ws', label: 'WebSocket failures', variant: 'red' };
   return { key: 'stable', label: 'Stable', variant: 'grey' };
 }
 const WATCH_REASON_OPTS = [
-  { value: 'ws', label: 'WebSocket failures' }, { value: 'offline', label: 'Offline terminals' }, { value: 'failed', label: 'Failed transactions' },
-  { value: 'weak', label: 'Weak signal' }, { value: 'risk', label: 'At risk' }, { value: 'stable', label: 'Stable' },
+  { value: 'ws', label: 'WebSocket failures' }, { value: 'weak', label: 'Weak signal' }, { value: 'notboarded', label: 'Not boarded' },
 ];
-// A device's dominant issue ("Why") — the reason behind its status, for the device-list Reason filter + column.
+// Information architecture — two orthogonal dimensions:
+//   Status (outcome): Healthy = transacting · At risk = transactions failing · Offline = not trading.
+//   Reason (root cause): WHY a device is at risk/offline — WebSocket failures, Weak signal, Not boarded.
+// "Failed transactions" is the symptom that defines At risk (a consequence), so it lives with Status, not Reason.
 function deviceReason(dv) {
-  if (dv.status === 'Offline') return { key: 'offline', label: 'Offline', variant: 'grey' };
-  if (/websocket/i.test(dv.cause || '')) return { key: 'ws', label: 'WebSocket failures', variant: 'red' };
-  if (/weak|signal|cellular/i.test(dv.cause || '')) return { key: 'weak', label: 'Weak signal', variant: 'orange' };
-  if (dv.status === 'At risk') return { key: 'failed', label: 'Failed transactions', variant: 'orange' };
-  return { key: 'healthy', label: 'Healthy', variant: 'green' };
+  const c = dv.cause || '';
+  if (/websocket/i.test(c)) return { key: 'ws', label: 'WebSocket failures', variant: 'red' };
+  if (/weak|signal|cellular/i.test(c)) return { key: 'weak', label: 'Weak signal', variant: 'orange' };
+  if (dv.status === 'Offline' || /boarded/i.test(c)) return { key: 'notboarded', label: 'Not boarded', variant: 'grey' };
+  if (dv.status === 'At risk') return { key: 'weak', label: 'Weak signal', variant: 'orange' };
+  return { key: 'healthy', label: '—', variant: 'green' };
 }
 const DEV_REASON_OPTS = [
-  { value: 'ws', label: 'WebSocket failures' }, { value: 'weak', label: 'Weak signal' },
-  { value: 'failed', label: 'Failed transactions' }, { value: 'offline', label: 'Offline' }, { value: 'healthy', label: 'Healthy' },
+  { value: 'ws', label: 'WebSocket failures' }, { value: 'weak', label: 'Weak signal' }, { value: 'notboarded', label: 'Not boarded' },
 ];
+// Whether a device exhibits a given root-cause reason — predicate-based (a device can match several).
+function deviceMatchesReason(dv, key) {
+  switch (key) {
+    case 'ws': return /websocket/i.test(dv.cause || '');
+    case 'weak': return /weak|signal|cellular/i.test(dv.cause || '') || dv.wifi <= -80;
+    case 'notboarded': return dv.status === 'Offline' || /boarded/i.test(dv.cause || '');
+    default: return false;
+  }
+}
 // Guided fix steps for a store's dominant connectivity issue.
 function storeFixSteps(key, s) {
   switch (key) {
@@ -1377,17 +1388,12 @@ function storeFixSteps(key, s) {
       'Enable cellular fallback on the affected terminals so payments keep working when Wi\u2011Fi drops.',
       'Restart the terminals that are dropping most often.',
     ] };
-    case 'offline': return { heading: `${s.offline} terminal${s.offline > 1 ? 's are' : ' is'} offline`, steps: [
+    case 'notboarded': return { heading: `${s.offline} terminal${s.offline > 1 ? 's are' : ' is'} offline / not boarded`, steps: [
       'Confirm the offline terminals are powered on and within Wi\u2011Fi or cellular range.',
       'Check the store network \u2014 is the router / access point reachable?',
       'Power\u2011cycle the offline terminals.',
     ] };
-    case 'failed': return { heading: 'Payments are failing on this store\u2019s terminals', steps: [
-      'Review connection latency and signal on the affected terminals.',
-      'Enable cellular fallback so transactions complete if Wi\u2011Fi is unstable.',
-      'Check for a pending app or firmware issue on the affected models.',
-    ] };
-    case 'weak': case 'risk': return { heading: 'Terminals are on a weak signal', steps: [
+    case 'weak': return { heading: 'Terminals are on a weak signal', steps: [
       'Reposition the terminals closer to the access point.',
       'Remove obstructions or sources of interference between the terminal and the AP.',
       'If coverage is poor across the floor, add or relocate an access point.',
@@ -1400,10 +1406,8 @@ function storeFixSteps(key, s) {
 function storeWatchDetail(s) {
   switch (storeWatchReason(s).key) {
     case 'ws': return { label: `${D.fmt(s.wsDrops)} drops`, critical: true };
-    case 'offline': return { label: `${s.offline} offline`, critical: true };
-    case 'failed': return { label: `${D.fmt(s.failed || 0)} failed`, critical: true };
     case 'weak': return { label: `${s.minWifi} dBm`, critical: true };
-    case 'risk': return { label: `${s.minWifi} dBm`, critical: s.minWifi <= -80 };
+    case 'notboarded': return { label: `${s.offline} offline`, critical: true };
     default: return { label: `${D.fmt(s.wsDrops)} drops`, critical: false };
   }
 }
@@ -1491,15 +1495,14 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
     (!modelF.length || modelF.includes(dv.model)) &&
     (!versionF.length || versionF.includes(dv.appVersion)) &&
     (!statusF.length || statusF.includes(dv.status)) &&
-    (!reasonF.length || reasonF.includes(deviceReason(dv).key)) &&
+    (!reasonF.length || reasonF.some(k => deviceMatchesReason(dv, k))) &&
     (!storeF.length || storeF.includes(dv.store)) &&
     (!devSearch || dv.terminal.toLowerCase().includes(devSearch.trim().toLowerCase()))
   ), [countryF, modelF, versionF, statusF, reasonF, storeF, devSearch]);
   // Drill from a store leaderboard into the device list, scoped to that store.
   const focusStore = (name) => { setStoreF([name]); setStatusF([]); setReasonF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); };
-  // Drill from "Failed transactions" → the terminals with failed transactions. Only At-risk terminals accrue
-  // failed transactions (offline aren't trading, healthy have none), so At risk == the failed-transaction set.
-  const focusFailed = () => { setStatusF(['At risk']); setReasonF([]); setStoreF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); };
+  // Drill from a "What to act on" reason block → device list filtered to that reason only.
+  const focusReason = (key) => { setReasonF([key]); setStatusF([]); setStoreF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); };
   // Level 3 proactive: devices trending toward failure (at-risk / offline) and those on older app versions.
   const atRiskDevices = fleet.filter(dv => dv.status !== 'Healthy');
   const oldVerDevices = fleet.filter(dv => dv.appVersion === '1.39.2' || dv.appVersion === '1.40.3');
@@ -1507,6 +1510,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   // Single source of truth for failed transactions — the sum of the device list, so every number on the page reconciles.
   const failedTotal = fleet.reduce((s2, dv) => s2 + dv.failed, 0);
   const failedDeviceCount = fleet.filter(dv => dv.failed > 0).length;
+  const wsDeviceCount = fleet.filter(dv => deviceMatchesReason(dv, 'ws')).length;
   const revenueAtRiskK = d.failedTx.revenueAtRiskK; // same figure as the Device intelligence › Fleet health tile
   const scopeDef = CONN_SCOPES.find(s => s.value === scope) || CONN_SCOPES[0];
   const isDevice = scope.startsWith('dev:');
@@ -1877,12 +1881,12 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
                   );
                 })()}
               </div>
-              {/* Actions zone — what to act on, 3 blocks side by side */}
+              {/* Actions zone — what to act on, one block per specific reason; View all filters the device list to that reason */}
               <Col gap={10} style={{ borderTop: `1px solid ${T.sepFaint}`, marginTop: 18, paddingTop: 14 }}>
                 <span style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}>What to act on</span>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: T.s3 }}>
-                  {actionBlock('var(--b-color-decorative-red)', 'Failed transactions', D.fmt(failedTotal), `${d.failedTx.connectivityLinked}% linked`, 'red', `Across ${D.fmt(failedDeviceCount)} terminals · ≈€${revenueAtRiskK}k at risk`, 'View all', focusFailed)}
-                  {actionBlock('var(--b-color-decorative-orange)', 'Needs attention', D.fmt(atRiskDevices.length), 'at risk · offline', 'orange', 'Terminals at risk or offline — fix before they cost sales', 'Review', () => { setReasonF([]); setStatusF(['At risk', 'Offline']); setStoreF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: T.s3 }}>
+                  {actionBlock('var(--b-color-decorative-red)', 'Failed transactions', D.fmt(failedTotal), `${d.failedTx.connectivityLinked}% linked`, 'red', `Across ${D.fmt(failedDeviceCount)} terminals · ≈€${revenueAtRiskK}k at risk`, 'View all', () => { setReasonF([]); setStatusF(['At risk']); setStoreF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
+                  {actionBlock('var(--b-color-decorative-orange)', 'WebSocket failures', D.fmt(d.wsFailures.count), `${d.wsFailures.pct}%`, 'orange', `Across ${D.fmt(wsDeviceCount)} terminals · connection drops that precede outages`, 'View all', () => focusReason('ws'))}
                   {actionBlock('var(--b-color-decorative-blue)', 'Outdated app version', D.fmt(oldVerDevices.length), '≤ 1.40.3', 'blue', 'Known WebSocket issues — schedule an update', 'Show devices', () => { setReasonF([]); setVersionF(['1.40.3', '1.39.2']); setStatusF([]); setStoreF([]); setCountryF([]); setModelF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
                 </div>
               </Col>
@@ -1902,10 +1906,9 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
             </Col>
           </Row>
         )}
-        {/* Fleet trends + Stores to watch — same row (proactive overview so a platform spots a sub-merchant's issue first). */}
+        {/* Stores to watch (left) + Fleet trends (right) — proactive overview so a platform spots a sub-merchant's issue first. */}
         {!isDevice && (
           <Row gap={T.s6} align="stretch" style={{ flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 480px', minWidth: 340 }}>{trendsCard(false)}</div>
             <div style={{ flex: '1 1 420px', minWidth: 340 }}>
               <StoreLeaderboard rows={[...CONN_STORES].sort((a, b) => b.wsDrops - a.wsDrops || b.attention - a.attention)}
                 onPick={(s) => setStoreInfo(s.storeId)} limit={5}
@@ -1913,6 +1916,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
                 info="The stores most likely to trigger a sub-merchant complaint — highest connection drops and weakest signal first. Act before it reaches support."
                 right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => { setStoreInfo(null); setStoresListOpen(true); }}>Explore</Button>} />
             </div>
+            <div style={{ flex: '1 1 480px', minWidth: 340 }}>{trendsCard(false)}</div>
           </Row>
         )}
       </>
