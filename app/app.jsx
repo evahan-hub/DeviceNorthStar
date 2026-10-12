@@ -5008,7 +5008,7 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, onOpenDevice, title, 
       )}
       {onView && (
         <div style={{ marginBottom: 16 }}>
-          <SegControl value={view} onChange={onView} options={[{ value: 'byLocation', label: 'By location', icon: 'store' }, { value: 'devices', label: 'All devices', icon: 'terminal-1' }]} />
+          <SegControl value={view} onChange={onView} options={[{ value: 'devices', label: 'All devices', icon: 'terminal-1' }, { value: 'byLocation', label: 'By location', icon: 'store' }]} />
         </div>
       )}
       {view === 'byLocation' && locationView ? locationView : (
@@ -5286,6 +5286,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
   const removeCartLine = (i) => setCart(c => c.filter((_, j) => j !== i));
   const [mode, setMode] = useState('ask');     // ask · filters
   const [panelOpen, setPanelOpen] = useState(true);
+  const [panelW, startResize] = useResizer(440, 320, 680); // drag-resizable control panel (same as the Configuration modal)
   const [askText, setAskText] = useState('');
   const runAsk = (text) => { const q = (text != null ? text : askText).trim(); if (!q) return; const inferred = inferFilters(q); setAskText(q); setVals(v => ({ ...v, ...inferred })); const n = Object.keys(inferred).length; notify && notify(n ? `Applied ${n} filter${n === 1 ? '' : 's'} from your description` : 'Couldn’t detect specifics — try mentioning where you sell and your industry'); };
   const ASK_EXAMPLES = ['Flagship apparel store with fixed checkout lanes and many tourists', 'Line-busting on the shop floor with handheld devices', 'Pop-up store taking payments on staff phones'];
@@ -5327,7 +5328,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
           )}
           {/* control panel (docked left) — header with Ask · Filters switch, body, footer */}
           {panelOpen && (
-          <div style={{ width: 440, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ width: panelW, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <Row style={{ padding: '8px 12px 8px 20px', borderBottom: `1px solid ${T.sepFaint}`, gap: 8, flexShrink: 0 }}>
               <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>Choose your devices</span>
               <ModeSwitch mode={mode} setMode={setMode} opts={[{ v: 'ask', label: 'Ask', icon: 'sparkles' }, { v: 'filters', label: 'Filter', icon: 'filter' }]} />
@@ -5355,7 +5356,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
                     </Row>
                     <Row gap={12} align="flex-start">
                       <div style={{ width: 56, height: 56, flexShrink: 0, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                        {recPick.img ? <img src={recPick.img} alt={recPick.name} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken', transform: (ORDER_IMG_SCALE[recPick.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[recPick.id]})` : undefined }} /> : <Ico name={recPick.icon || 'terminal-2'} size={28} color={T.sub} />}
+                        {recPick.img ? <img src={recPick.img} alt={recPick.name} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: (ORDER_IMG_SCALE[recPick.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[recPick.id]})` : undefined }} /> : <Ico name={recPick.icon || 'terminal-2'} size={28} color={T.sub} />}
                       </div>
                       <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{recPick.name}</span>
@@ -5421,6 +5422,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
             </>)}
           </div>
           )}
+          {panelOpen && <ResizeHandle onMouseDown={startResize} />}
           {/* canvas — matching devices grid (click to select) */}
           <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 40, background: T.page }}>
             <div style={{ maxWidth: 840, margin: '0 auto' }}>
@@ -5587,7 +5589,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
                 {lines.map((l, i) => (
                   <Row key={l.id + i} gap={12} align="center">
                     <div style={{ width: 48, height: 48, flexShrink: 0, borderRadius: 8, background: '#FFFFFF', border: `1px solid ${T.sepFaint}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                      {lineImg(l.id) ? <img src={lineImg(l.id)} alt={l.name} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken', transform: (ORDER_IMG_SCALE[l.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[l.id]})` : undefined }} /> : <Ico name="package" size={20} color={T.sub} />}
+                      {lineImg(l.id) ? <img src={lineImg(l.id)} alt={l.name} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: (ORDER_IMG_SCALE[l.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[l.id]})` : undefined }} /> : <Ico name="package" size={20} color={T.sub} />}
                     </div>
                     <Col gap={3} style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ fontSize: 14, fontWeight: 500 }}>{l.name}</span>
@@ -5649,6 +5651,45 @@ function TerminalSelector({ onBack, onOrder, notify }) {
           {cartTab === 'accessories' && ORDER_ACCESSORIES.map(a => <CartRow key={a.id} item={a} onAdd={addToCart} notify={notify} onOpen={setDetailItem} />)}
           {cartTab === 'kits' && ORDER_KITS.map(k => <CartRow key={k.id} item={k} onAdd={addToCart} notify={notify} onOpen={setDetailItem} />)}
         </Col>
+        {/* Cross-sell — accessories that DON'T ship in the box. Surfacing them here avoids the
+            common painpoint of terminals getting ordered alone, then a follow-up order + support ticket. */}
+        {cartTab === 'devices' && selectedProducts.length > 0 && (() => {
+          const inCart = new Set(cart.map(l => l.id));
+          const seen = new Set();
+          const missing = [];
+          selectedProducts.forEach(p => orderNotIncluded(p).forEach(a => {
+            if (a && !seen.has(a.id) && !inCart.has(a.id)) { seen.add(a.id); missing.push(a); }
+          }));
+          if (missing.length === 0) return null;
+          const addAll = () => missing.forEach(a => addToCart({ id: a.id, name: a.name, qty: 1, variant: a.variants ? a.variants[0] : null, price: a.price }));
+          return (
+            <div className="ns-fade" style={{ marginTop: T.s7, ...surface, padding: 20, borderColor: 'var(--b-color-decorative-green)' }}>
+              <Row align="flex-start" style={{ gap: 12, marginBottom: 14 }}>
+                <Ico name="sparkles" size={18} color="#00A152" style={{ marginTop: 1, flexShrink: 0 }} />
+                <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Don’t forget — these don’t ship in the box</span>
+                  <span style={{ fontSize: 13, color: T.sub, lineHeight: '18px' }}>Add them now so your devices are ready on day one — and skip a follow-up order later.</span>
+                </Col>
+                <Button variant="secondary" condensed iconLeft="plus" onClick={addAll}>Add all</Button>
+              </Row>
+              <Col gap={10}>
+                {missing.map(a => (
+                  <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 10, borderRadius: T.radiusM, border: `1px solid ${T.sepFaint}`, background: T.card }}>
+                    <button onClick={() => setDetailItem(a)} title={`View ${a.name} details`} style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 8, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: 0, cursor: 'pointer', padding: 0 }}>
+                      {a.img ? <img src={a.img} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: (ORDER_IMG_SCALE[a.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[a.id]})` : undefined }} /> : <Ico name="package" size={24} color={T.sub} />}
+                    </button>
+                    <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
+                      <button onClick={() => setDetailItem(a)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, color: T.ink }}>{a.name}</button>
+                      <span style={{ fontSize: 12, color: T.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.desc}</span>
+                    </Col>
+                    <span className="ns-num" style={{ fontSize: 14, fontWeight: 600, flexShrink: 0 }}>{a.price > 0 ? `€ ${a.price.toFixed(2)}` : 'No charge'}</span>
+                    <Button variant="secondary" condensed iconLeft="plus" onClick={() => addToCart({ id: a.id, name: a.name, qty: 1, variant: a.variants ? a.variants[0] : null, price: a.price })}>Add</Button>
+                  </div>
+                ))}
+              </Col>
+            </div>
+          );
+        })()}
       </div>
       {detailItem && <CartDetailModal item={detailItem} onClose={() => setDetailItem(null)} onAdd={addToCart} />}
     </FullPage>
@@ -5697,6 +5738,18 @@ const ORDER_KITS = [
   { id: 'kit-mobile', name: 'Mobile seller kit', price: 429, img: 'assets/devices/s1f2.webp', desc: 'S1F2 handheld + spare battery + charging base for floor selling and queue-busting.' },
   { id: 'kit-hospitality', name: 'Hospitality kit', price: 349, img: 'assets/devices/v400m.png', desc: 'V400m portable + charging base — pay-at-table for restaurants, bars and cafés.' },
 ];
+// Commonly-needed accessories that DON'T ship in the box — the internal painpoint: terminals get
+// ordered alone, then the base/cable/battery is a follow-up order + support ticket. Maps product → accessory ids.
+const BOX_EXTRAS = {
+  s1f2: ['charging-base', 'battery'], ams1: ['power-cable'], sfo1: ['power-cable'], v400c: ['power-cable'],
+  m450: ['power-cable'], p630: ['power-cable'], v400m: ['battery'], e285p: ['battery'], s1u2: ['power-cable'], nyc1: [],
+  ttp: [], 'ttp-ios': [],
+};
+function orderNotIncluded(p) {
+  if (!p || p.type === 'SoftPOS') return [];
+  const ids = BOX_EXTRAS[p.id] || ['power-cable'];
+  return ids.map(id => ORDER_ACCESSORIES.find(a => a.id === id)).filter(Boolean);
+}
 function QtyStepper({ value, onChange }) {
   return (
     <Row gap={0} style={{ border: `1px solid ${T.borderStrong}`, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
@@ -5720,6 +5773,9 @@ function CartDetailModal({ item, onClose, onAdd }) {
   const [variant, setVariant] = useState(item && item.variants ? item.variants[0] : null);
   if (!item) return null;
   const includes = orderIncludes(item);
+  // Accessories that DON'T ship in the box — only meaningful for physical devices.
+  const isDevice = ORDER_PRODUCTS.some(p => p.id === item.id);
+  const notIncluded = isDevice ? orderNotIncluded(item) : [];
   return (
     <Modal open onClose={onClose} title={item.name} width={640}
       footer={<Row style={{ justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
@@ -5728,7 +5784,7 @@ function CartDetailModal({ item, onClose, onAdd }) {
       </Row>}>
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ width: 200, height: 200, flexShrink: 0, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-          {item.img ? <img src={item.img} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken', transform: (ORDER_IMG_SCALE[item.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[item.id]})` : undefined }} /> : <Ico name={item.icon || 'package'} size={64} color={T.sub} />}
+          {item.img ? <img src={item.img} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: (ORDER_IMG_SCALE[item.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[item.id]})` : undefined }} /> : <Ico name={item.icon || 'package'} size={64} color={T.sub} />}
         </div>
         <Col gap={12} style={{ flex: 1, minWidth: 240 }}>
           <Row gap={8} align="center" style={{ flexWrap: 'wrap' }}>
@@ -5739,6 +5795,26 @@ function CartDetailModal({ item, onClose, onAdd }) {
           {item.specs && <Row gap={6} style={{ flexWrap: 'wrap' }}>{item.specs.map(s => <Tag key={s} label={s} variant="grey" />)}</Row>}
           {item.variants && <Col gap={6}><span style={{ fontSize: 13, fontWeight: 500, color: T.ink }}>Option</span><div style={{ maxWidth: 320 }}><Dropdown value={variant} options={item.variants.map(v => ({ value: v, label: v }))} onChange={setVariant} /></div></Col>}
           {includes && <Col gap={6} style={{ marginTop: 2 }}><span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>What’s included</span>{includes.map(x => <Row key={x} gap={8} align="flex-start"><Ico name="checkmark" size={16} color="var(--b-color-decorative-green)" /><span style={{ fontSize: 13, color: T.sub }}>{x}</span></Row>)}</Col>}
+          {notIncluded.length > 0 && (
+            <Col gap={8} style={{ marginTop: 4, paddingTop: 12, borderTop: `1px solid ${T.sepFaint}` }}>
+              <Row gap={6} align="center">
+                <Ico name="info" size={14} color="var(--b-color-decorative-orange)" />
+                <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>Not in the box — you’ll likely need</span>
+              </Row>
+              {notIncluded.map(a => (
+                <Row key={a.id} gap={10} align="center" style={{ padding: '8px 10px', border: `1px solid ${T.sepFaint}`, borderRadius: T.radiusM, background: T.card }}>
+                  <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 6, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {a.img ? <img src={a.img} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: (ORDER_IMG_SCALE[a.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[a.id]})` : undefined }} /> : <Ico name="package" size={18} color={T.sub} />}
+                  </div>
+                  <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</span>
+                    <span className="ns-num" style={{ fontSize: 12, color: T.faint }}>{a.price > 0 ? `€ ${a.price.toFixed(2)}` : 'No charge'}</span>
+                  </Col>
+                  <Button variant="secondary" condensed iconLeft="plus" onClick={() => onAdd({ id: a.id, name: a.name, qty: 1, variant: a.variants ? a.variants[0] : null, price: a.price })}>Add</Button>
+                </Row>
+              ))}
+            </Col>
+          )}
         </Col>
       </div>
     </Modal>
@@ -5751,7 +5827,7 @@ function CartRow({ item, onAdd, notify, onOpen }) {
   return (
     <div style={{ ...surface, padding: 16, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
       <button onClick={() => onOpen && onOpen(item)} title={`View ${item.name} details`} style={{ width: 96, height: 96, flexShrink: 0, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: 0, cursor: 'pointer', padding: 0 }}>
-        {item.img ? <img src={item.img} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken', transform: (ORDER_IMG_SCALE[item.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[item.id]})` : undefined }} /> : <Ico name={item.icon || 'package'} size={40} color={T.sub} />}
+        {item.img ? <img src={item.img} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: (ORDER_IMG_SCALE[item.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[item.id]})` : undefined }} /> : <Ico name={item.icon || 'package'} size={40} color={T.sub} />}
       </button>
       <Col gap={6} style={{ flex: 1, minWidth: 0 }}>
         <Col gap={2}>
@@ -5786,8 +5862,174 @@ const ORDER_IMG_SCALE = { nyc1: 1.85, ams1: 1.5, s1u2: 1.55, ttp: 1.35, 'ttp-ios
 function OrderProductImg({ p, size = 48, h = 140 }) {
   const [failed, setFailed] = useState(false);
   const scale = ORDER_IMG_SCALE[p.id] || 1;
-  if (p.img && !failed) return <div style={{ height: h, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}><img src={p.img} alt={p.name} onError={() => setFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'contain', mixBlendMode: 'darken', transform: scale !== 1 ? `scale(${scale})` : undefined }} /></div>;
+  if (p.img && !failed) return <div style={{ height: h, borderRadius: T.radiusM, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}><img src={p.img} alt={p.name} onError={() => setFailed(true)} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: scale !== 1 ? `scale(${scale})` : undefined }} /></div>;
   return <div style={{ height: h, borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Ico name={p.icon || 'terminal-2'} size={size} color={T.sub} /></div>;
+}
+
+/* ============================================================= TERMINAL PRICES
+   Standalone reference table mirroring Adyen's internal terminal price sheet:
+   one-off "Terminal Package" price + monthly "Terminal Replacement Service (TRS)".
+   Prices are EUR, tax-exclusive. Display only — no cart logic. */
+const TERMINAL_PRICES = [
+  { id: 'p400', model: 'P400 Plus', icon: 'terminal-2', rows: [{ note: 'Power over ethernet', pkg: 395, trs: 2.70 }] },
+  { id: 'v400c', model: 'V400c plus', img: 'assets/devices/v400c.png', icon: 'terminal-2', rows: [{ pkg: 350, trs: 2.60 }] },
+  { id: 'e285p', model: 'e285p', img: 'assets/devices/e285p.png', icon: 'mobile', rows: [{ pkg: 430, trs: 5.40 }] },
+  { id: 's1e2l', model: 'S1E2L', icon: 'mobile', rows: [{ note: 'With barcode reader & Extended battery', pkg: 475, trs: 2.60 }] },
+  { id: 'v400m', model: 'V400m', img: 'assets/devices/v400m.png', icon: 'mobile', rows: [{ pkg: 605, trs: 5.00 }] },
+  { id: 'v210', model: 'V210', icon: 'mobile', rows: [{ pkg: 275, trs: 5.00 }] },
+  { id: 's1f2', model: 'S1F2', img: 'assets/devices/s1f2.webp', icon: 'mobile', rows: [{ label: 'S1F2', note: 'Standard', pkg: 395, trs: 2.40 }, { label: 'S1F2L', note: 'With barcode reader', pkg: 465, trs: 2.60 }] },
+  { id: 'm450', model: 'M450', img: 'assets/devices/m450.png', icon: 'terminal-2', rows: [{ pkg: 603, trs: 3.80 }] },
+];
+/* Accessories & consumables price sheet — grouped by terminal type → model. Prices kept as the
+   exact strings from the source sheet (mixed decimals) so the table mirrors it faithfully. */
+const ACCESSORY_PRICES = [
+  { type: 'Countertop', model: 'P630', items: [['Dongle Ethernet/RS232/USB 1.0m', '82.00'], ['Dongle PoE RS232/ETH/USB 2.5 m', '74.00'], ['Cable Powered USB 3.0 m', '37.00'], ['Cable USB-A 3.0m', '16.00'], ['Cable USB w/Inline Power 3.0 m', '34.00'], ['Privacy shield P630', '2.9'], ['P400 3,0M Dongle Ethernet', '15.5'], ['Orange dongle, GETH switch, DC jack', '64.76'], ['Orange Cable 2m', '20.55']] },
+  { type: 'Mobile', model: 'S1E2L', items: [['Battery pack S1EL', '28.00'], ['Castles Angled Cable USB to USB-C', '5.00'], ['Power adapter USB (EU/UK/AU/US/BR)', '5.00'], ['Protective Case S1EL/S1E2L', '26.00'], ['Gang Charger S1E2L', '120.00'], ['S1EL Battery Cover', '1.6']] },
+  { type: 'Unattended', model: 'UX300', items: [['Power Supply UX-series', '33.00']] },
+  { type: '', model: 'UX410', items: [['Power Supply UX-series', '33.00']] },
+  { type: '', model: 'S1U2', items: [['S1U2 power supply cable', '5.6']] },
+  { type: 'Portable', model: 'V400m', items: [['Battery pack V400m', '35.00'], ['Bluetooth Charging Base V400m', '110.00'], ['Charging Base V400m', '41.00'], ['Power Supply V400m', '11.00'], ['Privacy Shield V400m', '4.90'], ['Receipt Roll', '0.68']] },
+  { type: '', model: 'V210m', items: [['Bluetooth Charging Base V210', '-'], ['Charging Base V210', '47.00']] },
+  { type: '', model: 'S1F2 / S1F2L', items: [['Battery pack S1F2', '28.00'], ['Castles Angled Cable USB to USB-C', '5.00'], ['Charging Base S1F2', '35.00'], ['Gang Charger S1F2', '150.00'], ['Power adapter USB (EU/UK/AU/US/BR)', '5.00'], ['Protective Case S1F2', '30.00'], ['Single Bay charger S1F2', '67.00'], ['PTC Cable USB-A to USB-C, 2M, angled', '4.5'], ['PTC Cable USB-A to USB-C, 2M, straight', '4'], ['Single Bay charger S1F2', '38.00']] },
+  { type: 'Multimedia', model: 'M400', items: [['Cube M400', '77.00'], ['Cube USB M400', '67.00'], ['Power Supply M400/MX-series', '16.00'], ['Privacy Shield M400', '3.10'], ['Power Cord three point', '2.70']] },
+  { type: '', model: 'M450', items: [['M450 power supply US 18W', '11.10'], ['CABLE, 2M ORANGE, M2', '25.76'], ['M450 Privacy shield with low bridge', '4.32'], ['Power Supply EU 18W', '9.66'], ['Power Supply UK 18W', '13.8']] },
+  { type: 'Mobile', model: 'AMS1', items: [['Charging Base AMS1', '24.00'], ['Gang Charger AMS1', '140.00'], ['Protective Case AMS1', '20.00'], ['Single Bay charger AMS1', '40.00'], ['AMS1 battery', '28']] },
+  { type: '', model: 'NYC1', items: [] },
+  { type: '', model: 'e285p', items: [['Battery pack E285', '18.00'], ['Protective Case E285', '30.00'], ['EU USB Wall Plug', '9.9']] },
+];
+/* Stock management — internal popup. Prices are editable by the user and saved to the catalogue;
+   stock levels are read-only and synced automatically from the warehouse system (mocked here with a
+   deterministic hash + a sync seed so "Sync now" shifts the numbers). */
+function stockStatus(q) {
+  if (q === 0) return { key: 'out', label: 'Out of stock', variant: 'red' };
+  if (q < 60) return { key: 'low', label: 'Low stock', variant: 'orange' };
+  return { key: 'in', label: 'In stock', variant: 'green' };
+}
+function StockManagement({ onBack, onClose, notify }) {
+  const fmt = (n) => typeof n === 'number' ? n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 && n >= 10 ? 0 : 2, maximumFractionDigits: 2 }) : n;
+  const [tab, setTab] = useState('terminals'); // terminals · accessories
+  const [seed, setSeed] = useState(1);
+  const [synced, setSynced] = useState('just now');
+  const [terms, setTerms] = useState(() => TERMINAL_PRICES.map(g => ({ id: g.id, model: g.model, img: g.img, icon: g.icon, rows: g.rows.map(r => ({ label: r.label, note: r.note, pkg: fmt(r.pkg), trs: fmt(r.trs) })) })));
+  const [accs, setAccs] = useState(() => ACCESSORY_PRICES.map(g => ({ type: g.type, model: g.model, items: g.items.map(it => [it[0], it[1]]) })));
+  const setTermField = (gi, ri, field, v) => setTerms(ts => ts.map((g, i) => i !== gi ? g : { ...g, rows: g.rows.map((r, j) => j !== ri ? r : { ...r, [field]: v }) }));
+  const setAccPrice = (gi, ii, v) => setAccs(as => as.map((g, i) => i !== gi ? g : { ...g, items: g.items.map((it, j) => j !== ii ? it : [it[0], v]) }));
+  const sync = () => { setSeed(s => s + 1); setSynced('just now'); notify && notify('Stock refreshed from the warehouse system'); };
+  // Deterministic mock stock from a key + the current sync seed.
+  const stock = (key) => { let h = (seed * 2654435761) >>> 0; const s = String(key); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 820; };
+
+  const COLS = '60px minmax(150px, 1fr) 128px 128px 180px';
+  const ACOLS = '130px 140px 1fr 128px 180px';
+  const thumb = (g) => (
+    <div style={{ width: 48, height: 48, borderRadius: 8, background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      {g.img ? <img src={g.img} alt={g.model} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: (ORDER_IMG_SCALE[g.id] || 1) !== 1 ? `scale(${ORDER_IMG_SCALE[g.id]})` : undefined }} /> : <Ico name={g.icon || 'terminal-2'} size={24} color={T.sub} />}
+    </div>
+  );
+  const priceInput = (value, onChange, w = '100%') => (
+    <Row gap={6} align="center">
+      <span style={{ fontSize: 13, color: T.faint }}>€</span>
+      <input value={value} onChange={(e) => onChange(e.target.value)} className="ns-num"
+        style={{ width: w, height: 32, boxSizing: 'border-box', border: `1px solid ${T.border}`, borderRadius: 6, padding: '0 10px', fontFamily: 'inherit', fontSize: 13, textAlign: 'right', background: T.card, color: T.ink, outline: 'none' }} />
+    </Row>
+  );
+  const stockCell = (key) => {
+    const q = stock(key); const st = stockStatus(q);
+    return (
+      <Row gap={8} align="center">
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: `var(--b-color-decorative-${st.variant === 'red' ? 'red' : st.variant === 'orange' ? 'orange' : 'green'})`, flexShrink: 0 }} />
+        <span className="ns-num" style={{ fontSize: 13, fontWeight: 500, color: T.ink, minWidth: 40 }}>{q.toLocaleString('en-US')}</span>
+        <span style={{ fontSize: 12, color: T.faint }}>{st.label}</span>
+      </Row>
+    );
+  };
+
+  const terminalCard = (
+    <div style={{ ...surface, padding: '28px 32px' }}>
+      <Row align="flex-start" style={{ marginBottom: 4 }}>
+        <span style={{ flex: 1, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>Terminal prices</span>
+        <span style={{ fontSize: 18, fontWeight: 600, color: T.ink }}>EUR</span>
+      </Row>
+      <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 24, padding: '16px 0 14px', borderBottom: `1px solid ${T.sep}`, alignItems: 'flex-end' }}>
+        <span /><span />
+        <Col gap={1}><span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>Terminal Package</span><span style={{ fontSize: 12, color: T.faint, lineHeight: '16px' }}>Complete set, incl. cables and power</span></Col>
+        <Col gap={1}><span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>TRS*</span><span style={{ fontSize: 12, color: T.faint, lineHeight: '16px' }}>Per terminal / month</span></Col>
+        <Col gap={1}><span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>Warehouse stock</span><span style={{ fontSize: 12, color: T.faint, lineHeight: '16px' }}>Auto-synced · units</span></Col>
+      </div>
+      {terms.map((g, gi) => (
+        <div key={g.id} style={{ display: 'grid', gridTemplateColumns: COLS, gap: 24, alignItems: 'center', padding: '16px 0', borderBottom: `1px solid ${T.sepFaint}` }}>
+          {thumb(g)}
+          <Col gap={10} style={{ justifyContent: 'center' }}>
+            {g.rows.map((r, i) => (
+              <Col key={i} gap={0}>
+                <span style={{ fontSize: 14, fontWeight: 500, color: T.ink }}>{r.label || (i === 0 ? g.model : '')}</span>
+                {r.note && <span style={{ fontSize: 12, color: 'var(--b-color-decorative-green)', lineHeight: '16px' }}>{r.note}</span>}
+              </Col>
+            ))}
+          </Col>
+          <Col gap={10} style={{ justifyContent: 'center' }}>{g.rows.map((r, i) => <div key={i}>{priceInput(r.pkg, (v) => setTermField(gi, i, 'pkg', v))}</div>)}</Col>
+          <Col gap={10} style={{ justifyContent: 'center' }}>{g.rows.map((r, i) => <div key={i}>{priceInput(r.trs, (v) => setTermField(gi, i, 'trs', v))}</div>)}</Col>
+          <Col gap={10} style={{ justifyContent: 'center' }}>{g.rows.map((r, i) => <div key={i}>{stockCell((r.label || g.model) + '|' + g.id)}</div>)}</Col>
+        </div>
+      ))}
+      <Row style={{ justifyContent: 'flex-end', marginTop: 18 }}>
+        <span style={{ fontSize: 12, color: T.faint }}>* Prices are in EUR and do not include any additional tax.</span>
+      </Row>
+    </div>
+  );
+  const accessoryCard = (
+    <div style={{ ...surface, padding: '28px 32px' }}>
+      <Row align="flex-start" style={{ marginBottom: 4 }}>
+        <Col gap={6} style={{ flex: 1 }}>
+          <span style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>Accessories & consumables</span>
+          <span style={{ fontSize: 12, color: T.faint }}>Note: Accessories are usually not required except for alternative configurations or spare parts</span>
+        </Col>
+        <span style={{ fontSize: 18, fontWeight: 600, color: T.ink }}>EUR</span>
+      </Row>
+      <div style={{ display: 'grid', gridTemplateColumns: ACOLS, gap: 24, padding: '16px 0 12px', borderBottom: `1px solid ${T.sep}` }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>Terminal type</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>Model</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>Accessory / Part name</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>Price</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>Warehouse stock</span>
+      </div>
+      {accs.map((g, gi) => {
+        const empty = g.items.length === 0;
+        const rows = empty ? [['\u2013', '\u2013']] : g.items;
+        return (
+          <div key={gi} style={{ display: 'grid', gridTemplateColumns: ACOLS, gap: 24, alignItems: 'flex-start', padding: '16px 0', borderBottom: `1px solid ${T.sepFaint}` }}>
+            <span style={{ fontSize: 14, color: T.ink }}>{g.type || '\u00A0'}</span>
+            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--b-color-decorative-green)' }}>{g.model}</span>
+            <Col gap={10}>{rows.map((it, i) => <span key={i} style={{ fontSize: 13, color: T.ink, lineHeight: '32px' }}>{it[0]}</span>)}</Col>
+            <Col gap={10}>{rows.map((it, i) => empty ? <span key={i} style={{ fontSize: 13, color: T.faint, lineHeight: '32px' }}>{'\u2013'}</span> : <div key={i}>{priceInput(it[1], (v) => setAccPrice(gi, i, v))}</div>)}</Col>
+            <Col gap={10}>{rows.map((it, i) => empty ? <span key={i} style={{ fontSize: 13, color: T.faint, lineHeight: '32px' }}>{'\u2013'}</span> : <div key={i} style={{ height: 32, display: 'flex', alignItems: 'center' }}>{stockCell(g.model + '|' + it[0])}</div>)}</Col>
+          </div>
+        );
+      })}
+    </div>
+  );
+  return (
+    <FullPage title="Stock management" subtitle="Edit catalogue pricing · stock synced from the warehouse system" tone="nav-devices"
+      onBack={onBack} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={onClose || onBack} bodyBg={T.page}
+      actions={<>
+        <Button variant="secondary" iconLeft="refresh" onClick={sync}>Sync now</Button>
+        <Button variant="primary" iconLeft="checkmark" onClick={() => notify && notify('Catalogue prices saved')}>Save changes</Button>
+      </>}>
+      <div style={{ maxWidth: 980, margin: '0 auto', padding: `${T.s6}px 24px ${T.s7}px` }}>
+        {/* warehouse sync status */}
+        <Row align="center" gap={10} style={{ ...surface, padding: '10px 16px', marginBottom: T.s4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--b-color-decorative-green)', flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: T.ink }}>Stock levels are managed automatically from the warehouse system.</span>
+          <span style={{ fontSize: 13, color: T.faint }}>Last synced {synced}</span>
+          <span style={{ flex: 1 }} />
+          <Tag label="Auto" variant="green" />
+        </Row>
+        <div style={{ marginBottom: T.s5 }}>
+          <UnderlineTabs value={tab} onChange={setTab} tabs={[{ value: 'terminals', label: 'Terminals' }, { value: 'accessories', label: 'Accessories & consumables' }]} />
+        </div>
+        {tab === 'terminals' ? terminalCard : accessoryCard}
+      </div>
+    </FullPage>
+  );
 }
 function OrderFlow({ onBack, notify }) {
   const [step, setStep] = useState('region'); // region · products · detail · checkout
@@ -6253,7 +6495,8 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
   const [addQty, setAddQty] = useState('1');
   const [selectorOpen, setSelectorOpen] = useState(false); // "Add devices" (By location) → terminal selector
   const [orderOpen, setOrderOpen] = useState(false); // recommendation → full-page order flow
-  const [view, setView] = useState('byLocation'); // byLocation | devices
+  const [pricesOpen, setPricesOpen] = useState(false); // standalone Terminal prices reference table
+  const [view, setView] = useState('devices'); // devices | byLocation
   const [reassign, setReassign] = useState(null); // { rows } while the reassign modal is open
   const [reassignTarget, setReassignTarget] = useState((SM_STORES[0] || {}).id);
   const [addLocOpen, setAddLocOpen] = useState(false);
@@ -6295,6 +6538,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
           {view === 'byLocation'
             ? <Button variant="primary" iconLeft="store" onClick={() => setAddLocOpen(true)}>Add location</Button>
             : <>
+                <Button variant="secondary" iconLeft="list" onClick={() => setPricesOpen(true)}>Stock management</Button>
                 <Button variant="secondary" iconLeft="checkmark-circle" onClick={() => setAddOpen(true)}>Activate devices</Button>
                 <Button variant="primary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Order devices</Button>
               </>}
@@ -6320,6 +6564,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
       {locations && <AllStoresModal key={locations.store || 'list'} initialStore={locations.store} notify={notify} onBack={() => setLocations(null)} onOpenStore={onOpenStore} onOpenStudio={onOpenStudio} />}
       {selectorOpen && <TerminalSelector onBack={() => setSelectorOpen(false)} notify={notify} onOrder={() => { setSelectorOpen(false); setOrderOpen(true); }} />}
       {orderOpen && <OrderFlow onBack={() => setOrderOpen(false)} notify={notify} />}
+      {pricesOpen && <StockManagement onBack={() => setPricesOpen(false)} notify={notify} />}
       {addOpen && (
         <FullPage title="Activate devices" subtitle="Two steps: first assign each delivered device to a location, then activate it to go live and start accepting payments."
           onBack={() => setAddOpen(false)} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={() => setAddOpen(false)} bodyBg={T.page}
