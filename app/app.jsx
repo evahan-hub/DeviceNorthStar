@@ -510,6 +510,7 @@ const NAV = [
     { id: 'device-intelligence', label: 'Devices Intelligence' },
     { id: 'stores', label: 'Devices & locations' },
     { id: 'device-studio', label: 'Device studio' },
+    { id: 'pricing-catalogue', label: 'Pricing & catalogue', testOnly: true },
     { id: 'fleet-health', label: 'Fleet health', testOnly: true },
   ] },
   { id: 'settings', label: 'Settings', icon: 'settings' },
@@ -5905,7 +5906,7 @@ function stockStatus(q) {
   if (q < 60) return { key: 'low', label: 'Low stock', variant: 'orange' };
   return { key: 'in', label: 'In stock', variant: 'green' };
 }
-function StockManagement({ onBack, onClose, notify }) {
+function StockManagement({ notify }) {
   const fmt = (n) => typeof n === 'number' ? n.toLocaleString('en-US', { minimumFractionDigits: n % 1 === 0 && n >= 10 ? 0 : 2, maximumFractionDigits: 2 }) : n;
   const [tab, setTab] = useState('terminals'); // terminals · accessories
   const [seed, setSeed] = useState(1);
@@ -6007,28 +6008,36 @@ function StockManagement({ onBack, onClose, notify }) {
       })}
     </div>
   );
+  // Inline page (Devices → Pricing & catalogue) — same layout as Devices Intelligence / Fleet health:
+  // left title + info + subtitle, actions right. No full-modal chrome.
   return (
-    <FullPage title="Stock management" subtitle="Edit catalogue pricing · stock synced from the warehouse system" tone="nav-devices"
-      onBack={onBack} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={onClose || onBack} bodyBg={T.page}
-      actions={<>
-        <Button variant="secondary" iconLeft="refresh" onClick={sync}>Sync now</Button>
-        <Button variant="primary" iconLeft="checkmark" onClick={() => notify && notify('Catalogue prices saved')}>Save changes</Button>
-      </>}>
-      <div style={{ maxWidth: 980, margin: '0 auto', padding: `${T.s6}px 24px ${T.s7}px` }}>
-        {/* warehouse sync status */}
-        <Row align="center" gap={10} style={{ ...surface, padding: '10px 16px', marginBottom: T.s4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--b-color-decorative-green)', flexShrink: 0 }} />
-          <span style={{ fontSize: 13, color: T.ink }}>Stock levels are managed automatically from the warehouse system.</span>
-          <span style={{ fontSize: 13, color: T.faint }}>Last synced {synced}</span>
-          <span style={{ flex: 1 }} />
-          <Tag label="Auto" variant="green" />
+    <div style={{ padding: `${T.s7}px ${T.s7}px ${T.s7}px`, maxWidth: T.maxW, margin: '0 auto' }}>
+      <Row style={{ marginBottom: T.s5 }} align="flex-start">
+        <Col gap={4} style={{ flex: 1 }}>
+          <Row gap={6}>
+            <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Pricing & catalogue</span>
+            <InfoTip width={320} content={<span><b>Internal pricing & stock.</b> Edit the terminal and accessory prices merchants see when ordering. Stock levels are read-only and synced automatically from the warehouse system.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
+          </Row>
+          <span style={{ fontSize: 13, color: T.sub }}>Terminal &amp; accessory pricing · stock from the warehouse system</span>
+        </Col>
+        <Row gap={8} style={{ flexShrink: 0 }}>
+          <Button variant="secondary" iconLeft="refresh" onClick={sync}>Sync now</Button>
+          <Button variant="primary" iconLeft="checkmark" onClick={() => notify && notify('Catalogue prices saved')}>Save changes</Button>
         </Row>
-        <div style={{ marginBottom: T.s5 }}>
-          <UnderlineTabs value={tab} onChange={setTab} tabs={[{ value: 'terminals', label: 'Terminals' }, { value: 'accessories', label: 'Accessories & consumables' }]} />
-        </div>
-        {tab === 'terminals' ? terminalCard : accessoryCard}
+      </Row>
+      {/* warehouse sync status */}
+      <Row align="center" gap={10} style={{ ...surface, padding: '10px 16px', marginBottom: T.s4 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--b-color-decorative-green)', flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: T.ink }}>Stock levels are managed automatically from the warehouse system.</span>
+        <span style={{ fontSize: 13, color: T.faint }}>Last synced {synced}</span>
+        <span style={{ flex: 1 }} />
+        <Tag label="Auto" variant="green" />
+      </Row>
+      <div style={{ marginBottom: T.s5 }}>
+        <UnderlineTabs value={tab} onChange={setTab} tabs={[{ value: 'terminals', label: 'Terminals' }, { value: 'accessories', label: 'Accessories & consumables' }]} />
       </div>
-    </FullPage>
+      {tab === 'terminals' ? terminalCard : accessoryCard}
+    </div>
   );
 }
 function OrderFlow({ onBack, notify }) {
@@ -6495,7 +6504,6 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
   const [addQty, setAddQty] = useState('1');
   const [selectorOpen, setSelectorOpen] = useState(false); // "Add devices" (By location) → terminal selector
   const [orderOpen, setOrderOpen] = useState(false); // recommendation → full-page order flow
-  const [pricesOpen, setPricesOpen] = useState(false); // standalone Terminal prices reference table
   const [view, setView] = useState('devices'); // devices | byLocation
   const [reassign, setReassign] = useState(null); // { rows } while the reassign modal is open
   const [reassignTarget, setReassignTarget] = useState((SM_STORES[0] || {}).id);
@@ -6538,7 +6546,6 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
           {view === 'byLocation'
             ? <Button variant="primary" iconLeft="store" onClick={() => setAddLocOpen(true)}>Add location</Button>
             : <>
-                <Button variant="secondary" iconLeft="list" onClick={() => setPricesOpen(true)}>Stock management</Button>
                 <Button variant="secondary" iconLeft="checkmark-circle" onClick={() => setAddOpen(true)}>Activate devices</Button>
                 <Button variant="primary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Order devices</Button>
               </>}
@@ -6564,7 +6571,6 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
       {locations && <AllStoresModal key={locations.store || 'list'} initialStore={locations.store} notify={notify} onBack={() => setLocations(null)} onOpenStore={onOpenStore} onOpenStudio={onOpenStudio} />}
       {selectorOpen && <TerminalSelector onBack={() => setSelectorOpen(false)} notify={notify} onOrder={() => { setSelectorOpen(false); setOrderOpen(true); }} />}
       {orderOpen && <OrderFlow onBack={() => setOrderOpen(false)} notify={notify} />}
-      {pricesOpen && <StockManagement onBack={() => setPricesOpen(false)} notify={notify} />}
       {addOpen && (
         <FullPage title="Activate devices" subtitle="Two steps: first assign each delivered device to a location, then activate it to go live and start accepting payments."
           onBack={() => setAddOpen(false)} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={() => setAddOpen(false)} bodyBg={T.page}
@@ -8994,9 +9000,9 @@ function App() {
   const reset = () => setStack([]);
 
   // Fleet health is a Test-only page — if you leave Test while on it, fall back to Devices Intelligence.
-  useEffect(() => { if (nav === 'fleet-health' && env !== 'Test') setNav('device-intelligence'); }, [env, nav]);
+  useEffect(() => { if ((nav === 'fleet-health' || nav === 'pricing-catalogue') && env !== 'Test') setNav('device-intelligence'); }, [env, nav]);
 
-  const crumb = nav === 'device-studio' ? ['Devices', 'Device studio'] : nav === 'stores' ? ['Devices', 'Devices & locations'] : nav === 'fleet-health' ? ['Devices', 'Fleet health'] : ['Devices', 'Devices Intelligence'];
+  const crumb = nav === 'device-studio' ? ['Devices', 'Device studio'] : nav === 'stores' ? ['Devices', 'Devices & locations'] : nav === 'fleet-health' ? ['Devices', 'Fleet health'] : nav === 'pricing-catalogue' ? ['Devices', 'Pricing & catalogue'] : ['Devices', 'Devices Intelligence'];
 
   const top = stack[stack.length - 1];
 
@@ -9025,6 +9031,8 @@ function App() {
             <DeviceIntelligence notify={notify} onOpenAllStores={openAllStores} onOpenAllDevices={openAllDevices} onOpenExplore={openExplore} onOpenStudio={openStudio} />
           ) : nav === 'fleet-health' && env === 'Test' ? (
             <ConnectivityDetail asPage notify={notify} onOpenStudio={openStudio} onOpenStore={openStore} />
+          ) : nav === 'pricing-catalogue' && env === 'Test' ? (
+            <StockManagement notify={notify} />
           ) : (
             <div style={{ padding: 40, color: T.sub }}><EmptyState icon="nav-home" title={NAV.find(n => n.id === nav || (n.children || []).some(c => c.id === nav))?.label || 'Section'} description="This area is out of scope for the Device North Star prototype. Use the Devices section." /></div>
           )}
