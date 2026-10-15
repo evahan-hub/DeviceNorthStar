@@ -444,8 +444,11 @@ function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVari
   const root = inline
     ? { position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', background: T.card }
     : { position: 'fixed', inset: 0, zIndex: 400, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', background: T.card, isolation: 'isolate' };
-  return (
-    <div style={root} className="ns-sheet">
+  // The root is a STATIC opaque backdrop (no entrance animation) so a stacked FullPage always fully
+  // covers the one beneath it; only the inner content (.ns-sheet) animates in on top of that backdrop.
+  const sheet = (
+    <div style={root}>
+      <div className="ns-sheet" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, alignSelf: 'stretch', width: '100%', background: T.card }}>
       {/* b-modal-fullscreen · header — back left · title centered · actions/close right */}
       <div style={{ flexShrink: 0, alignSelf: 'stretch', height: 64, display: 'flex', alignItems: 'center', gap: 24, padding: '12px 24px', background: T.card, borderBottom: `1px solid ${T.sep}`, position: 'relative' }}>
         {/* left — back: labeled "← Previous page" when a backLabel is given, else icon-only */}
@@ -478,8 +481,12 @@ function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVari
       </div>
       {/* body */}
       <div style={{ flex: 1, minHeight: 0, alignSelf: 'stretch', overflowY: 'auto', background: bodyBg, zIndex: 0 }}>{children}</div>
+      </div>
     </div>
   );
+  // Overlay sheets portal to <body> so a modal opened from inside another modal becomes a sibling
+  // (latest mounted paints on top) instead of nesting — which is what caused overlapping headers.
+  return inline ? sheet : ReactDOM.createPortal(sheet, document.body);
 }
 
 function Section({ title, description, actions, children, padded = true, style, headerBorder = true }) {
@@ -866,6 +873,22 @@ const ASK_CONTEXTS = {
     groups: [
       { label: 'Customisation', icon: 'settings', prompts: ['Install an Android app on these devices', 'Upload a media asset to the home screen', 'Push a configuration update to this scope'] },
       { label: 'Payment integration', icon: 'bank', prompts: ['Launch a new payment method for this configuration', 'Enable a new feature and confirm billing', 'Turn on DCC and set the margin'] },
+    ],
+  },
+  pricing: {
+    placeholder: 'Ask about pricing, stock or the catalogue…',
+    intro: 'Ask about the device catalogue — pricing, Terminal Replacement Service (TRS) rates and warehouse stock.',
+    models: MODES,
+    defaultMode: 'ops',
+    // Surfaced first when the panel opens; everything else collapses under "See more insights".
+    featured: [
+      { cat: 'Stock levels', icon: 'grid', q: 'Which terminals and accessories are low or out of stock right now?', desc: 'Live warehouse levels, lowest first — with the models at risk of backorder flagged.' },
+      { cat: 'Bulk pricing', icon: 'sparkles', q: 'Raise the TRS monthly rate by 10% across all Android terminals.', desc: 'Preview the affected SKUs and new prices before applying them to the catalogue.' },
+    ],
+    groups: [
+      { label: 'Pricing', icon: 'settings', prompts: ['Which terminals have a package price above €500?', 'Bulk-update power adapter prices across all models', 'Compare current prices against last quarter', 'Which devices are missing a TRS rate?'] },
+      { label: 'Stock & supply', icon: 'grid', prompts: ['Flag accessories below reorder level and draft a restock order', 'Show stock synced from the warehouse in the last 24 hours', 'Which models are at risk of backorder?'] },
+      { label: 'Catalogue', icon: 'package', prompts: ['Add a new accessory to the S1F2 catalogue', 'Delist accessories with no orders this year', 'Set a discount on end-of-life terminal models'] },
     ],
   },
 };
@@ -4198,10 +4221,26 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify, initialStore, onO
     return () => document.removeEventListener('keydown', onEsc);
   });
 
-  // FullPage chrome is context-aware: back returns to the previous view.
-  const pageTitle = isDevicesPage ? 'Payment devices' : isStorePage ? 'Store settings' : 'Locations';
+  // FullPage chrome is context-aware: back returns to the previous view. The store page mirrors the
+  // device page — store name as the title, a status badge, and Actions/Export in the top bar.
+  const pageStoreObj = isStorePage ? SM_STORES.find(x => x.id === s.pageStore) : null;
+  const pageTitle = isDevicesPage ? 'Payment devices' : isStorePage ? ((pageStoreObj && pageStoreObj.name) || 'Store') : 'Locations';
   const pageBack = isDevicesPage ? backToStorePage : isStorePage ? storeBack : onBack;
   const pageBackLabel = isDevicesPage ? 'Store' : isStorePage ? 'All stores' : 'Dashboard';
+  const pageSubtitle = isStorePage
+    ? (pageStoreObj ? `${pageStoreObj.city}, ${pageStoreObj.country} · ${pageStoreObj.merchant}` : undefined)
+    : (isListPage ? `${SM_STORES.length} locations across your merchant accounts` : undefined);
+  const pageBadge = pageStoreObj ? <Tag label={pageStoreObj.status} variant={SM_TV[pageStoreObj.status] || 'grey'} /> : undefined;
+  const pageActions = isStorePage && pageStoreObj ? (
+    <>
+      <MenuButton variant="secondary" icon="options-vertical" label="Actions" items={[
+        { value: 'edit', label: 'Edit store', icon: 'edit-1' },
+        { value: 'devices', label: 'View payment devices', icon: 'terminal-1' },
+        { value: 'configure', label: 'Configure devices', icon: 'settings' },
+      ]} onSelect={(v) => { if (v === 'edit') openEdit(s.pageStore); else if (v === 'devices') setState({ devicesStore: s.pageStore }); else onOpenStudio && onOpenStudio({ type: 'store', storeId: s.pageStore, name: pageStoreObj.name, deviceType: 'Terminal' }); }} />
+      <Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exported store to CSV')}>Export</Button>
+    </>
+  ) : undefined;
 
   const showActionBar = selCount > 0 && isListPage;
 
@@ -4324,10 +4363,10 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify, initialStore, onO
         </div>
       )}
 
-      {/* ====================== STORE SETTINGS (unified full-page modal) ====================== */}
-      {s.pageStore && <StoreSettingsModal storeId={s.pageStore} onBack={storeBack}
-        onOpenDevices={(id) => setState({ devicesStore: id || s.pageStore })}
-        onEditStore={() => openEdit(s.pageStore)} onOpenStudio={onOpenStudio} notify={notify} />}
+      {/* ====================== STORE PAGE (device-style · 3 tabs) ====================== */}
+      {isStorePage && <SMStorePage store={SM_STORES.find(x => x.id === s.pageStore)}
+        onOpenDevices={() => setState({ devicesStore: s.pageStore })}
+        onOpenStudio={onOpenStudio} notify={notify} />}
 
       {/* ====================== PAYMENT DEVICES (full-page modal, over settings) ====================== */}
       {s.devicesStore && (
@@ -4409,21 +4448,16 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify, initialStore, onO
   // or as a full-page overlay when opened as a modal.
   if (inline) return inner;
   return (
-    <FullPage title={pageTitle} subtitle={isListPage ? `${SM_STORES.length} locations across your merchant accounts` : undefined} tone="store" onBack={pageBack} backLabel={pageBackLabel} onClose={onBack} bodyBg={T.card}>
+    <FullPage title={pageTitle} subtitle={pageSubtitle} badge={pageBadge} tone="store" onBack={pageBack} backLabel={pageBackLabel} onClose={onBack} bodyBg={isStorePage ? T.page : T.card} actions={pageActions}>
       {inner}
     </FullPage>
   );
 }
 
-/* ---------------- store management: store detail page ---------------- */
-function SMStorePage({ store, storeMenuOpen, onToggleMenu, onCloseMenu, onEdit, onBackToList, onOpenDevices }) {
-  const menuRef = useRef(null);
-  useEffect(() => {
-    if (!storeMenuOpen) return;
-    const h = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) onCloseMenu(); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [storeMenuOpen]);
+/* ---------------- store management: store detail page (device-style · 3 tabs) ---------------- */
+function SMStorePage({ store, onOpenDevices, onOpenStudio, notify }) {
+  const [tab, setTab] = useState('info'); // Store info | Devices | Settings & config
+  useEffect(() => { setTab('info'); }, [store && store.id]);
   if (!store) return null;
   const CUR = { Netherlands: 'EUR', France: 'EUR', Germany: 'EUR', Belgium: 'EUR', 'United Kingdom': 'GBP', Jersey: 'GBP' };
   const base = ['Visa', 'Mastercard', 'Maestro', 'Apple Pay', 'Google Pay'];
@@ -4436,104 +4470,89 @@ function SMStorePage({ store, storeMenuOpen, onToggleMenu, onCloseMenu, onEdit, 
     ['Online last 7 days', store.termWeek, 'var(--b-color-decorative-orange)'],
     ['Switched off', store.termOff, 'var(--b-color-decorative-red)'],
   ];
-  const settingsGroups = [
-    { title: 'Device', items: ['Location & language', 'Device name', 'Sound', 'Theme', 'Home screen', 'Kiosk mode', 'Maintenance', 'Passcodes', 'Logos', 'Background'] },
-    { title: 'Device connectivity', items: ['Wi-Fi profiles', 'Beacons', 'USB', 'Base station'] },
-    { title: 'Payment features', items: ['Card application selection', 'Tipping', 'Transaction limits', 'Manual Key Entry (MKE)', 'Refunds', 'Offline processing'] },
-  ];
-  const detailRow = (label, node) => (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(110px,200px) 1fr', alignItems: 'flex-start', gap: 16, padding: '6px 0' }}>
-      <div style={{ fontSize: 14, color: T.sub }}>{label}</div>
-      <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, flexWrap: 'wrap' }}>{node}</div>
-    </div>
+  const cfg = buildSettingsRows(store);
+  // Same fact-row anatomy as the device page.
+  const fact = (k, v, mono) => (
+    <Row key={k} style={{ justifyContent: 'space-between', gap: 16, padding: '9px 0', borderBottom: `1px solid ${T.sepFaint}` }}>
+      <span style={{ fontSize: 13, color: T.sub, flexShrink: 0 }}>{k}</span>
+      <span style={{ fontSize: 13, fontWeight: 500, color: T.ink, textAlign: 'right', fontFamily: mono ? 'var(--b-font-family-secondary)' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{v}</span>
+    </Row>
   );
   return (
-    <div style={{ maxWidth: 1500, margin: '0 auto', padding: '32px 24px 24px' }}>
-      <Row gap={10} style={{ flexWrap: 'wrap', marginBottom: 20 }}>
-        <Ico name="globe" size={16} color={T.sub} />
-        <a href="#" onClick={(e) => { e.preventDefault(); onBackToList(); }} style={{ fontSize: 12, color: T.ink }}>AdyenTechSupport</a>
-        <Ico name="chevron-right" size={14} color={T.faint} />
-        <Ico name="bank" size={16} color={T.sub} />
-        <a href="#" onClick={(e) => { e.preventDefault(); onBackToList(); }} style={{ fontSize: 12, color: T.ink }}>{store.merchant}</a>
-        <Ico name="chevron-right" size={14} color={T.faint} />
-        <Ico name="store" size={16} color={T.sub} />
-        <span style={{ fontSize: 12, fontWeight: 500 }}>{store.name}</span>
-        <Tag label="Config version: 1734" variant="grey" />
-      </Row>
+    <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s5 }}>
+      <UnderlineTabs value={tab} onChange={setTab} tabs={[{ value: 'info', label: 'Store info' }, { value: 'devices', label: `Devices (${store.terminals})` }, { value: 'settings', label: 'Settings & config' }]} />
 
-      <Row style={{ justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ margin: 0, fontSize: 30, fontWeight: 600, letterSpacing: '-0.02em' }}>Settings</h1>
-        <Row gap={8} style={{ flexShrink: 0 }}>
-          <Button variant="secondary" iconRight="external-link">View all settings</Button>
-          <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }}>
-            <IconButton icon="options-vertical" variant="secondary" title="Store actions" onClick={onToggleMenu} />
-            {storeMenuOpen && (
-              <div style={{ position: 'absolute', top: 48, right: 0, zIndex: 41, minWidth: 216, background: T.card, border: `1px solid ${T.sep}`, borderRadius: T.radiusL, boxShadow: 'var(--b-shadow-medium)', padding: '6px 0' }}>
-                <a href="#" onClick={(e) => { e.preventDefault(); onCloseMenu(); }} className="b-nav-item" style={{ display: 'block', padding: '10px 20px', fontSize: 14, color: T.ink, textDecoration: 'none', whiteSpace: 'nowrap' }}>View payment methods</a>
-                <div style={{ height: 1, background: T.sep, margin: '6px 0' }} />
-                <a href="#" onClick={(e) => { e.preventDefault(); onEdit(); }} className="b-nav-item" style={{ display: 'block', padding: '10px 20px', fontSize: 14, color: T.ink, textDecoration: 'none', whiteSpace: 'nowrap' }}>Edit store</a>
-                <a href="#" onClick={(e) => { e.preventDefault(); onCloseMenu(); }} className="b-nav-item" style={{ display: 'block', padding: '10px 20px', fontSize: 14, color: T.ink, textDecoration: 'none', whiteSpace: 'nowrap' }}>Change store ownership</a>
+      {tab === 'info' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: T.s6, alignItems: 'flex-start' }}>
+          {/* left — identity + address */}
+          <Col gap={T.s6}>
+            <Section title="Store details" description="Identity and merchant account.">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0 32px' }}>
+                {fact('Store reference', store.code, true)}
+                {fact('Store ID', store.storeId, true)}
+                {fact('Status', <Tag label={store.status} variant={SM_TV[store.status] || 'grey'} />)}
+                {fact('Merchant account', store.merchant)}
+                {fact('Config version', '1734', true)}
+                {fact('One-time password', otp, true)}
               </div>
-            )}
-          </div>
-        </Row>
-      </Row>
-
-      <div style={{ display: 'flex', gap: 64, alignItems: 'stretch' }}>
-        {/* settings nav */}
-        <aside style={{ width: 200, flexShrink: 0 }}>
-          <div style={{ padding: '10px 12px', borderRadius: T.radiusM, background: 'var(--b-color-background-secondary-active)', fontSize: 14, marginBottom: 16 }}>About this store</div>
-          <div style={{ height: 1, background: T.sep, marginBottom: 16 }} />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 36, padding: '0 12px', border: '1px solid var(--b-color-outline-secondary)', borderRadius: T.radiusM, background: T.card, marginBottom: 20 }}>
-            <Ico name="search" size={16} color={T.faint} />
-            <input type="text" placeholder="Search" style={{ border: 0, outline: 'none', background: 'none', fontFamily: 'inherit', fontSize: 14, width: '100%', color: T.ink }} />
-          </label>
-          {settingsGroups.map(g => (
-            <div key={g.title} style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: T.faint, padding: '0 12px', marginBottom: 8 }}>{g.title}</div>
-              {g.items.map(it => <a key={it} href="#" onClick={(e) => e.preventDefault()} className="b-nav-item" style={{ display: 'block', padding: '8px 12px', borderRadius: T.radiusM, fontSize: 14, color: T.ink, textDecoration: 'none' }}>{it}</a>)}
-            </div>
-          ))}
-        </aside>
-
-        {/* detail */}
-        <div style={{ flex: 1, minWidth: 0, maxWidth: 760, paddingBottom: 40 }}>
-          <Row gap={20} style={{ marginBottom: 24 }}>
-            <span style={{ width: 56, height: 56, flexShrink: 0, border: `1px solid ${T.sep}`, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Ico name="store" size={24} color={T.ink} /></span>
-            <div style={{ minWidth: 0, fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{store.name}</div>
-          </Row>
-
-          <h2 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>Details</h2>
-          <div style={{ marginBottom: 24 }}>
-            {detailRow('Store reference', <><span style={{ fontFamily: 'var(--b-font-family-secondary)' }}>{store.code}</span><IconButton icon="copy" variant="tertiary" condensed title="Copy" /></>)}
-            {detailRow('Store ID', <><span style={{ fontFamily: 'var(--b-font-family-secondary)', wordBreak: 'break-all', minWidth: 0 }}>{store.storeId}</span><IconButton icon="copy" variant="tertiary" condensed title="Copy" /></>)}
-            {detailRow('Address', <span>{store.street}</span>)}
-            {detailRow('Zip code', <span style={{ fontFamily: 'var(--b-font-family-secondary)' }}>{store.zip}</span>)}
-            {detailRow('City', <span>{store.city}</span>)}
-            {detailRow('Country/Region', <span>{store.country}</span>)}
-            {detailRow('One-time password', <><span style={{ fontFamily: 'var(--b-font-family-secondary)' }}>{otp}</span><IconButton icon="copy" variant="tertiary" condensed title="Copy" /></>)}
-          </div>
-
-          <h2 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>Payment methods and currencies</h2>
-          <div style={{ marginBottom: 24 }}>
-            {detailRow('Currencies', <Tag label={currency} variant="grey" />)}
-            {detailRow('Payment methods', (
-              <div style={{ minWidth: 0, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {methods.map(m => <span key={m} style={{ display: 'inline-flex', alignItems: 'center', height: 26, padding: '0 10px', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, background: T.card, fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>{m}</span>)}
+            </Section>
+            <Section title="Address">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0 32px' }}>
+                {fact('Address', store.street)}
+                {fact('Zip code', store.zip, true)}
+                {fact('City', store.city)}
+                {fact('Country/Region', store.country)}
               </div>
-            ))}
-          </div>
-
-          <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>
-            Terminal status
-            <a href="#" onClick={(e) => { e.preventDefault(); onOpenDevices(); }} aria-label="View payment devices" style={{ display: 'inline-flex', color: '#0F75DC' }}><Ico name="external-link" size={16} color="#0F75DC" /></a>
-          </h2>
-          <div>
-            {detailRow('Total terminals', <span style={{ fontFamily: 'var(--b-font-family-secondary)' }}>{store.terminals}</span>)}
-            {termRows.map(([label, value, dot]) => detailRow(label, <><span style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: dot }} /><span style={{ fontFamily: 'var(--b-font-family-secondary)' }}>{value}</span></>))}
-          </div>
+            </Section>
+          </Col>
+          {/* right — terminal status + payment methods */}
+          <Col gap={T.s6}>
+            <Section title="Terminal status" actions={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={onOpenDevices}>View payment devices</Button>}>
+              <div>
+                {fact('Total terminals', <span className="ns-num">{store.terminals}</span>)}
+                {termRows.map(([label, value, dot]) => fact(label, <Row gap={6} style={{ justifyContent: 'flex-end' }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flexShrink: 0 }} /><span className="ns-num">{value}</span></Row>))}
+              </div>
+            </Section>
+            <Section title="Payment methods & currencies">
+              {fact('Currencies', <Tag label={currency} variant="grey" />)}
+              <Col gap={8} style={{ marginTop: 10 }}>
+                <span style={{ fontSize: 13, color: T.sub }}>Payment methods</span>
+                <Row gap={6} style={{ flexWrap: 'wrap' }}>
+                  {methods.map(m => <span key={m} style={{ display: 'inline-flex', alignItems: 'center', height: 26, padding: '0 10px', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, background: T.card, fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>{m}</span>)}
+                </Row>
+              </Col>
+            </Section>
+          </Col>
         </div>
-      </div>
+      )}
+
+      {tab === 'devices' && (
+        store.terminals > 0
+          ? <div style={{ ...surface, overflow: 'hidden' }}><SMDevicesPage store={store} /></div>
+          : <EmptyState icon="package" title="No devices" description="This location has no payment devices yet." />
+      )}
+
+      {tab === 'settings' && (
+        <DetailSection title="Final configuration" description={`The resolved settings applied to this location, with where each value comes from · ${cfg.length} settings`}
+          actions={<Button variant="secondary" condensed iconLeft="settings" onClick={() => onOpenStudio && onOpenStudio({ type: 'store', storeId: store.id, name: store.name, deviceType: 'Terminal' })}>Configuration</Button>}>
+          <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: T.radiusM, overflow: 'auto', maxHeight: 560 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1000 }}>
+              <thead><tr>{['Setting', 'Setting value', 'Config level', 'Last changed by', 'Category'].map((c, i) => <th key={i} style={dtTh()}>{c}</th>)}</tr></thead>
+              <tbody>
+                {cfg.map((r, ri) => { const last = ri === cfg.length - 1; const override = r.level === store.code; return (
+                  <tr key={ri} className="ns-row">
+                    <td style={{ ...dtTd(last), fontFamily: 'var(--b-font-family-secondary)', fontWeight: 500 }}>{r.setting}</td>
+                    <td style={{ ...dtTd(last), color: T.sub, fontFamily: 'var(--b-font-family-secondary)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.value || '–'}</td>
+                    <td style={dtTd(last)}><a href="#" onClick={(e) => e.preventDefault()} style={{ color: override ? 'var(--b-color-decorative-orange)' : 'var(--b-color-decorative-red)', textDecoration: 'none', fontFamily: 'var(--b-font-family-secondary)' }}>{r.level}</a></td>
+                    <td style={{ ...dtTd(last), color: T.sub }}>{r.user} · {r.date}</td>
+                    <td style={{ ...dtTd(last), color: T.sub }}>{r.category}</td>
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
+          </div>
+        </DetailSection>
+      )}
     </div>
   );
 }
@@ -5859,7 +5878,7 @@ const ACTIVATE_PENDING = [
 ];
 // Per-device zoom so every render fills the tile evenly. Clean product photos ship with a lot
 // of surrounding whitespace (so they look tiny); tightly-cropped Verifone photos already fill.
-const ORDER_IMG_SCALE = { nyc1: 1.85, ams1: 1.5, s1u2: 1.55, ttp: 1.35, 'ttp-ios': 1.35, s1f2: 1.4, sfo1: 1.3 };
+const ORDER_IMG_SCALE = { nyc1: 1.85, ams1: 1.5, s1u2: 1.55, ttp: 1.35, 'ttp-ios': 1.35, s1f2: 1.4, sfo1: 1.3, s1e2l: 1.4 };
 function OrderProductImg({ p, size = 48, h = 140 }) {
   const [failed, setFailed] = useState(false);
   const scale = ORDER_IMG_SCALE[p.id] || 1;
@@ -5872,12 +5891,12 @@ function OrderProductImg({ p, size = 48, h = 140 }) {
    one-off "Terminal Package" price + monthly "Terminal Replacement Service (TRS)".
    Prices are EUR, tax-exclusive. Display only — no cart logic. */
 const TERMINAL_PRICES = [
-  { id: 'p400', model: 'P400 Plus', icon: 'terminal-2', rows: [{ note: 'Power over ethernet', pkg: 395, trs: 2.70 }] },
+  { id: 'p400', model: 'P400 Plus', img: 'assets/devices/p630.png', icon: 'terminal-2', rows: [{ note: 'Power over ethernet', pkg: 395, trs: 2.70 }] },
   { id: 'v400c', model: 'V400c plus', img: 'assets/devices/v400c.png', icon: 'terminal-2', rows: [{ pkg: 350, trs: 2.60 }] },
   { id: 'e285p', model: 'e285p', img: 'assets/devices/e285p.png', icon: 'mobile', rows: [{ pkg: 430, trs: 5.40 }] },
-  { id: 's1e2l', model: 'S1E2L', icon: 'mobile', rows: [{ note: 'With barcode reader & Extended battery', pkg: 475, trs: 2.60 }] },
+  { id: 's1e2l', model: 'S1E2L', img: 'assets/devices/s1f2.webp', icon: 'mobile', rows: [{ note: 'With barcode reader & Extended battery', pkg: 475, trs: 2.60 }] },
   { id: 'v400m', model: 'V400m', img: 'assets/devices/v400m.png', icon: 'mobile', rows: [{ pkg: 605, trs: 5.00 }] },
-  { id: 'v210', model: 'V210', icon: 'mobile', rows: [{ pkg: 275, trs: 5.00 }] },
+  { id: 'v210', model: 'V210', img: 'assets/devices/v400c.png', icon: 'terminal-2', rows: [{ pkg: 275, trs: 5.00 }] },
   { id: 's1f2', model: 'S1F2', img: 'assets/devices/s1f2.webp', icon: 'mobile', rows: [{ label: 'S1F2', note: 'Standard', pkg: 395, trs: 2.40 }, { label: 'S1F2L', note: 'With barcode reader', pkg: 465, trs: 2.60 }] },
   { id: 'm450', model: 'M450', img: 'assets/devices/m450.png', icon: 'terminal-2', rows: [{ pkg: 603, trs: 3.80 }] },
 ];
@@ -5918,6 +5937,20 @@ function StockManagement({ notify }) {
   const sync = () => { setSeed(s => s + 1); setSynced('just now'); notify && notify('Stock refreshed from the warehouse system'); };
   // Deterministic mock stock from a key + the current sync seed.
   const stock = (key) => { let h = (seed * 2654435761) >>> 0; const s = String(key); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 820; };
+  // Export the active tab's table (current edited prices + live stock) to CSV.
+  const exportTable = () => {
+    if (tab === 'terminals') {
+      const rows = [];
+      terms.forEach(g => g.rows.forEach(r => { const q = stock((r.label || g.model) + '|' + g.id); rows.push([r.label || g.model, r.note || '', r.pkg, r.trs, q, stockStatus(q).label]); }));
+      downloadCSV('pricing-terminals.csv', ['Model', 'Configuration', 'Terminal Package (EUR)', 'TRS per month (EUR)', 'Warehouse stock (units)', 'Stock status'], rows);
+      notify && notify('Exported terminal prices to CSV');
+    } else {
+      const rows = [];
+      accs.forEach(g => { if (!g.items.length) { rows.push([g.type || '', g.model, '', '', '', '']); return; } g.items.forEach(it => { const q = stock(g.model + '|' + it[0]); rows.push([g.type || '', g.model, it[0], it[1], q, stockStatus(q).label]); }); });
+      downloadCSV('pricing-accessories.csv', ['Terminal type', 'Model', 'Accessory / Part name', 'Price (EUR)', 'Warehouse stock (units)', 'Stock status'], rows);
+      notify && notify('Exported accessories & consumables to CSV');
+    }
+  };
 
   const COLS = '60px minmax(150px, 1fr) 128px 128px 180px';
   const ACOLS = '130px 140px 1fr 128px 180px';
@@ -5948,7 +5981,7 @@ function StockManagement({ notify }) {
     <div style={{ ...surface, padding: '28px 32px' }}>
       <Row align="flex-start" style={{ marginBottom: 4 }}>
         <span style={{ flex: 1, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>Terminal prices</span>
-        <span style={{ fontSize: 18, fontWeight: 600, color: T.ink }}>EUR</span>
+        <span style={{ fontSize: 12, color: T.faint, whiteSpace: 'nowrap' }}>List currency · <span style={{ fontWeight: 600, color: T.ink }}>EUR</span></span>
       </Row>
       <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 24, padding: '16px 0 14px', borderBottom: `1px solid ${T.sep}`, alignItems: 'flex-end' }}>
         <span /><span />
@@ -5963,7 +5996,7 @@ function StockManagement({ notify }) {
             {g.rows.map((r, i) => (
               <Col key={i} gap={0}>
                 <span style={{ fontSize: 14, fontWeight: 500, color: T.ink }}>{r.label || (i === 0 ? g.model : '')}</span>
-                {r.note && <span style={{ fontSize: 12, color: 'var(--b-color-decorative-green)', lineHeight: '16px' }}>{r.note}</span>}
+                {r.note && <span style={{ fontSize: 12, color: 'var(--b-color-label-success)', lineHeight: '16px' }}>{r.note}</span>}
               </Col>
             ))}
           </Col>
@@ -5984,7 +6017,7 @@ function StockManagement({ notify }) {
           <span style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>Accessories & consumables</span>
           <span style={{ fontSize: 12, color: T.faint }}>Note: Accessories are usually not required except for alternative configurations or spare parts</span>
         </Col>
-        <span style={{ fontSize: 18, fontWeight: 600, color: T.ink }}>EUR</span>
+        <span style={{ fontSize: 12, color: T.faint, whiteSpace: 'nowrap' }}>List currency · <span style={{ fontWeight: 600, color: T.ink }}>EUR</span></span>
       </Row>
       <div style={{ display: 'grid', gridTemplateColumns: ACOLS, gap: 24, padding: '16px 0 12px', borderBottom: `1px solid ${T.sep}` }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>Terminal type</span>
@@ -5999,7 +6032,7 @@ function StockManagement({ notify }) {
         return (
           <div key={gi} style={{ display: 'grid', gridTemplateColumns: ACOLS, gap: 24, alignItems: 'flex-start', padding: '16px 0', borderBottom: `1px solid ${T.sepFaint}` }}>
             <span style={{ fontSize: 14, color: T.ink }}>{g.type || '\u00A0'}</span>
-            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--b-color-decorative-green)' }}>{g.model}</span>
+            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--b-color-label-success)' }}>{g.model}</span>
             <Col gap={10}>{rows.map((it, i) => <span key={i} style={{ fontSize: 13, color: T.ink, lineHeight: '32px' }}>{it[0]}</span>)}</Col>
             <Col gap={10}>{rows.map((it, i) => empty ? <span key={i} style={{ fontSize: 13, color: T.faint, lineHeight: '32px' }}>{'\u2013'}</span> : <div key={i}>{priceInput(it[1], (v) => setAccPrice(gi, i, v))}</div>)}</Col>
             <Col gap={10}>{rows.map((it, i) => empty ? <span key={i} style={{ fontSize: 13, color: T.faint, lineHeight: '32px' }}>{'\u2013'}</span> : <div key={i} style={{ height: 32, display: 'flex', alignItems: 'center' }}>{stockCell(g.model + '|' + it[0])}</div>)}</Col>
@@ -6021,14 +6054,18 @@ function StockManagement({ notify }) {
           <span style={{ fontSize: 13, color: T.sub }}>Terminal &amp; accessory pricing · stock from the warehouse system</span>
         </Col>
         <Row gap={8} style={{ flexShrink: 0 }}>
-          <Button variant="secondary" iconLeft="refresh" onClick={sync}>Sync now</Button>
+          <Button variant="secondary" iconLeft="refresh" onClick={sync}>Sync stock</Button>
+          <Button variant="secondary" iconLeft="download" onClick={exportTable}>Export</Button>
           <Button variant="primary" iconLeft="checkmark" onClick={() => notify && notify('Catalogue prices saved')}>Save changes</Button>
         </Row>
       </Row>
-      {/* warehouse sync status */}
+      {/* warehouse sync status — clarifies that "sync" pulls STOCK only, never prices */}
       <Row align="center" gap={10} style={{ ...surface, padding: '10px 16px', marginBottom: T.s4 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--b-color-decorative-green)', flexShrink: 0 }} />
-        <span style={{ fontSize: 13, color: T.ink }}>Stock levels are managed automatically from the warehouse system.</span>
+        <span style={{ fontSize: 13, color: T.ink }}>Stock counts update automatically from the warehouse. Syncing refreshes stock only — never prices.</span>
+        <span style={{ display: 'inline-flex', flexShrink: 0, lineHeight: 0 }}>
+          <InfoTip width={320} content={<span><b>Sync = stock only.</b> It refreshes on-hand unit counts from the warehouse and never changes prices. You edit prices here, then press <b>Save changes</b> to apply them.</span>} placement="right"><Ico name="info" size={16} color={T.sub} /></InfoTip>
+        </span>
         <span style={{ fontSize: 13, color: T.faint }}>Last synced {synced}</span>
         <span style={{ flex: 1 }} />
         <Tag label="Auto" variant="green" />
@@ -9050,7 +9087,7 @@ function App() {
       {/* Global Ask — available on every main page (Fleet Intelligence has its own with Save-as-tile).
           Hidden while a full-page modal is open (those carry their own docked AI). */}
       {!top && nav !== 'device-intelligence' && nav !== 'fleet-health' && (
-        <FloatingAsk notify={notify} context={nav === 'stores' ? 'devices' : nav === 'device-studio' ? 'studio' : 'fleet'} />
+        <FloatingAsk notify={notify} context={nav === 'stores' ? 'devices' : nav === 'device-studio' ? 'studio' : nav === 'pricing-catalogue' ? 'pricing' : 'fleet'} />
       )}
 
       <ToastHost toast={toast} onClose={() => setToast(null)} />

@@ -112,8 +112,10 @@
     @keyframes nsFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     .ns-scrim { animation: nsScrim var(--b-animation-duration-moderate) ease; }
     @keyframes nsScrim { from { opacity: 0; } to { opacity: 1; } }
-    .ns-sheet { animation: nsSheet var(--b-animation-duration-slow) var(--b-animation-easing-enter); }
-    @keyframes nsSheet { from { opacity: 0; transform: translateY(12px) scale(0.995); } to { opacity: 1; transform: none; } }
+    /* .ns-sheet animates the inner content only; its FullPage root is a static opaque backdrop,
+       so a stacked sheet never reveals the one below (no overlapping headers). */
+    .ns-sheet { animation: nsSheet var(--b-animation-duration-moderate) var(--b-animation-easing-enter); }
+    @keyframes nsSheet { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     .ns-chip-btn { cursor: pointer; user-select: none; transition: background var(--b-animation-duration-fast) var(--b-animation-easing-standard), border-color var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
     .ns-chip-btn:hover { background: var(--b-color-background-secondary-hover) !important; border-color: var(--b-color-outline-primary) !important; }
     .ns-revert { opacity: 0; transition: opacity var(--b-animation-duration-fast) var(--b-animation-easing-standard); }
