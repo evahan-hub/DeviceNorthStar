@@ -1,4 +1,4 @@
-/* Device Studio — schema-driven settings model.
+/* Device Studio, schema-driven settings model.
    A subset of the ~143 merchant-facing settings across 26 groups (TerminalSettings v3).
    The control panel renders entirely from this schema, so new groups/fields appear
    automatically. Each group declares a `preview` binding to the simulator. */
@@ -81,7 +81,7 @@
     },
     {
       id: 'offline', level: 'policy', category: 'PaymentFeatures', title: 'Offline payments', icon: 'wifi', preview: null,
-      desc: 'Keep accepting card payments when the terminal is temporarily offline — transactions are stored and forwarded once it reconnects.',
+      desc: 'Keep accepting card payments when the terminal is temporarily offline, transactions are stored and forwarded once it reconnects.',
       fields: [
         { id: 'enabled', label: 'Accept offline payments', type: 'toggle', default: false },
         { id: 'limit', label: 'Per-transaction limit', type: 'select', options: ['€50', '€100', '€150', '€250'], default: '€100', dependsOn: { enabled: true } },

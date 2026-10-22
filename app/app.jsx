@@ -1,4 +1,4 @@
-/* Device North Star — Customer Area prototype.
+/* Device North Star, Customer Area prototype.
    Device Intelligence (know) drilling into Device Studio (change), on the Bento DS. */
 const DS = window.PXDesignSystem_25da7e;
 const {
@@ -24,7 +24,7 @@ const T = {
   green: 'var(--b-color-decorative-green)',
   radiusL: 'var(--b-border-radius-l)',
   radiusM: 'var(--b-border-radius-m)',
-  // spacing rhythm — one scale used everywhere
+  // spacing rhythm, one scale used everywhere
   s1: 4, s2: 8, s3: 12, s4: 16, s5: 20, s6: 24, s7: 32,
   navW: 248, // sidebar width, matches reference
   maxW: 1200,
@@ -36,7 +36,7 @@ function Ico({ name, size = 16, color, style }) {
   return <Icon name={name} size={size} color={color} style={style} />;
 }
 
-/* Device event report: deterministic per-device events across every type — reboots, config changes,
+/* Device event report: deterministic per-device events across every type, reboots, config changes,
    network switches, staff actions, and connectivity/transaction errors (timestamp, type, detail, redacted ref). */
 function deviceEvents(dv) {
   if (!dv) return [];
@@ -54,13 +54,13 @@ function deviceEvents(dv) {
     const when = daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : `${daysAgo}d ago`;
     out.push({ ...base, daysAgo, ts: `${when} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`, type, detail, ref });
   };
-  // System events — happen across the whole estate (healthy devices included).
+  // System events, happen across the whole estate (healthy devices included).
   push(0, 8, 10, 'Reboot', 'Scheduled nightly restart');
   if (r() < 0.45) push(1 + Math.floor(r() * 3), 22, 40, 'Config change', ['Payment methods updated · applies after nightly reboot', 'TFM settings updated', 'Merchant account reassigned'][Math.floor(r() * 3)]);
   if (r() < 0.3) push(Math.floor(r() * 4), 18, 5, 'Staff action', 'Refund via admin PIN');
-  // Connectivity + error events — only when the device is unhealthy.
+  // Connectivity + error events, only when the device is unhealthy.
   if (dv.status !== 'Healthy' && dv.failed) {
-    if (weak) push(0, 14, 32, 'Network', 'Fell back to cellular — Wi-Fi signal lost');
+    if (weak) push(0, 14, 32, 'Network', 'Fell back to cellular, Wi-Fi signal lost');
     push(0, 14, 31, 'WebSocket', `Disconnected ×${Math.max(2, Math.round(dv.failed / 6))} during transactions`);
     const n = Math.min(dv.failed, 10);
     for (let i = 0; i < n; i++) {
@@ -69,6 +69,84 @@ function deviceEvents(dv) {
     }
   }
   return out.sort((a, b) => a.daysAgo - b.daysAgo);
+}
+
+/* Per-device transaction flow: deterministic recent payment attempts with the full request/response
+   trail (each step + outcome + timing), not just completed sales. Looked up by terminal / payment
+   reference. Card PANs are masked and sensitive fields redacted. */
+const CURRENCY_BY_COUNTRY = { Japan: '¥', 'South Korea': '₩', China: '¥', Singapore: 'S$', Taiwan: 'NT$', 'Hong Kong': 'HK$' };
+function deviceTransactions(dv) {
+  if (!dv) return [];
+  let s = 0; for (const ch of (dv.id + 'tx')) s = (s * 31 + ch.charCodeAt(0)) & 0x7fffffff;
+  const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  const cur = CURRENCY_BY_COUNTRY[dv.country] || '€';
+  const bigUnit = cur === '¥' || cur === '₩';
+  const brands = ['Visa', 'Mastercard', 'Amex', 'JCB', 'Apple Pay', 'Google Pay'];
+  const cause = dv.cause || '';
+  const connIssue = /websocket|latency|reconnect/i.test(cause) ? 'ws'
+    : /weak|signal|wi-?fi/i.test(cause) ? 'weak'
+    : /cellular/i.test(cause) ? 'cellular'
+    : /offline|boarded/i.test(cause) ? 'offline' : 'ws';
+  const unhealthy = dv.status !== 'Healthy';
+  const out = [];
+  const N = 14;
+  for (let i = 0; i < N; i++) {
+    const brand = brands[Math.floor(r() * brands.length)];
+    const pan = '•••• ' + String(1000 + Math.floor(r() * 8999));
+    const base = Math.round(5 + r() * 240);
+    const amount = cur + D.fmt(bigUnit ? base * 100 : base) + (bigUnit ? '' : '.' + String(Math.floor(r() * 100)).padStart(2, '0'));
+    const minsAgo = Math.round(r() * 90) + i * 11;
+    const when = minsAgo < 60 ? `${minsAgo}m ago` : minsAgo < 1440 ? `${Math.round(minsAgo / 60)}h ago` : `${Math.round(minsAgo / 1440)}d ago`;
+    const ref = String(Math.floor(8e15 + r() * 1e15));
+    const roll = r();
+    let outcome;
+    if (unhealthy && roll < 0.34) outcome = 'Failed';
+    else if (roll < 0.12) outcome = 'Refused';
+    else if (unhealthy && roll < 0.42) outcome = 'Reversed';
+    else outcome = 'Approved';
+    out.push({ ref, when, minsAgo, brand, pan, amount, outcome, flow: txFlow(outcome, brand, pan, amount, connIssue, r) });
+  }
+  return out.sort((a, b) => a.minsAgo - b.minsAgo);
+}
+// Build the step-by-step request/response trail for one transaction (each step carries a result + timing).
+function txFlow(outcome, brand, pan, amount, connIssue, r) {
+  const steps = [];
+  const ms = (lo, hi) => D.fmt(Math.round(lo + r() * (hi - lo))) + ' ms';
+  steps.push({ label: 'Payment request received', dir: 'POS → Terminal', result: 'ok', detail: `${amount} · sale`, t: ms(2, 15) });
+  steps.push({ label: 'Card presented', dir: 'Shopper → Terminal', result: 'ok', detail: `${brand} ${pan} · ${r() < 0.7 ? 'contactless' : 'chip'}`, t: ms(300, 1200) });
+  if (outcome === 'Failed') {
+    if (connIssue === 'weak' || connIssue === 'cellular') {
+      steps.push({ label: 'Wi‑Fi signal lost', dir: 'Terminal', result: 'warn', detail: 'Primary uplink dropped mid‑transaction', t: ms(800, 2500) });
+      steps.push({ label: 'Fell back to cellular', dir: 'Terminal', result: 'warn', detail: 'Switched to cellular, higher latency', t: ms(1500, 4000) });
+      steps.push({ label: 'Authorisation request timed out', dir: 'Terminal → Adyen', result: 'fail', detail: 'No response within 30 s on the slow link', t: '30,000 ms' });
+      steps.push({ label: 'Transaction cancelled at terminal', dir: 'Terminal → POS', result: 'fail', detail: 'Shopper asked to retry, no funds moved', t: ms(5, 20) });
+    } else if (connIssue === 'offline') {
+      steps.push({ label: 'Opening connection to Adyen', dir: 'Terminal → Adyen', result: 'fail', detail: 'Terminal is offline / not boarded, no route to host', t: '—' });
+      steps.push({ label: 'Transaction cancelled at terminal', dir: 'Terminal → POS', result: 'fail', detail: 'No funds moved', t: ms(5, 20) });
+    } else {
+      steps.push({ label: 'WebSocket connection', dir: 'Terminal → Adyen', result: 'fail', detail: 'Disconnected during handshake (timeout)', t: '30,000 ms' });
+      steps.push({ label: 'Authorisation not sent', dir: 'Terminal', result: 'fail', detail: 'Connection unavailable, request never reached Adyen', t: '—' });
+      steps.push({ label: 'Transaction cancelled at terminal', dir: 'Terminal → POS', result: 'fail', detail: 'Shopper asked to retry, no funds moved', t: ms(5, 20) });
+    }
+    return steps;
+  }
+  steps.push({ label: 'WebSocket connection established', dir: 'Terminal → Adyen', result: 'ok', detail: 'Secure channel open (TLS 1.2)', t: ms(40, 400) });
+  steps.push({ label: 'Authorisation request sent', dir: 'Adyen → Issuer', result: 'ok', detail: `${brand} · online authorisation`, t: ms(120, 900) });
+  if (outcome === 'Refused') {
+    steps.push({ label: 'Issuer response', dir: 'Issuer → Adyen', result: 'fail', detail: r() < 0.5 ? 'Refused · insufficient funds' : 'Refused · do not honour', t: ms(200, 1200) });
+    steps.push({ label: 'Decline shown to shopper', dir: 'Terminal', result: 'warn', detail: 'Shopper asked for another card, no funds moved', t: ms(5, 30) });
+    return steps;
+  }
+  if (outcome === 'Reversed') {
+    steps.push({ label: 'Issuer response', dir: 'Issuer → Adyen', result: 'ok', detail: 'Approved · auth code ' + String(100000 + Math.floor(r() * 899999)), t: ms(200, 1200) });
+    steps.push({ label: 'Confirmation not received by POS', dir: 'Adyen → POS', result: 'warn', detail: 'Connection dropped before the result reached the register', t: '30,000 ms' });
+    steps.push({ label: 'Auto‑reversal sent', dir: 'Adyen → Issuer', result: 'warn', detail: 'Payment reversed so the shopper isn’t charged twice', t: ms(300, 1500) });
+    return steps;
+  }
+  steps.push({ label: 'Issuer response', dir: 'Issuer → Adyen', result: 'ok', detail: 'Approved · auth code ' + String(100000 + Math.floor(r() * 899999)), t: ms(200, 1200) });
+  steps.push({ label: 'Approved shown to shopper', dir: 'Terminal', result: 'ok', detail: 'Receipt printed / emailed', t: ms(5, 40) });
+  steps.push({ label: 'Result returned to POS', dir: 'Terminal → POS', result: 'ok', detail: 'Sale completed', t: ms(5, 25) });
+  return steps;
 }
 
 /* Level-0 reporting: build a CSV from columns + rows and trigger a client-side download. */
@@ -133,7 +211,7 @@ function ExpandGlyph({ size = 18, collapsed }) {
   );
 }
 
-/* Bento "arrow-left" glyph (not in the shipped icon set — provided inline). */
+/* Bento "arrow-left" glyph (not in the shipped icon set, provided inline). */
 function ArrowLeftGlyph({ size = 16 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style={{ display: 'block' }}>
@@ -152,7 +230,7 @@ function RevertGlyph({ size = 14 }) {
   );
 }
 
-/* Bento List recreation — label/value rows split by hairline dividers (b-list / b-list-item). */
+/* Bento List recreation, label/value rows split by hairline dividers (b-list / b-list-item). */
 function BentoList({ items }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -169,7 +247,7 @@ function BentoList({ items }) {
   );
 }
 
-/* Bento Structured List (b-structured-list): two aligned columns — labels then values,
+/* Bento Structured List (b-structured-list): two aligned columns, labels then values,
    both left-aligned, no row dividers, 14/20 type, label secondary / value primary. */
 function StructuredList({ items, labelWidth = 160 }) {
   return (
@@ -328,7 +406,7 @@ function LineChart({ data, height = 180 }) {
     </div>
   );
 }
-/* Column/bar chart — same axis, gridline & tooltip styling as LineChart; grouped bars per label. */
+/* Column/bar chart, same axis, gridline & tooltip styling as LineChart; grouped bars per label. */
 function BarChart({ data, height = 180 }) {
   const [active, setActive] = useState(null);
   const wrapRef = useRef(null);
@@ -449,9 +527,9 @@ function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVari
   const sheet = (
     <div style={root}>
       <div className="ns-sheet" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, alignSelf: 'stretch', width: '100%', background: T.card }}>
-      {/* b-modal-fullscreen · header — back left · title centered · actions/close right */}
+      {/* b-modal-fullscreen · header, back left · title centered · actions/close right */}
       <div style={{ flexShrink: 0, alignSelf: 'stretch', height: 64, display: 'flex', alignItems: 'center', gap: 24, padding: '12px 24px', background: T.card, borderBottom: `1px solid ${T.sep}`, position: 'relative' }}>
-        {/* left — back: labeled "← Previous page" when a backLabel is given, else icon-only */}
+        {/* left, back: labeled "← Previous page" when a backLabel is given, else icon-only */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', zIndex: 2 }}>
           {onBack && (backLabel && backLabel !== 'Back'
             ? <button type="button" onClick={onBack} title={backLabel} className="ns-accord-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px 0 6px', border: 0, background: 'transparent', cursor: 'pointer', color: T.ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, borderRadius: 8, maxWidth: '100%' }}>
@@ -460,7 +538,7 @@ function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVari
               </button>
             : <GlyphButton title="Back" onClick={onBack}><ArrowLeftGlyph /></GlyphButton>)}
         </div>
-        {/* center — title + optional subtitle + badge */}
+        {/* center, title + optional subtitle + badge */}
         <div style={{ position: 'absolute', left: '50%', top: 0, height: '100%', transform: 'translateX(-50%)', maxWidth: '52%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <Row gap={8} style={{ minWidth: 0, justifyContent: 'center' }}>
             <span style={{ fontSize: 16, fontWeight: 700, lineHeight: '26px', color: T.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
@@ -468,7 +546,7 @@ function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVari
           </Row>
           {subtitle && <span style={{ fontSize: 12, lineHeight: '16px', color: T.sub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{subtitle}</span>}
         </div>
-        {/* right — actions · separator · close */}
+        {/* right, actions · separator · close */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 24, zIndex: 2 }}>
           {actions && <Row gap={8}>{actions}</Row>}
           {canClose && (
@@ -485,7 +563,7 @@ function FullPage({ title, subtitle, badge, onBack, backLabel = 'Back', backVari
     </div>
   );
   // Overlay sheets portal to <body> so a modal opened from inside another modal becomes a sibling
-  // (latest mounted paints on top) instead of nesting — which is what caused overlapping headers.
+  // (latest mounted paints on top) instead of nesting, which is what caused overlapping headers.
   return inline ? sheet : ReactDOM.createPortal(sheet, document.body);
 }
 
@@ -526,7 +604,7 @@ const NAV = [
 function Header({ env, setEnv, crumb, onToggleNav }) {
   return (
     <header style={{ ...(env === 'Test' ? ENV_TEST_VARS : null), height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: `1px solid ${T.sep}`, background: T.page, zIndex: 300 }}>
-      {/* left zone — aligns with the sidebar */}
+      {/* left zone, aligns with the sidebar */}
       <div style={{ width: T.navW, flexShrink: 0, display: 'flex', alignItems: 'center', gap: T.s2, height: '100%', paddingRight: T.s3 }}>
         <button className="ns-hdrbtn" aria-label="Toggle navigation" onClick={onToggleNav} style={{ width: 32, height: 32, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 0, background: 'none', borderRadius: 8, cursor: 'pointer', color: T.ink, padding: 0 }}>
           <Ico name="menu" size={16} />
@@ -566,7 +644,7 @@ function Header({ env, setEnv, crumb, onToggleNav }) {
   );
 }
 
-/* Test-mode dev theme — a dark-navy inversion applied to the sidebar + top header so it's
+/* Test-mode dev theme, a dark-navy inversion applied to the sidebar + top header so it's
    obvious you're in the Test environment. Overriding the Bento tokens on the container flips
    every child (backgrounds, labels, borders) to the inverse palette automatically. */
 const ENV_TEST_VARS = {
@@ -641,10 +719,12 @@ const ALL_TILES = [
   { id: 'sdkHealth', name: 'SDK & OS health', kind: 'sdkHealth', w: 'half' },
   { id: 'firmware', name: 'Firmware health', kind: 'firmwareHealth', w: 'half' },
   { id: 'connectivity', name: 'Fleet health', kind: 'connectivity', w: 'half' },
+  { id: 'alerts', name: 'Proactive alerts', kind: 'alerts', w: 'half' },
+  { id: 'fleetLoop', name: 'Fleet trends & alerts', kind: 'fleetLoop', w: 'full' },
   { id: 'auth', name: 'Authorisation-rate trend', kind: 'chart', chart: 'authTrend', w: 'half',
-    info: <span><b>Authorisation rate</b> = approved authorisations ÷ total authorisation attempts — the share of payments the card issuer says yes to.<br /><br /><b>Why it matters:</b> it&rsquo;s the clearest measure of revenue you capture vs lose at the moment of payment. Around <b>5% of card payments are wrongly refused</b> by legacy systems, and Adyen&rsquo;s revenue-optimisation tooling (RevenueAccelerate) is credited with lifting merchant revenue by <b>~1.4%</b>. A downward trend means more shoppers are being declined — check issuer refusals, network tokens and routing.</span> },
+    info: <span><b>Authorisation rate</b> = approved authorisations ÷ total authorisation attempts, the share of payments the card issuer says yes to.<br /><br /><b>Why it matters:</b> it&rsquo;s the clearest measure of revenue you capture vs lose at the moment of payment. Around <b>5% of card payments are wrongly refused</b> by legacy systems, and Adyen&rsquo;s revenue-optimisation tooling (RevenueAccelerate) is credited with lifting merchant revenue by <b>~1.4%</b>. A downward trend means more shoppers are being declined, check issuer refusals, network tokens and routing.</span> },
   { id: 'notTradingTrend', name: 'Failed transactions', kind: 'chart', chart: 'failedTxTrend', w: 'half',
-    info: <span><b>Failed transactions</b> = payments that were declined or aborted at the terminal (not by the issuer).<br /><br /><b>Why it matters:</b> most terminal-side failures trace back to <b>connectivity</b> — WebSocket drops, high latency or weak signal — so this is the leading signal that a store is about to lose sales. <b>Explore</b> to see the terminals to troubleshoot and the underlying signals, then fix them.</span> },
+    info: <span><b>Failed transactions</b> = payments that were declined or aborted at the terminal (not by the issuer).<br /><br /><b>Why it matters:</b> most terminal-side failures trace back to <b>connectivity</b>, WebSocket drops, high latency or weak signal, so this is the leading signal that a store is about to lose sales. <b>Explore</b> to see the terminals to troubleshoot and the underlying signals, then fix them.</span> },
   { id: 'notReady', name: 'Not-ready reasons', kind: 'grid', grid: 'notReadyReasons', topic: 'notReady', w: 'half' },
   { id: 'compliance', name: 'Firmware & PCI compliance', kind: 'grid', grid: 'compliance', topic: 'compliance', w: 'half' },
   { id: 'storesAttention', name: 'Stores needing attention', kind: 'grid', grid: 'storesAttention', topic: 'storesAttention', w: 'full' },
@@ -654,7 +734,7 @@ const ALL_TILES = [
 ];
 // Business insight ↔ Connectivity & health · SDK & OS health ↔ Firmware health · Auth trend ↔ Failed transactions.
 // (Feature adoption lives in the Business insight Explore; battery is covered inside Connectivity & health.)
-const DEFAULT_TILE_IDS = ['kpis', 'business', 'connectivity', 'sdkHealth', 'firmware', 'auth', 'notTradingTrend', 'transactionSpeed', 'notReady'];
+const DEFAULT_TILE_IDS = ['kpis', 'business', 'connectivity', 'fleetLoop', 'sdkHealth', 'firmware', 'auth', 'notTradingTrend', 'transactionSpeed', 'notReady'];
 
 // Shared data-period options for every Explore modal (keeps the "scope of the data" consistent).
 const DATA_PERIODS = [
@@ -681,9 +761,9 @@ const rangeLabel = (v, options) => {
 
 /* ---- Dashboard layout persistence ----
    The user's saved tile order survives reloads via localStorage. Bump LAYOUT_VERSION on any
-   push that changes the default layout — that invalidates old saves so the new default wins;
+   push that changes the default layout, that invalidates old saves so the new default wins;
    otherwise the user's own layout is always restored. */
-const LAYOUT_VERSION = 11;
+const LAYOUT_VERSION = 13;
 const LAYOUT_KEY = 'ns_fleet_layout';
 function loadLayout() {
   try {
@@ -742,7 +822,7 @@ function KPITile({ actions, onOpenStores, onOpenDevices }) {
   );
 }
 
-/* Shared tile header — one title/subtitle style across the Fleet Intelligence page:
+/* Shared tile header, one title/subtitle style across the Fleet Intelligence page:
    title 15/600 ink · subtitle 12/500 faint · info icon (ink) · optional right node & badge. */
 function TileHeader({ title, info, subtitle, right, badge }) {
   return (
@@ -760,7 +840,7 @@ function TileHeader({ title, info, subtitle, right, badge }) {
   );
 }
 
-/* Feature insight — same card anatomy as SDK & OS Health: header (title + info +
+/* Feature insight, same card anatomy as SDK & OS Health: header (title + info +
    subtitle) with legend top-right, then chart beside its feature-level metrics. */
 function FeatureInsightTile({ onExplore }) {
   const data = D.featureAdoption;
@@ -826,14 +906,14 @@ const DEFAULT_ASK_MODELS = MODES;
 const ASK_CONTEXTS = {
   fleet: {
     placeholder: 'Ask about fleet health, security or operations…',
-    intro: 'Ask across your whole fleet — analytics, security, operations and troubleshooting.',
+    intro: 'Ask across your whole fleet, analytics, security, operations and troubleshooting.',
     // Surfaced first when the panel opens; everything else collapses under "See more insights".
     featured: [
       { cat: 'Firmware locks', icon: 'settings', q: 'Show only terminals with locked firmware. Group them by lock reason and flag which ones can be safely unlocked and updated.', desc: 'Grouped by lock reason, with the ones safe to unlock and update flagged.' },
-      { cat: 'Apps per device', icon: 'grid', q: 'List Android apps installed per device across the fleet in one view, without sending me to Reports.', desc: 'One view — apps installed per device, no separate trip to Reports.' },
-      { cat: 'Business enablement', icon: 'sparkles', q: 'How is tipping configured across all my fleets?', desc: 'Overview and what it means — high-performing vs misconfiguration — linked to action points.' },
+      { cat: 'Apps per device', icon: 'grid', q: 'List Android apps installed per device across the fleet in one view, without sending me to Reports.', desc: 'One view, apps installed per device, no separate trip to Reports.' },
+      { cat: 'Business enablement', icon: 'sparkles', q: 'How is tipping configured across all my fleets?', desc: 'Overview and what it means, high-performing vs misconfiguration, linked to action points.' },
       { cat: 'Fleet security', icon: 'settings', q: 'How many SDKs / firmware are expiring?', desc: 'Current status plus immediate action points.' },
-      { cat: 'Feature analysis', icon: 'settings', q: 'How many terminals have Standalone enabled? List them.', desc: 'Count, list and report link — device.enableStandalone.' },
+      { cat: 'Feature analysis', icon: 'settings', q: 'How many terminals have Standalone enabled? List them.', desc: 'Count, list and report link, device.enableStandalone.' },
     ],
     models: MODES,
     defaultMode: 'analytics',
@@ -847,13 +927,13 @@ const ASK_CONTEXTS = {
   },
   devices: {
     placeholder: 'Ask about ordering, onboarding or fulfilment…',
-    intro: 'Ask about the device lifecycle — ordering, onboarding, supply chain and returns.',
+    intro: 'Ask about the device lifecycle, ordering, onboarding, supply chain and returns.',
     models: MODES,
     defaultMode: 'ops',
     // Surfaced first when the panel opens; everything else collapses under "See more insights".
     featured: [
-      { cat: 'Look up a device', icon: 'search', q: "Why isn't this terminal working?", desc: 'Scan or enter a device ID for live status — connectivity, battery, SDK/firmware, last transaction and recent changes — with clear next steps to get it trading again.' },
-      { cat: 'Reassignment by prompt', icon: 'refresh', q: 'Reassign all terminals from Tokyo stores to Osaka stores.', desc: 'Reassign in plain language — the AI resolves the terminals and shows a confirm card, flagging any stuck mid-move, before it acts.' },
+      { cat: 'Look up a device', icon: 'search', q: "Why isn't this terminal working?", desc: 'Scan or enter a device ID for live status, connectivity, battery, SDK/firmware, last transaction and recent changes, with clear next steps to get it trading again.' },
+      { cat: 'Reassignment by prompt', icon: 'refresh', q: 'Reassign all terminals from Tokyo stores to Osaka stores.', desc: 'Reassign in plain language, the AI resolves the terminals and shows a confirm card, flagging any stuck mid-move, before it acts.' },
     ],
     groups: [
       { label: 'Merchant lifecycle services', icon: 'refresh', prompts: ['Order a replacement for a damaged terminal', 'Start a return and generate the shipping label', 'Check warranty and insurance status for a device'] },
@@ -863,12 +943,12 @@ const ASK_CONTEXTS = {
   },
   studio: {
     placeholder: 'Ask AI to customise or configure devices…',
-    intro: 'Ask AI to customise devices and launch payment features — I\u2019ll update the preview.',
+    intro: 'Ask AI to customise devices and launch payment features, I\u2019ll update the preview.',
     models: MODES,
     defaultMode: 'custom',
     // Surfaced first when the panel opens; everything else collapses under "See more insights".
     featured: [
-      { cat: 'Market setup', icon: 'sparkles', q: 'Create a configuration for devices for international clients in Japan', desc: 'Enable DCC, offline payments, JCB & e-money and Japanese localisation — bundled into one ready-to-apply configuration.' },
+      { cat: 'Market setup', icon: 'sparkles', q: 'Create a configuration for devices for international clients in Japan', desc: 'Enable DCC, offline payments, JCB & e-money and Japanese localisation, bundled into one ready-to-apply configuration.' },
     ],
     groups: [
       { label: 'Customisation', icon: 'settings', prompts: ['Install an Android app on these devices', 'Upload a media asset to the home screen', 'Push a configuration update to this scope'] },
@@ -877,12 +957,12 @@ const ASK_CONTEXTS = {
   },
   pricing: {
     placeholder: 'Ask about pricing, stock or the catalogue…',
-    intro: 'Ask about the device catalogue — pricing, Terminal Replacement Service (TRS) rates and warehouse stock.',
+    intro: 'Ask about the device catalogue, pricing, Terminal Replacement Service (TRS) rates and warehouse stock.',
     models: MODES,
     defaultMode: 'ops',
     // Surfaced first when the panel opens; everything else collapses under "See more insights".
     featured: [
-      { cat: 'Stock levels', icon: 'grid', q: 'Which terminals and accessories are low or out of stock right now?', desc: 'Live warehouse levels, lowest first — with the models at risk of backorder flagged.' },
+      { cat: 'Stock levels', icon: 'grid', q: 'Which terminals and accessories are low or out of stock right now?', desc: 'Live warehouse levels, lowest first, with the models at risk of backorder flagged.' },
       { cat: 'Bulk pricing', icon: 'sparkles', q: 'Raise the TRS monthly rate by 10% across all Android terminals.', desc: 'Preview the affected SKUs and new prices before applying them to the catalogue.' },
     ],
     groups: [
@@ -895,10 +975,10 @@ const ASK_CONTEXTS = {
 
 /* ============================================================= ASK CHAT DESIGN SYSTEM
    Reusable building blocks shared by every AI chat (Fleet · Location · Studio):
-   · AskPromptCard  — a featured "main prompt" card (category · question · description)
-   · AskSectionTitle — small caps section label
-   · AskInsightRow  — one-line insight/prompt row (icon · text · arrow)
-   · AskLine        — one-line callout with a leading icon and an optional right-side CTA
+   · AskPromptCard , a featured "main prompt" card (category · question · description)
+   · AskSectionTitle, small caps section label
+   · AskInsightRow , one-line insight/prompt row (icon · text · arrow)
+   · AskLine       , one-line callout with a leading icon and an optional right-side CTA
                       (used for the Tip and the Next-best-action rows)                    */
 function AskPromptCard({ item, onClick }) {
   return (
@@ -972,7 +1052,7 @@ function PromptBox({ q, setQ, onSend, thinking, onAdd, models, defaultMode, plac
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
         placeholder={placeholder}
         style={{ width: '100%', border: 0, outline: 'none', resize: 'none', background: 'transparent', fontFamily: 'inherit', fontSize: 14, lineHeight: '20px', color: T.ink, padding: '12px 12px 6px' }} />
-      {/* action toolbar — Plus + Mode aligned to the same height and vertically centered */}
+      {/* action toolbar, Plus + Mode aligned to the same height and vertically centered */}
       <Row gap={6} align="center" style={{ padding: '6px 8px 8px' }}>
         <div ref={addRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', height: 28 }}>
           <button onClick={() => setAddOpen(o => !o)} title="Add" aria-label="Add" className="ns-suggest"
@@ -1057,9 +1137,9 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
         </Row>
       </Row>
 
-      {/* body — collapsible history sidebar + conversation/composer column */}
+      {/* body, collapsible history sidebar + conversation/composer column */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {/* history sidebar (collapsible, max 200px) — only in the expanded panel */}
+        {/* history sidebar (collapsible, max 200px), only in the expanded panel */}
         {expanded && (
         <div style={{ width: histOpen ? 220 : 44, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0, transition: 'width 120ms' }}>
           <Row style={{ padding: '8px 10px', alignItems: 'center', justifyContent: histOpen ? 'space-between' : 'center', flexShrink: 0 }}>
@@ -1113,13 +1193,13 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
         {!ans && !thinking && (
           <Col gap={T.s4}>
             <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{ctx.intro}</span>
-            {/* Featured "main prompt" cards — side-by-side when the panel is expanded */}
+            {/* Featured "main prompt" cards, side-by-side when the panel is expanded */}
             {ctx.featured && (
               <div style={{ display: 'grid', gridTemplateColumns: expanded ? 'repeat(2, minmax(0, 1fr))' : '1fr', gap: 10, alignItems: 'stretch' }}>
                 {ctx.featured.map(f => <AskPromptCard key={f.q} item={f} onClick={() => run(f.q)} />)}
               </div>
             )}
-            {/* "See more insights" — collapsed when featured prompts exist */}
+            {/* "See more insights", collapsed when featured prompts exist */}
             {ctx.featured && (
               <button type="button" onClick={() => setMoreOpen(o => !o)}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start', border: 0, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: '#00A152', padding: '2px 6px', borderRadius: 8 }}>
@@ -1127,7 +1207,7 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
                 <Ico name={moreOpen ? 'chevron-up-small' : 'chevron-down-small'} size={16} color="#00A152" />
               </button>
             )}
-            {/* Insights list — grouped title + insight prompt rows */}
+            {/* Insights list, grouped title + insight prompt rows */}
             {(!ctx.featured || moreOpen) && ctx.groups.map(g => (
               <Col key={g.label} gap={1}>
                 <AskSectionTitle>{g.label}</AskSectionTitle>
@@ -1154,16 +1234,16 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
               </Row>
               <span style={{ fontSize: 12, color: T.sub, fontWeight: 500 }}>{ans.metric.label}</span>
             </Col>
-            {/* evidence — supporting table (status cells as tags, no per-header info noise) */}
+            {/* evidence, supporting table (status cells as tags, no per-header info noise) */}
             <Grid columns={ans.grid.columns} rows={ans.grid.rows.slice(0, 6)} dense hideHeaderInfo renderCell={askRenderCell} />
-            {/* insight — plain line under the table, full width (no alert box) */}
+            {/* insight, plain line under the table, full width (no alert box) */}
             {ans.note && (
               <Row gap={8} align="flex-start" style={{ marginTop: 16 }}>
                 <span style={{ lineHeight: 0, flexShrink: 0 }}><Ico name="insight" size={18} color="var(--b-color-label-primary)" /></span>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: T.ink, lineHeight: '18px' }}>{ans.note}</span>
               </Row>
             )}
-            {/* act — consistent action pills; next-best-action is a pill too (arrow + link colour) */}
+            {/* act, consistent action pills; next-best-action is a pill too (arrow + link colour) */}
             {((ans.actions && ans.actions.length > 0) || ans.deepDive) && (
               <Row gap={8} align="center" style={{ flexWrap: 'wrap', marginTop: 24 }}>
                 {ans.actions && ans.actions.map(a => (
@@ -1180,7 +1260,7 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
                 )}
               </Row>
             )}
-            {/* you might also ask — insights list (title + insight prompt rows) */}
+            {/* you might also ask, insights list (title + insight prompt rows) */}
             <Col gap={1} style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${T.sepFaint}` }}>
               <AskSectionTitle>You might also ask</AskSectionTitle>
               {followups.map(f => <AskInsightRow key={f.question} icon="sparkles" text={f.question} onClick={() => run(f.question)} />)}
@@ -1193,7 +1273,7 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
       {/* pinned prompt */}
       <div style={{ flexShrink: 0, padding: T.s4, borderTop: `1px solid ${T.sep}` }}>
         <PromptBox q={q} setQ={setQ} onSend={() => run()} thinking={thinking} models={ctx.models} defaultMode={ctx.defaultMode} placeholder={ctx.placeholder}
-          onAdd={(v) => notify && notify((NL_ADD_ITEMS.find(i => i.value === v) || {}).label + ' — coming soon')} />
+          onAdd={(v) => notify && notify((NL_ADD_ITEMS.find(i => i.value === v) || {}).label + ', coming soon')} />
       </div>
         </div>{/* /conversation+composer */}
       </div>{/* /body row */}
@@ -1201,7 +1281,7 @@ function NLSearch({ onSaveTile, onExplore, onMinimize, onToggleExpand, expanded,
   );
 }
 
-/* Floating "Ask" launcher — Bento action-bar-styled FAB opening the chat panel.
+/* Floating "Ask" launcher, Bento action-bar-styled FAB opening the chat panel.
    Minimize (–) collapses back to the FAB; Expand blows it up to a full-page modal. */
 function FloatingAsk({ onSaveTile, onExplore, notify, context = 'fleet' }) {
   const [open, setOpen] = useState(false);
@@ -1249,7 +1329,7 @@ function FloatingAsk({ onSaveTile, onExplore, notify, context = 'fleet' }) {
 /* ============================================================= SDK & OS HEALTH */
 const SDK_STATUS_VARIANT = { Supported: 'green', Expiring: 'orange', Expired: 'red' };
 
-/* Summary tile on Fleet Intelligence — the few numbers that drive action + a status mini-bar. */
+/* Summary tile on Fleet Intelligence, the few numbers that drive action + a status mini-bar. */
 function SdkHealthTile({ onExplore }) {
   const d = D.sdkHealth, sdk = d.sdk.kpis, os = d.os.kpis;
   const bar = [
@@ -1301,7 +1381,7 @@ function SdkHealthTile({ onExplore }) {
   );
 }
 
-/* Connectivity & health tile — fleet rollup of the per-terminal Core Terminal Dashboard signals
+/* Connectivity & health tile, fleet rollup of the per-terminal Core Terminal Dashboard signals
    (websocket failures/latency, primary interface split, weak signal, battery, firmware installs). */
 function ConnectivityTile({ notify, onExplore }) {
   const d = D.connectivity;
@@ -1324,7 +1404,7 @@ function ConnectivityTile({ notify, onExplore }) {
   return (
     <div style={{ ...surface, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }} className="ns-tile">
       <TileHeader title="Fleet health" subtitle={`Terminal telemetry · ${d.period}`}
-        info={<span><b>Find and fix at-risk terminals.</b> Spot the ones failing payments or about to drop offline — from their connectivity, signal and battery — and troubleshoot them before they cost you sales.</span>}
+        info={<span><b>Find and fix at-risk terminals.</b> Spot the ones failing payments or about to drop offline, from their connectivity, signal and battery, and troubleshoot them before they cost you sales.</span>}
         right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>Explore</Button>} />
       <Col gap={14} style={{ padding: `0 ${T.s5}px ${T.s5}px`, flex: 1 }}>
         <Col gap={10}>
@@ -1355,6 +1435,185 @@ function ConnectivityTile({ notify, onExplore }) {
   );
 }
 
+/* Proactive alerts tile, alert rules with thresholds that fire BEFORE sales are lost.
+   The "from reactive to proactive" shift: get notified on offline/reboot/connection/error thresholds,
+   delivered in the Customer Area or streamed to your own tools (Splunk, webhook). */
+const ALERT_RULES = [
+  { id: 'offline', name: 'Device offline', cond: 'unreachable > 15 min', count: 23, sev: 'red' },
+  { id: 'reboot', name: 'Reboot spike / crash loop', cond: '≥ 3 restarts in 1 h', count: 6, sev: 'red' },
+  { id: 'peak', name: 'Reboot during peak hours', cond: 'restart 11:00–14:00', count: 2, sev: 'orange' },
+  { id: 'ws', name: 'WebSocket disconnects', cond: '> 50 drops in 1 h', count: 11, sev: 'orange' },
+  { id: 'err', name: 'High error volume', cond: '> 5% of attempts fail', count: 0, sev: 'green' },
+];
+function AlertRulesTile({ notify, onExplore }) {
+  const [on, setOn] = useState({ offline: true, reboot: true, peak: true, ws: true, err: false });
+  const triggered = ALERT_RULES.filter(r => on[r.id] && r.count > 0);
+  const affected = triggered.reduce((s, r) => s + r.count, 0);
+  return (
+    <div style={{ ...surface, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }} className="ns-tile">
+      <TileHeader title="Proactive alerts" subtitle={`${triggered.length} of ${ALERT_RULES.length} rules triggered · ${D.fmt(affected)} devices affected`}
+        info={<span><b>Catch problems before sales are lost.</b> Threshold rules fire when a device goes offline too long, restarts in a loop or during peak hours, drops its connection, or fails too many payments. Deliver alerts in the Customer Area or stream them to your own tools (Splunk, webhook).</span>}
+        right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>Manage</Button>} />
+      <Col gap={2} style={{ padding: `0 ${T.s5}px ${T.s5}px`, flex: 1 }}>
+        {ALERT_RULES.map((r, i) => {
+          const active = on[r.id];
+          const tag = !active ? { label: 'Off', variant: 'grey' } : r.count > 0 ? { label: `${D.fmt(r.count)} device${r.count === 1 ? '' : 's'}`, variant: r.sev === 'red' ? 'red' : 'orange' } : { label: 'OK', variant: 'green' };
+          return (
+            <Row key={r.id} style={{ justifyContent: 'space-between', gap: 10, padding: '10px 0', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+              <Col gap={1} style={{ minWidth: 0 }}>
+                <span style={{ fontSize: 13, color: T.ink, fontWeight: 500 }}>{r.name}</span>
+                <span style={{ fontSize: 12, color: T.faint }}>{r.cond}</span>
+              </Col>
+              <Row gap={10}>
+                <Tag label={tag.label} variant={tag.variant} />
+                <Toggle checked={active} onChange={(e) => setOn(o => ({ ...o, [r.id]: e && e.target ? e.target.checked : !active }))} />
+              </Row>
+            </Row>
+          );
+        })}
+        <div style={{ height: 1, background: T.sepFaint, margin: '6px 0' }} />
+        <span style={{ fontSize: 12, color: T.sub, lineHeight: '17px' }}>From reactive to proactive, get notified before a store loses sales. Delivered in the Customer Area or streamed to your tools (Splunk, webhook).</span>
+      </Col>
+    </div>
+  );
+}
+
+/* Fleet trends, a trends chart whose series are driven directly by the Alerts list:
+   toggle an alert reason and its signal plots on the graph (the list doubles as filter + legend). */
+const LOOP_RULES = [
+  { id: 'offline', name: 'Device offline',            metricLabel: 'Devices offline',   cond: 'unreachable > 15 min',  count: 23, sev: 'red',    color: '#2563EB', base: 10, amp: 5,  breach: 24 },
+  { id: 'reboot',  name: 'Reboot spike / crash loop', metricLabel: 'Reboots',           cond: '≥ 3 restarts in 1 h',   count: 6,  sev: 'red',    color: '#7C3AED', base: 15, amp: 7,  breach: 30 },
+  { id: 'peak',    name: 'Reboot during peak hours',  metricLabel: 'Peak-hour reboots', cond: 'restart 11:00–14:00',   count: 2,  sev: 'orange', color: '#F59E0B', base: 6,  amp: 3,  breach: 14 },
+  { id: 'ws',      name: 'WebSocket disconnects',     metricLabel: 'WebSocket failed',  cond: '> 50 drops in 1 h',     count: 11, sev: 'orange', color: '#0EA5E9', base: 36, amp: 15, breach: 52 },
+  { id: 'err',     name: 'High error volume',         metricLabel: 'Failed payments',   cond: '> 5% of attempts fail', count: 0,  sev: 'green',  color: '#14B8A6', base: 42, amp: 14, breach: 50 },
+];
+const LOOP_N = 30; // buckets across the 90-day window (~3 days each)
+const LOOP_BREACH = 6; // trailing buckets that form the highlighted breach window
+function loopSeries(rule) {
+  let s = 0; for (const ch of rule.id) s = (s * 31 + ch.charCodeAt(0)) & 0x7fffffff;
+  const r = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  const breachTo = rule.count > 0 ? rule.breach : rule.base; // healthy reasons stay flat, no breach ramp
+  return Array.from({ length: LOOP_N }, (_, i) => {
+    const ramp = i >= LOOP_N - LOOP_BREACH ? ((i - (LOOP_N - LOOP_BREACH - 1)) / LOOP_BREACH) * (breachTo - rule.base) : 0;
+    return Math.max(0, Math.round(rule.base + (r() - 0.5) * 2 * rule.amp + ramp));
+  });
+}
+const LOOP_DATES = (() => { const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']; const end = new Date(2026, 9, 20); return Array.from({ length: LOOP_N }, (_, i) => { const d = new Date(end.getTime() - (LOOP_N - 1 - i) * 3 * 86400000); return `${d.getDate()} ${MON[d.getMonth()]}`; }); })();
+
+function FleetHealthLoop({ notify }) {
+  const [shownIds, setShownIds] = useState(['offline', 'ws']); // which alert reasons are plotted on the graph
+  const [hover, setHover] = useState(null);                    // hovered bucket index (tooltip)
+  const [menuOpen, setMenuOpen] = useState(false);             // reasons dropdown
+  const mref = useOutside(menuOpen, () => setMenuOpen(false));
+  const series = useMemo(() => Object.fromEntries(LOOP_RULES.map(r => [r.id, loopSeries(r)])), []);
+  const shownRules = LOOP_RULES.filter(r => shownIds.includes(r.id));
+  const maxVal = Math.max(1, ...shownRules.flatMap(r => series[r.id]));
+  const breaching = LOOP_RULES.filter(r => r.count > 0);
+  const affected = breaching.reduce((s, r) => s + r.count, 0);
+  const toggle = (id) => { setShownIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]); setHover(null); };
+
+  // Inner cards are frameless, only the outer tile keeps an outline.
+  const card = { display: 'flex', flexDirection: 'column', minWidth: 0 };
+
+  // Reasons dropdown (top-right), pick which reasons to plot.
+  const reasonsMenu = (
+    <div ref={mref} style={{ position: 'relative' }}>
+      <button type="button" onClick={() => setMenuOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px', border: `1px solid #8C959D`, borderRadius: 8, background: T.card, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: T.ink }}>
+        {shownIds.length} reason{shownIds.length === 1 ? '' : 's'}<Ico name="chevron-down-small" size={16} color={T.faint} />
+      </button>
+      {menuOpen && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 600, minWidth: 260, background: '#fff', boxShadow: '0px 6px 12px rgba(0,18,34,0.08), 0px 0px 0px 1px #DADDDF', borderRadius: 8, padding: 4 }}>
+          {LOOP_RULES.map(r => (
+            <button key={r.id} className="b-menu-item" onClick={() => toggle(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 12px', border: 0, background: 'transparent', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, color: T.ink, textAlign: 'left' }}>
+              <span style={{ width: 16, height: 16, boxSizing: 'border-box', borderRadius: 4, border: `1px solid ${shownIds.includes(r.id) ? 'var(--b-color-label-primary)' : '#8C959D'}`, background: shownIds.includes(r.id) ? 'var(--b-color-label-primary)' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{shownIds.includes(r.id) && <Ico name="checkmark-small" size={16} color="#fff" />}</span>
+              <span style={{ width: 9, height: 9, borderRadius: 2, background: r.color, flexShrink: 0 }} />
+              <span style={{ flex: 1 }}>{r.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // ---- Reasons list (left), breach counts + swatch legend; click a row to plot/hide it ----
+  const cardB = (
+    <div style={card}>
+      <Col gap={0} style={{ flex: 1 }}>
+        {LOOP_RULES.map((r, i) => {
+          const isShown = shownIds.includes(r.id);
+          const tag = r.count > 0 ? { label: `${D.fmt(r.count)} device${r.count === 1 ? '' : 's'}`, variant: r.sev === 'red' ? 'red' : 'orange' } : { label: 'OK', variant: 'green' };
+          return (
+            <div key={r.id} className="b-menu-item" onClick={() => toggle(r.id)} title={isShown ? 'Hide from graph' : 'Plot on graph'}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none', cursor: 'pointer', borderRadius: 6 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, flexShrink: 0, background: isShown ? r.color : 'transparent', border: isShown ? 'none' : `1px solid ${T.faint}` }} />
+              <Col gap={1} style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: 13, color: T.ink, fontWeight: 500 }}>{r.name}</span>
+                <span style={{ fontSize: 12, color: T.faint }}>{r.cond}</span>
+              </Col>
+              <Tag label={tag.label} variant={tag.variant} />
+            </div>
+          );
+        })}
+      </Col>
+      <div style={{ height: 1, background: T.sepFaint, margin: '8px 0' }} />
+      <span style={{ fontSize: 12, color: T.sub, lineHeight: '17px' }}>Breach counts are live. Alerts are delivered in the Customer Area or streamed to your tools (Splunk, webhook).</span>
+    </div>
+  );
+
+  // ---- Trends chart (right), plots whatever reasons are selected ----
+  const cardA = (
+    <div style={card}>
+      {shownRules.length === 0 ? (
+        <div style={{ height: 172, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px dashed ${T.border}`, borderRadius: T.radiusM }}>
+          <span style={{ fontSize: 13, color: T.faint }}>Pick a reason to plot its trend.</span>
+        </div>
+      ) : (
+        <div className="ns-refocus" key={shownIds.join('|')} style={{ position: 'relative', height: 172 }}>
+          {/* recent breach window, where thresholds are evaluated */}
+          <div style={{ position: 'absolute', top: 0, bottom: 18, left: `${(LOOP_N - LOOP_BREACH) / LOOP_N * 100}%`, width: `${LOOP_BREACH / LOOP_N * 100}%`, background: 'rgba(37,99,235,0.07)', borderLeft: '1px dashed #2563EB', borderRadius: '0 4px 4px 0', pointerEvents: 'none' }}>
+            <span style={{ position: 'absolute', top: 2, left: 6, fontSize: 10, fontWeight: 600, color: '#2563EB' }}>Breach window</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 154 }}>
+            {LOOP_DATES.map((d, i) => (
+              <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(h => h === i ? null : h)}
+                style={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 1, height: '100%', background: hover === i ? 'rgba(0,18,34,0.03)' : 'transparent', borderRadius: 4 }}>
+                {shownRules.map(r => (
+                  <div key={r.id} style={{ flex: 1, maxWidth: 10, minHeight: 2, height: `${(series[r.id][i] / maxVal) * 100}%`, background: r.color, borderRadius: '2px 2px 0 0', opacity: (hover == null || hover === i) ? 1 : 0.55, transition: 'opacity 120ms' }} />
+                ))}
+              </div>
+            ))}
+          </div>
+          <Row style={{ height: 18, justifyContent: 'space-between' }}>
+            {[0, Math.floor(LOOP_N / 2), LOOP_N - 1].map(i => <span key={i} style={{ fontSize: 10, color: T.faint }}>{LOOP_DATES[i]}</span>)}
+          </Row>
+          {hover != null && (
+            <div style={{ position: 'absolute', top: -6, left: `${(hover + 0.5) / LOOP_N * 100}%`, transform: 'translate(-50%, -100%)', background: 'var(--b-color-background-inverse-primary)', color: 'var(--b-color-label-inverse-primary)', borderRadius: 8, padding: '7px 9px', fontSize: 11, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 5, boxShadow: 'var(--b-shadow-high)' }}>
+              <div style={{ fontWeight: 600, marginBottom: 3 }}>{LOOP_DATES[hover]}</div>
+              {shownRules.map(r => <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: r.color }} />{r.metricLabel}: <b className="ns-num">{series[r.id][hover]}</b></div>)}
+            </div>
+          )}
+        </div>
+      )}
+      {/* legend of plotted series */}
+      <Row gap={16} style={{ marginTop: 10, flexWrap: 'wrap', minHeight: 15 }}>
+        {shownRules.map(r => <Row key={r.id} gap={6}><span style={{ width: 9, height: 9, borderRadius: 2, background: r.color }} /><span style={{ fontSize: 12, color: T.sub }}>{r.metricLabel}</span></Row>)}
+      </Row>
+    </div>
+  );
+
+  return (
+    <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
+      <TileHeader title="Fleet trends" subtitle={`${breaching.length} of ${LOOP_RULES.length} reasons breaching · ${D.fmt(affected)} devices affected`}
+        info={<span><b>Fleet trends.</b> Each failed reason shows its current breach count. Pick reasons from the menu (or click a row) to plot their signals over the last 90 days; the recent breach window is highlighted.</span>}
+        right={<Row gap={8}>{reasonsMenu}<Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => notify && notify('Opening full Fleet trends explorer…')}>Explore</Button></Row>} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: T.s5, padding: `0 ${T.s5}px ${T.s5}px` }}>
+        {cardB}
+        {cardA}
+      </div>
+    </div>
+  );
+}
+
 /* Explore → full-screen Connectivity & health, mirroring the per-terminal Core Terminal Dashboard
    (communication events, websocket failed/latency, bootups, interface split, signal & battery). */
 const CONN_SCOPES = [
@@ -1362,12 +1621,12 @@ const CONN_SCOPES = [
   { value: 'model:S1F2', label: 'S1F2 terminals', factor: 0.28 },
   { value: 'model:AMS1', label: 'AMS1 terminals', factor: 0.34 },
   { value: 'model:V400m', label: 'V400m terminals', factor: 0.18 },
-  // Individual terminals — derived from the failed-transaction troubleshoot list so every one is selectable/scoped.
+  // Individual terminals, derived from the failed-transaction troubleshoot list so every one is selectable/scoped.
   ...D.connectivity.troubleshoot.map(t => ({ value: t.id, label: t.terminal, factor: 0.00004 })),
 ];
-/* Store/merchant leaderboard — connects fleet metrics to "which store". Rows are pre-sorted by the caller.
+/* Store/merchant leaderboard, connects fleet metrics to "which store". Rows are pre-sorted by the caller.
    Columns: store · merchant · devices · WebSocket drops · lowest Wi-Fi · needs-attention count. Click → drill. */
-// Why a store is on the watchlist — its dominant ROOT CAUSE (same IA as devices: causes only, never the
+// Why a store is on the watchlist, its dominant ROOT CAUSE (same IA as devices: causes only, never the
 // consequence). "Failed transactions" / "At risk" are outcomes, so they live with status/attention, not here.
 function storeWatchReason(s) {
   if (s.wsDrops >= 300) return { key: 'ws', label: 'WebSocket failures', variant: 'red' };
@@ -1379,9 +1638,9 @@ function storeWatchReason(s) {
 const WATCH_REASON_OPTS = [
   { value: 'ws', label: 'WebSocket failures' }, { value: 'weak', label: 'Weak signal' }, { value: 'notboarded', label: 'Not boarded' },
 ];
-// Information architecture — two orthogonal dimensions:
+// Information architecture, two orthogonal dimensions:
 //   Status (outcome): Healthy = transacting · At risk = transactions failing · Offline = not trading.
-//   Reason (root cause): WHY a device is at risk/offline — WebSocket failures, Weak signal, Not boarded.
+//   Reason (root cause): WHY a device is at risk/offline, WebSocket failures, Weak signal, Not boarded.
 // "Failed transactions" is the symptom that defines At risk (a consequence), so it lives with Status, not Reason.
 function deviceReason(dv) {
   const c = dv.cause || '';
@@ -1394,7 +1653,7 @@ function deviceReason(dv) {
 const DEV_REASON_OPTS = [
   { value: 'ws', label: 'WebSocket failures' }, { value: 'weak', label: 'Weak signal' }, { value: 'notboarded', label: 'Not boarded' },
 ];
-// Whether a device exhibits a given root-cause reason — predicate-based (a device can match several).
+// Whether a device exhibits a given root-cause reason, predicate-based (a device can match several).
 function deviceMatchesReason(dv, key) {
   switch (key) {
     case 'ws': return /websocket/i.test(dv.cause || '');
@@ -1426,7 +1685,7 @@ function storeFixSteps(key, s) {
     default: return { heading: 'This store looks stable', steps: ['No action needed right now \u2014 connection health is within the normal range.'] };
   }
 }
-// Adaptive "Detail" value — the number behind the row's reason.
+// Adaptive "Detail" value, the number behind the row's reason.
 function storeWatchDetail(s) {
   switch (storeWatchReason(s).key) {
     case 'ws': return { label: `${D.fmt(s.wsDrops)} drops`, critical: true };
@@ -1477,8 +1736,8 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   const [scope, setScope] = useState(initialScope || 'all'); // device-level filter
   const [troubleshootId, setTroubleshootId] = useState(null); // per-terminal troubleshoot full-page drill-down
   const [studioScope, setStudioScope] = useState(null); // Config → Device Studio simulator (opened over the device overview)
-  const [trendMetrics, setTrendMetrics] = useState([0]); // Fleet trends chart — selected signals (indices into c.panels)
-  const [trendGran, setTrendGran] = useState('day'); // Fleet trends granularity — day | week | month (re-buckets the series)
+  const [trendMetrics, setTrendMetrics] = useState([0]); // Fleet trends chart, selected signals (indices into c.panels)
+  const [trendGran, setTrendGran] = useState('day'); // Fleet trends granularity, day | week | month (re-buckets the series)
   const [devicesOpen, setDevicesOpen] = useState(false); // the device list lives in a full-page modal, opened from the action cards / leaderboard
   const [storeInfo, setStoreInfo] = useState(null); // storeId → store information modal (same as Devices & locations)
   const [storesListOpen, setStoresListOpen] = useState(false); // Stores-to-watch "Explore" → full ranked store/merchant list
@@ -1494,19 +1753,19 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   const [modelF, setModelF] = useState([]);
   const [versionF, setVersionF] = useState([]);
   const [statusF, setStatusF] = useState(['At risk', 'Offline']); // default view = terminals with connectivity-linked failed transactions
-  const [storeF, setStoreF] = useState([]); // filter the device list to specific store(s) — driven by the store leaderboards
+  const [storeF, setStoreF] = useState([]); // filter the device list to specific store(s), driven by the store leaderboards
   const [reasonF, setReasonF] = useState([]); // device-list "Why" / reason filter (alongside Status)
   const [devSearch, setDevSearch] = useState('');
   // Explore-signals filters (drive the Device signals charts): country/version re-seed, event type filters panels.
   const [sigCountry, setSigCountry] = useState([]);
   const [sigVersion, setSigVersion] = useState([]);
-  // Which signal graphs are shown — the section is modular/customizable; the choice persists across sessions.
+  // Which signal graphs are shown, the section is modular/customizable; the choice persists across sessions.
   // null = show all (panels are derived later in `c`, so we resolve the concrete list at render time).
   const [sigCharts, setSigCharts] = useState(() => { try { const s = JSON.parse(localStorage.getItem('ns_sig_charts') || 'null'); return Array.isArray(s) ? s : null; } catch (e) { return null; } });
   const [customizeOpen, setCustomizeOpen] = useState(false);
   useEffect(() => { try { localStorage.setItem('ns_sig_charts', JSON.stringify(sigCharts)); } catch (e) { /* ignore */ } }, [sigCharts]);
   const [trendsOpen, setTrendsOpen] = useState(false); // collapsible "Explore trends" zone (charts are secondary to the device list)
-  const [boardBy, setBoardBy] = useState('store'); // Explore leaderboard grouping — by store | by merchant
+  const [boardBy, setBoardBy] = useState('store'); // Explore leaderboard grouping, by store | by merchant
   const [devPage, setDevPage] = useState(1);
   const [exploreOpen, setExploreOpen] = useState(false);
   const [groupBy, setGroupBy] = useState('country');
@@ -1531,7 +1790,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   const atRiskDevices = fleet.filter(dv => dv.status !== 'Healthy');
   const oldVerDevices = fleet.filter(dv => dv.appVersion === '1.39.2' || dv.appVersion === '1.40.3');
   const statusCounts = { Healthy: fleet.filter(dv => dv.status === 'Healthy').length, 'At risk': fleet.filter(dv => dv.status === 'At risk').length, Offline: fleet.filter(dv => dv.status === 'Offline').length };
-  // Single source of truth for failed transactions — the sum of the device list, so every number on the page reconciles.
+  // Single source of truth for failed transactions, the sum of the device list, so every number on the page reconciles.
   const failedTotal = fleet.reduce((s2, dv) => s2 + dv.failed, 0);
   const failedDeviceCount = fleet.filter(dv => dv.failed > 0).length;
   const wsDeviceCount = fleet.filter(dv => deviceMatchesReason(dv, 'ws')).length;
@@ -1564,7 +1823,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
     return {
       labels, wifiPct, cellPct: wifiPct.map(v => 100 - v),
       panels: [
-        // Failed transactions leads — the reason people open this page — then the connectivity signals that explain it.
+        // Failed transactions leads, the reason people open this page, then the connectivity signals that explain it.
         { title: 'Failed transactions', color: 'var(--b-color-decorative-red)', pts: failedTx, min: 0 },
         { title: 'WebSocket connection failed', color: 'var(--b-color-decorative-red)', pts: wsFail, min: 0 },
         { title: 'WebSocket connection latency', unit: 'ms', color: 'var(--b-color-decorative-green)', pts: latency, min: 0 },
@@ -1586,20 +1845,20 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       </div>
     </div>
   );
-  // Scope-aware KPI blocks — each carries a short explanation.
+  // Scope-aware KPI blocks, each carries a short explanation.
   // Same four at-risk blocks in every scope; a filtered device shows its own readouts so the summary stays consistent.
   const kpis = isDevice ? [
-    { label: 'WebSocket failures', value: D.fmt(c.k.wsFail), hint: 'Failed connection attempts — spikes precede an outage.' },
-    { label: 'Failed transactions', value: D.fmt(c.k.failedTx), hint: 'Declined/aborted at the terminal — often connectivity-linked.' },
+    { label: 'WebSocket failures', value: D.fmt(c.k.wsFail), hint: 'Failed connection attempts, spikes precede an outage.' },
+    { label: 'Failed transactions', value: D.fmt(c.k.failedTx), hint: 'Declined/aborted at the terminal, often connectivity-linked.' },
     { label: 'Avg Wi-Fi signal', value: `${c.k.avgWifi} dBm`, hint: 'Weaker than -75 dBm risks drops.' },
     { label: 'Current battery', value: `${c.k.curBattery}%`, hint: 'Latest reported battery level.' },
   ] : [
     { label: 'WebSocket failures', value: `${D.fmt(d.wsFailures.count)} (${d.wsFailures.pct}%)`, hint: 'Failed persistent-connection attempts; spikes precede outages.' },
-    { label: 'Failed transactions', value: D.fmt(failedTotal), hint: `Connectivity-linked failed transactions across ${failedDeviceCount} terminals — ≈€${revenueAtRiskK}k revenue at risk.` },
+    { label: 'Failed transactions', value: D.fmt(failedTotal), hint: `Connectivity-linked failed transactions across ${failedDeviceCount} terminals, ≈€${revenueAtRiskK}k revenue at risk.` },
     { label: 'Terminals on weak signal', value: `${D.fmt(d.weakSignal.count)} (${d.weakSignal.pct}%)`, hint: 'Devices below the safe Wi-Fi/cellular threshold.' },
     { label: 'Terminals under 20% battery', value: `${D.fmt(d.lowBattery.count)} (${d.lowBattery.pct}%)`, hint: 'At risk of shutting down mid-shift.' },
   ];
-  // Shared device-list body (filters + table + pagination) — reused by the inline Devices section and the "View all" modal.
+  // Shared device-list body (filters + table + pagination), reused by the inline Devices section and the "View all" modal.
   const renderDevicesBody = () => {
     const anyF = reasonF.length || countryF.length || modelF.length || versionF.length || statusF.length || storeF.length || devSearch;
     const clearAll = () => { setReasonF([]); setCountryF([]); setModelF([]); setVersionF([]); setStatusF([]); setStoreF([]); setDevSearch(''); setDevPage(1); };
@@ -1659,8 +1918,8 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       </>
     );
   };
-  // Shared per-terminal troubleshoot modal — opened from the Failed-transactions list AND the fleet banner.
-  // Streamlined device detail — same holistic layout as Devices & locations (DeviceDetail).
+  // Shared per-terminal troubleshoot modal, opened from the Failed-transactions list AND the fleet banner.
+  // Streamlined device detail, same holistic layout as Devices & locations (DeviceDetail).
   const troubleshootModal = (() => {
     const tt = d.troubleshoot.find(x => x.id === troubleshootId) || fleet.find(x => x.id === troubleshootId);
     if (!tt) return null;
@@ -1679,7 +1938,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   // Config → Device Studio simulator, opened over the device overview; back returns to the overview.
   const studioModal = studioScope ? <DeviceStudio scope={studioScope} onBack={() => setStudioScope(null)} notify={notify} /> : null;
 
-  // Level-2 Explore report — bird's-eye aggregation of the (filtered) fleet, grouped by country / model / version.
+  // Level-2 Explore report, bird's-eye aggregation of the (filtered) fleet, grouped by country / model / version.
   const exploreModal = exploreOpen ? (() => {
     const key = groupBy === 'country' ? 'country' : groupBy === 'model' ? 'model' : 'appVersion';
     const groups = {};
@@ -1730,7 +1989,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       rows.map(t => [t.terminal, t.store, t.country, t.model, t.app, t.appVersion, t.os, t.status, t.failed, t.wifi, t.battery, t.cause]));
     notify && notify(`Exported ${rows.length} device${rows.length === 1 ? '' : 's'} to CSV`);
   };
-  // Event report: event-level CSV across the filtered devices — all event types (answers "download all events/errors").
+  // Event report: event-level CSV across the filtered devices, all event types (answers "download all events/errors").
   const exportEvents = () => {
     const rows = fleetFiltered.flatMap(deviceEvents);
     downloadCSV('fleet-health-events.csv',
@@ -1740,7 +1999,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   };
   const headerActions = <Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={exportCSV}>Export</Button></Row>;
   const pageSubtitle = `${isDevice ? scopeDef.label : 'All terminals · all locations'} · ${periodLabel(range)}`;
-  // Focused "Failed transactions" view — only the failed-tx chart + the affected device list.
+  // Focused "Failed transactions" view, only the failed-tx chart + the affected device list.
   if (focus === 'failed') {
     const fp = c.panels.find(p => p.title === 'Failed transactions');
     const summaryCell = (label, value) => (
@@ -1749,7 +2008,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
     const failedChart = (
       <div style={{ ...surface, overflow: 'hidden' }}>
         <TileHeader title="Failed transactions" subtitle={`Count of failed transactions · ${isDevice ? scopeDef.label : 'all terminals'} · last 90 days`}
-          info="Payments declined or aborted at the terminal (not by the issuer) — a count of transactions, not a euro amount. Most correlate with connectivity events: WebSocket drops, high latency or weak signal." />
+          info="Payments declined or aborted at the terminal (not by the issuer), a count of transactions, not a euro amount. Most correlate with connectivity events: WebSocket drops, high latency or weak signal." />
         <Row gap={28} style={{ padding: `0 ${T.s5}px ${T.s3}px`, flexWrap: 'wrap' }}>
           {isDevice ? summaryCell('Failed transactions', D.fmt(c.k.failedTx)) : summaryCell('Connectivity-linked failures', D.fmt(d.failedTx.count))}
           {isDevice ? summaryCell('WebSocket drops', D.fmt(c.k.wsFail)) : summaryCell('Share of all failures', `${d.failedTx.connectivityLinked}%`)}
@@ -1770,7 +2029,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
               <Ico name="warning-filled" size={24} color="var(--b-color-background-warning-strong)" style={{ flexShrink: 0, marginTop: 2 }} />
               <Col gap={10} style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>{D.fmt(c.k.failedTx)} failed transactions linked to connectivity</span>
-                <span style={{ fontSize: 14, color: T.sub, lineHeight: '20px' }}>On <b>{scopeDef.label}</b>, failures line up with {D.fmt(c.k.wsFail)} WebSocket drops and weak Wi-Fi (avg {c.k.avgWifi} dBm). Likely cause: connectivity — not the card or the shopper.</span>
+                <span style={{ fontSize: 14, color: T.sub, lineHeight: '20px' }}>On <b>{scopeDef.label}</b>, failures line up with {D.fmt(c.k.wsFail)} WebSocket drops and weak Wi-Fi (avg {c.k.avgWifi} dBm). Likely cause: connectivity, not the card or the shopper.</span>
                 <Row gap={8} style={{ flexWrap: 'wrap' }}>
                   {['Restart terminal', 'Re-sync config', 'Reassign'].map(a => <Button key={a} variant="secondary" condensed onClick={() => notify && notify(`${a} · ${scopeDef.label}…`)}>{a}</Button>)}
                   <Button variant="tertiary" condensed iconLeft="arrow-left" onClick={() => setScope('all')}>All terminals</Button>
@@ -1803,7 +2062,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       </FullPage>
     );
   }
-  // Action block — a card: dot + label + badge · big value · hint · action button pinned to the bottom.
+  // Action block, a card: dot + label + badge · big value · hint · action button pinned to the bottom.
   const actionBlock = (dot, label, value, badge, variant, hint, action, onClick) => (
     <Col gap={10} className="ns-kpi" style={{ padding: '14px 16px', borderRadius: T.radiusM, background: 'var(--b-color-background-secondary)', minWidth: 0 }}>
       <Row gap={7} align="center">
@@ -1816,7 +2075,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       <div style={{ marginTop: 2 }}><Button variant="secondary" condensed iconRight="arrow-right" onClick={onClick}>{action}</Button></div>
     </Col>
   );
-  // Fleet trends bar chart — shared by the home overview card and the Explore modal (same graph on top).
+  // Fleet trends bar chart, shared by the home overview card and the Explore modal (same graph on top).
   const trendsCard = (inModal) => {
     const sel = (trendMetrics.length ? trendMetrics : [0]).filter(i => c.panels[i]);
     const panels = (sel.length ? sel : [0]).map(i => c.panels[i]);
@@ -1855,14 +2114,14 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   // Body content shared by the Explore overlay (FullPage) and the inline Fleet health page.
   const sections = (
       <>
-        {/* Section 1 — Action required: fleet-status donut + a grid of KPI-style action cards. Device scope shows its own banner. */}
+        {/* Section 1, Action required: fleet-status donut + a grid of KPI-style action cards. Device scope shows its own banner. */}
         {!isDevice ? (
-          <div style={{ ...surface, overflow: 'hidden', border: 'none', background: 'transparent' }}>
-            <TileHeader title="Fleet health" subtitle={`Terminal telemetry · ${periodLabel(range)}`}
-              info="Your fleet at a glance — status composition, the key health metrics, and the issues to act on now."
+          <div style={{ ...surface, overflow: 'hidden' }}>
+            <TileHeader title="Fleet status" subtitle={`Terminal telemetry · ${periodLabel(range)}`}
+              info="Your fleet at a glance, status composition, the key health metrics, and the issues to act on now."
               right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => setTrendsOpen(true)}>Explore</Button>} />
             <Col gap={0} style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
-              {/* Status zone — donut + legend + sentence (flat) */}
+              {/* Status zone, donut + legend + sentence (flat) */}
               <div style={{ padding: '8px 0 18px' }}>
                 {(() => {
                   const total = fleet.length || 1;
@@ -1873,24 +2132,21 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
                   ];
                   const pctOf = (n) => Math.round(n / total * 100);
                   const healthyPct = pctOf(statusCounts.Healthy);
-                  // Per-status definitions — surfaced via an info icon on each status, not one combined tooltip.
+                  // Per-status definitions, surfaced via an info icon on each status, not one combined tooltip.
                   const STATUS_INFO = {
-                    Healthy: 'Trading normally — stable connection, strong signal, and no connectivity-linked failures.',
-                    'At risk': 'Still taking payments, but telemetry shows early warning signs: weak Wi-Fi/cellular signal, repeated WebSocket drops, or payments already failing from connectivity. Left alone these usually turn into an outage or a sub-merchant complaint — so it’s the moment to act, before the shopper or the store notices.',
-                    Offline: 'Not reachable or not boarded — can’t take payments right now.',
+                    Healthy: 'Trading normally, stable connection, strong signal, and no connectivity-linked failures.',
+                    'At risk': 'Still taking payments, but telemetry shows early warning signs: weak Wi-Fi/cellular signal, repeated WebSocket drops, or payments already failing from connectivity. Left alone these usually turn into an outage or a sub-merchant complaint, so it’s the moment to act, before the shopper or the store notices.',
+                    Offline: 'Not reachable or not boarded, can’t take payments right now.',
                   };
                   return (
                     <Col gap={16}>
-                      {/* header — title + narrative (definitions live on each status below) */}
-                      <Row gap={16} align="baseline" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>Fleet status</span>
-                        <span style={{ fontSize: 12, color: T.sub, lineHeight: '18px', flex: '1 1 260px', textAlign: 'right', minWidth: 220 }}>{healthyPct}% of your {D.fmt(total)} terminals are healthy · {D.fmt(atRiskDevices.length)} need attention before they affect sales.</span>
-                      </Row>
+                      {/* lead narrative (definitions live on each status below) */}
+                      <span style={{ fontSize: 12, color: T.sub, lineHeight: '18px' }}>{healthyPct}% of your {D.fmt(total)} terminals are healthy · {D.fmt(atRiskDevices.length)} need attention before they affect sales.</span>
                       {/* segmented status bar (Cloudflare-style) */}
                       <div style={{ display: 'flex', width: '100%', height: 12, borderRadius: 6, overflow: 'hidden', background: 'var(--b-color-background-tertiary)' }}>
                         {segs.map(s => s.n > 0 && <div key={s.label} title={`${s.label} · ${D.fmt(s.n)}`} style={{ width: (s.n / total * 100) + '%', background: s.c }} />)}
                       </div>
-                      {/* stat columns — label · big % · count · plain-language definition */}
+                      {/* stat columns, label · big % · count · plain-language definition */}
                       <Row gap={0} style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
                         {segs.map((s, i) => (
                           <Col key={s.label} gap={6} style={{ flex: '1 1 160px', minWidth: 150, paddingRight: 20, borderLeft: i ? `1px solid ${T.sepFaint}` : 'none', paddingLeft: i ? 20 : 0 }}>
@@ -1905,13 +2161,13 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
                   );
                 })()}
               </div>
-              {/* Actions zone — what to act on, one block per specific reason; View all filters the device list to that reason */}
+              {/* Actions zone, what to act on, one block per specific reason; View all filters the device list to that reason */}
               <Col gap={10} style={{ borderTop: `1px solid ${T.sepFaint}`, marginTop: 18, paddingTop: 14 }}>
                 <span style={{ fontSize: 13, color: T.sub, fontWeight: 600 }}>What to act on</span>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: T.s3 }}>
                   {actionBlock('var(--b-color-decorative-red)', 'Failed transactions', D.fmt(failedTotal), `${d.failedTx.connectivityLinked}% linked`, 'red', `Across ${D.fmt(failedDeviceCount)} terminals · ≈€${revenueAtRiskK}k at risk`, 'View all', () => { setReasonF([]); setStatusF(['At risk']); setStoreF([]); setCountryF([]); setModelF([]); setVersionF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
                   {actionBlock('var(--b-color-decorative-orange)', 'WebSocket failures', D.fmt(d.wsFailures.count), `${d.wsFailures.pct}%`, 'orange', `Across ${D.fmt(wsDeviceCount)} terminals · connection drops that precede outages`, 'View all', () => focusReason('ws'))}
-                  {actionBlock('var(--b-color-decorative-blue)', 'Outdated app version', D.fmt(oldVerDevices.length), '≤ 1.40.3', 'blue', 'Known WebSocket issues — schedule an update', 'Show devices', () => { setReasonF([]); setVersionF(['1.40.3', '1.39.2']); setStatusF([]); setStoreF([]); setCountryF([]); setModelF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
+                  {actionBlock('var(--b-color-decorative-blue)', 'Outdated app version', D.fmt(oldVerDevices.length), '≤ 1.40.3', 'blue', 'Known WebSocket issues, schedule an update', 'Show devices', () => { setReasonF([]); setVersionF(['1.40.3', '1.39.2']); setStatusF([]); setStoreF([]); setCountryF([]); setModelF([]); setDevSearch(''); setDevPage(1); scrollToDevices(); })}
                 </div>
               </Col>
             </Col>
@@ -1921,7 +2177,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
             <Ico name="warning-filled" size={24} color="var(--b-color-background-warning-strong)" style={{ flexShrink: 0, marginTop: 2 }} />
             <Col gap={10} style={{ flex: 1, minWidth: 0 }}>
               <span style={{ fontSize: 15, fontWeight: 600 }}>{D.fmt(c.k.failedTx)} failed transactions linked to connectivity</span>
-              <span style={{ fontSize: 14, color: T.sub, lineHeight: '20px' }}>On <b>{scopeDef.label}</b>, failures line up with {D.fmt(c.k.wsFail)} WebSocket drops and weak Wi-Fi (avg {c.k.avgWifi} dBm). Likely cause: connectivity — not the card or the shopper.</span>
+              <span style={{ fontSize: 14, color: T.sub, lineHeight: '20px' }}>On <b>{scopeDef.label}</b>, failures line up with {D.fmt(c.k.wsFail)} WebSocket drops and weak Wi-Fi (avg {c.k.avgWifi} dBm). Likely cause: connectivity, not the card or the shopper.</span>
               <Row gap={8} style={{ flexWrap: 'wrap' }}>
                 {['Restart terminal', 'Re-sync config', 'Reassign'].map(a => (
                   <Button key={a} variant="secondary" condensed onClick={() => notify && notify(`${a} · ${scopeDef.label}…`)}>{a}</Button>
@@ -1930,14 +2186,14 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
             </Col>
           </Row>
         )}
-        {/* Stores to watch (left) + Fleet trends (right) — proactive overview so a platform spots a sub-merchant's issue first. */}
+        {/* Stores to watch (left) + Fleet trends (right), proactive overview so a platform spots a sub-merchant's issue first. */}
         {!isDevice && (
           <Row gap={T.s6} align="stretch" style={{ flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 420px', minWidth: 340 }}>
               <StoreLeaderboard rows={[...CONN_STORES].sort((a, b) => b.wsDrops - a.wsDrops || b.attention - a.attention)}
                 onPick={(s) => setStoreInfo(s.storeId)} limit={5}
                 title="Stores to watch" subtitle="Flagged by their main issue · tap a store to see its devices"
-                info="The stores most likely to trigger a sub-merchant complaint — highest connection drops and weakest signal first. Act before it reaches support."
+                info="The stores most likely to trigger a sub-merchant complaint, highest connection drops and weakest signal first. Act before it reaches support."
                 right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => { setStoreInfo(null); setStoresListOpen(true); }}>Explore</Button>} />
             </div>
             <div style={{ flex: '1 1 480px', minWidth: 340 }}>{trendsCard(false)}</div>
@@ -1945,7 +2201,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
         )}
       </>
   );
-  // Failing stores — WebSocket-drop trend for the worst-performing stores (reused in both Explore modals).
+  // Failing stores, WebSocket-drop trend for the worst-performing stores (reused in both Explore modals).
   const failingStoresCard = () => {
     const FAIL_COLORS = ['#006BD7', '#E9A23B', '#D64550', '#3BA7A0', '#7B94B5', '#9C6ADE', '#2E7D5B'];
     const ranked = [...CONN_STORES].sort((a, b) => b.wsDrops - a.wsDrops);
@@ -1956,7 +2212,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       let h = 0; for (const ch of s.store) h = (h * 31 + ch.charCodeAt(0)) & 0x7fffffff;
       const rr = () => { h = (h * 1103515245 + 12345) & 0x7fffffff; return h / 0x7fffffff; };
       const base = s.wsDrops / npts;
-      // Scenario: Uniqlo Tokyo Flagship is the outlier — stable until mid-period, then a sharp WebSocket-failure surge.
+      // Scenario: Uniqlo Tokyo Flagship is the outlier, stable until mid-period, then a sharp WebSocket-failure surge.
       const outlier = /Tokyo Flagship/i.test(s.store);
       const pts = c.labels.map((_, i) => {
         const t = i / (npts - 1);
@@ -1978,7 +2234,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
     return (
       <div style={{ ...surface, overflow: 'hidden' }}>
         <TileHeader title="Failing stores" subtitle={`WebSocket drops over time · ${periodLabel(range)}`}
-          info="Connection drops over the period for the stores you pick — tap a store name to open it."
+          info="Connection drops over the period for the stores you pick, tap a store name to open it."
           right={<div style={{ minWidth: 180, display: 'flex', justifyContent: 'flex-end' }}><MultiDropdown ghost summaryNoun="stores" values={sel} onChange={(v) => setFailStores(v.length ? v : ranked.slice(0, 5).map(s => s.key))} options={ranked.map(s => ({ value: s.key, label: s.store }))} /></div>} />
         <Col gap={12} style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
           <div style={{ height: 260 }}><LineChart data={{ labels: c.labels, min: 0, series }} height={260} /></div>
@@ -1987,7 +2243,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       </div>
     );
   };
-  // "Explore" full-page modal — the trend charts & signal filters, opened from the Fleet health section header.
+  // "Explore" full-page modal, the trend charts & signal filters, opened from the Fleet health section header.
   const trendsModal = trendsOpen ? (() => {
     const modelOptions = [{ value: 'model:S1F2', label: 'S1F2' }, { value: 'model:AMS1', label: 'AMS1' }, { value: 'model:V400m', label: 'V400m' }];
     const pick = (v) => setScope(scope === v ? 'all' : v);
@@ -1997,7 +2253,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       <FullPage title="Explore trends" subtitle={`Fleet telemetry signals over time · ${periodLabel(range)}`} onBack={() => setTrendsOpen(false)} backLabel="Fleet health overview" backIcon={<ArrowLeftGlyph />} onClose={() => setTrendsOpen(false)} bodyBg={T.page}
         actions={<RangeChip value={range} onChange={setRange} options={DATA_PERIODS} />}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: T.s6 }}>
-          {/* Fleet signals at a glance — the key metrics (moved here from the home overview) */}
+          {/* Fleet signals at a glance, the key metrics (moved here from the home overview) */}
           <div style={{ ...surface, overflow: 'hidden' }}>
             <TileHeader title="Fleet signals" subtitle={`Key telemetry · ${periodLabel(range)}`}
               info="The headline connectivity metrics for the whole fleet. Use the leaderboard and charts below to see which stores drive them." />
@@ -2013,9 +2269,9 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
               ))}
             </div>
           </div>
-          {/* Fleet trends — full width (Primary connected interface lives on the device Device signals tab) */}
+          {/* Fleet trends, full width (Primary connected interface lives on the device Device signals tab) */}
           {trendsCard(true)}
-          {/* Failing stores — WebSocket-drop trend for the worst-performing stores */}
+          {/* Failing stores, WebSocket-drop trend for the worst-performing stores */}
           {failingStoresCard()}
         </div>
         {customizeOpen && (
@@ -2049,14 +2305,14 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       </FullPage>
     );
   })() : null;
-  // Devices list — full-page modal (opened from the action cards / Stores-to-watch, not inline on the home page).
+  // Devices list, full-page modal (opened from the action cards / Stores-to-watch, not inline on the home page).
   const devicesModal = devicesOpen ? (
     <FullPage title="Devices" subtitle={`${D.fmt(fleetFiltered.length)} of ${D.fmt(fleet.length)} devices`} onBack={() => setDevicesOpen(false)} backLabel="Fleet health overview" backIcon={<ArrowLeftGlyph />} onClose={() => setDevicesOpen(false)} bodyBg={T.page}
       actions={<Row gap={8}><Button variant="secondary" condensed iconLeft="download" onClick={exportEvents}>Event report</Button><Button variant="secondary" condensed iconLeft="nav-analytics" onClick={() => setExploreOpen(true)}>Summary report</Button></Row>}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, width: '100%', boxSizing: 'border-box' }}>{renderDevicesBody()}</div>
     </FullPage>
   ) : null;
-  // Store info popup — a quick peek (basic store info + its device list), opened from the Stores-to-watch leaderboard.
+  // Store info popup, a quick peek (basic store info + its device list), opened from the Stores-to-watch leaderboard.
   const storeInfoModal = storeInfo ? (() => {
     const st = SM_STORES.find(x => x.id === storeInfo);
     if (!st) return null;
@@ -2106,7 +2362,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       </Modal>
     );
   })() : null;
-  // Guided Troubleshoot modal — reason-specific fix steps, layered over the store popup.
+  // Guided Troubleshoot modal, reason-specific fix steps, layered over the store popup.
   const storeTroubleshootModal = troubleStore ? (() => {
     const st = SM_STORES.find(x => x.id === troubleStore);
     if (!st) return null;
@@ -2137,7 +2393,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       </Modal>
     );
   })() : null;
-  // Bulk Troubleshoot — selected stores grouped by their issue, each group with its fix steps.
+  // Bulk Troubleshoot, selected stores grouped by their issue, each group with its fix steps.
   const bulkTroubleshootModal = bulkOpen ? (() => {
     const chosen = CONN_STORES.filter(s => selStores.includes(s.key));
     const groups = {};
@@ -2242,7 +2498,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
       </div>
     </FullPage>
   ) : null;
-  // Inline page (Devices → Fleet health) — same layout as Devices Intelligence: left title + info + subtitle, actions right.
+  // Inline page (Devices → Fleet health), same layout as Devices Intelligence: left title + info + subtitle, actions right.
   if (asPage) {
     return (
       <div style={{ padding: `${T.s7}px ${T.s7}px ${T.s7}px`, maxWidth: T.maxW, margin: '0 auto' }}>
@@ -2250,7 +2506,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
           <Col gap={4} style={{ flex: 1 }}>
             <Row gap={6}>
               <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Fleet health</span>
-              <InfoTip width={320} content={<span><b>Find and fix at-risk terminals.</b> Spot the ones failing payments or about to drop offline — from their connectivity, signal and battery — and troubleshoot them before they cost you sales.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
+              <InfoTip width={320} content={<span><b>Find and fix at-risk terminals.</b> Spot the ones failing payments or about to drop offline, from their connectivity, signal and battery, and troubleshoot them before they cost you sales.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
             </Row>
             <span style={{ fontSize: 13, color: T.sub }}>{pageSubtitle}</span>
           </Col>
@@ -2286,7 +2542,7 @@ function ConnectivityDetail({ onBack, notify, initialScope, focus, asPage, onOpe
   );
 }
 
-/* Bento Summary (b-summary) — borderless label/value block used across explore detail pages. */
+/* Bento Summary (b-summary), borderless label/value block used across explore detail pages. */
 function SdkKpi({ label, value, onClick, hint }) {
   return (
     <div className={onClick ? 'ns-kpi' : undefined} onClick={onClick} style={{ borderRadius: T.radiusM, padding: '14px 16px', background: 'var(--b-color-background-secondary)', display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, cursor: onClick ? 'pointer' : 'default' }}>
@@ -2297,7 +2553,7 @@ function SdkKpi({ label, value, onClick, hint }) {
   );
 }
 
-/* Shared explore-detail primitives — aligned tables, filter bars and bare sections. */
+/* Shared explore-detail primitives, aligned tables, filter bars and bare sections. */
 const dtTh = (align) => ({ textAlign: align || 'left', padding: '12px 14px', fontSize: 12, color: T.sub, fontWeight: 600, borderBottom: `1px solid ${T.sep}`, background: 'var(--b-color-background-secondary)', whiteSpace: 'nowrap' });
 const dtTd = (last, align) => ({ padding: '12px 14px', borderBottom: last ? 'none' : `1px solid ${T.sepFaint}`, textAlign: align || 'left', whiteSpace: 'nowrap', fontSize: 13, color: T.ink });
 const DetailTableWrap = ({ children, minWidth }) => (
@@ -2305,7 +2561,7 @@ const DetailTableWrap = ({ children, minWidth }) => (
     <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: minWidth || 'auto' }}>{children}</table>
   </div>
 );
-/* Bare section (no card outline) with an info icon on the title — used across explore modals. */
+/* Bare section (no card outline) with an info icon on the title, used across explore modals. */
 function DetailSection({ title, info, description, actions, children }) {
   return (
     <Col gap={14}>
@@ -2324,7 +2580,7 @@ function DetailSection({ title, info, description, actions, children }) {
   );
 }
 
-/* Filterable, paginated version table (SDK or OS) — matches the reference detail. */
+/* Filterable, paginated version table (SDK or OS), matches the reference detail. */
 function VersionTable({ rows, kind, notify }) {
   const [platform, setPlatform] = useState('All');
   const [status, setStatus] = useState('All');
@@ -2366,7 +2622,7 @@ function VersionTable({ rows, kind, notify }) {
                 <td style={{ ...dtTd(last, 'right'), fontFamily: 'var(--b-font-family-secondary)' }}>{r.devices}</td>
                 <td style={{ ...dtTd(last, 'right'), color: T.sub, fontFamily: 'var(--b-font-family-secondary)' }}>{r.stores}</td>
                 <td style={{ ...dtTd(last, 'right'), color: T.sub, fontFamily: 'var(--b-font-family-secondary)' }}>{r.accounts}</td>
-                {kind === 'sdk' && <td style={{ ...dtTd(last, 'right') }}><Button variant="tertiary" condensed onClick={() => notify && notify(`Release notes — ${r.platform} ${r.version}`)}>Release notes</Button></td>}
+                {kind === 'sdk' && <td style={{ ...dtTd(last, 'right') }}><Button variant="tertiary" condensed onClick={() => notify && notify(`Release notes, ${r.platform} ${r.version}`)}>Release notes</Button></td>}
               </tr>
             ); })}
             {view.length === 0 && <tr><td colSpan={cols.length} style={{ padding: 24, textAlign: 'center', color: T.faint, fontSize: 13 }}>No versions match</td></tr>}
@@ -2383,7 +2639,7 @@ function VersionTable({ rows, kind, notify }) {
   );
 }
 
-/* SDK releases — horizontal timeline (gantt) of installed vs newly-available versions. */
+/* SDK releases, horizontal timeline (gantt) of installed vs newly-available versions. */
 function SdkReleasesChart() {
   const months = ['July', 'August', 'September', 'October', 'November', 'December'];
   const N = months.length;
@@ -2422,7 +2678,7 @@ function SdkHealthDetail({ onBack, notify }) {
   const kpiGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: T.s3 };
   const [range, setRange] = useState('30d');
   return (
-    <FullPage title="SDK & OS health — Tap to Pay & card readers" subtitle={`All locations · ${d.totalDevices} devices · ${periodLabel(range)}`} onBack={onBack} backLabel="Device intelligence" backIcon={<ArrowLeftGlyph />} onClose={onBack}
+    <FullPage title="SDK & OS health, Tap to Pay & card readers" subtitle={`All locations · ${d.totalDevices} devices · ${periodLabel(range)}`} onBack={onBack} backLabel="Device intelligence" backIcon={<ArrowLeftGlyph />} onClose={onBack}
       actions={<Row gap={8}><RangeChip value={range} onChange={setRange} options={DATA_PERIODS} /><Button variant="secondary" iconLeft="download" onClick={() => notify && notify('Exporting SDK & OS health to CSV…')}>Export</Button></Row>} bodyBg={T.page}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s7 }}>
         <DetailSection title="SDK versions" info="Adyen SDK versions running across the fleet. Expiry drives whether devices keep accepting payments." description={`As of ${d.asOf} · single fleet of ${d.totalDevices} devices`}>
@@ -2433,7 +2689,7 @@ function SdkHealthDetail({ onBack, notify }) {
             <SdkKpi label="Total devices in fleet" value={sdk.total} />
           </div>
         </DetailSection>
-        {/* SDK releases graph — outlined card */}
+        {/* SDK releases graph, outlined card */}
         <div style={{ ...surface, overflow: 'hidden' }}>
           <TileHeader title="SDK releases"
             info="Installed SDK versions and newly-available releases across the timeline. Dark = installed on your fleet, light = available to adopt."
@@ -2467,7 +2723,7 @@ function SdkHealthDetail({ onBack, notify }) {
 const FW_STATUS_VARIANT = { Finished: 'green', Scheduled: 'blue', Failed: 'red', Cancelled: 'grey', '-': 'grey' };
 const FW_VALIDATION_VARIANT = { Approved: 'green', Cancelled: 'grey', Pending: 'orange' };
 
-/* Summary tile — action-oriented firmware health + a mini status bar. */
+/* Summary tile, action-oriented firmware health + a mini status bar. */
 function FirmwareHealthTile({ onExplore }) {
   const d = D.firmwareHealth, s = d.summary;
   const bar = [
@@ -2490,7 +2746,7 @@ function FirmwareHealthTile({ onExplore }) {
   return (
     <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
       <TileHeader title="Firmware health" subtitle={`Terminal software · ${d.totalDevices} devices`}
-        info="Terminal software across your fleet — versions, scheduled updates and failures. Severity reflects the worst metric."
+        info="Terminal software across your fleet, versions, scheduled updates and failures. Severity reflects the worst metric."
         right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={onExplore}>Explore</Button>} />
       <Col gap={14} style={{ padding: `0 ${T.s5}px ${T.s5}px` }}>
         <Col gap={10}>
@@ -2547,7 +2803,7 @@ function FirmwareDetail({ onBack, notify }) {
 
         {tab === 'updates' && (
           <DetailSection title="Software updates" info="Batches you’ve scheduled to move terminals onto new software. Failed batches need action.">
-            <Alert type="info" variant="tip" description="Keep your terminal fleet on the latest software and schedule updates yourself — roll out in preconfigured batches for the safest path, or create your own." />
+            <Alert type="info" variant="tip" description="Keep your terminal fleet on the latest software and schedule updates yourself, roll out in preconfigured batches for the safest path, or create your own." />
             <DetailTableWrap minWidth={1040}>
                 <thead><tr>
                   {['Deployment & batch', 'Validation', 'Update status', 'Versions', 'Scheduled', 'Total', 'Fleet %', 'Successful', 'Failed', 'Pending', 'Cancelled', 'Created'].map((c, i) => <th key={i} style={dtTh(i >= 5 && i <= 10 ? 'right' : 'left')}>{c}</th>)}
@@ -2585,7 +2841,7 @@ function FirmwareDetail({ onBack, notify }) {
                   <Row gap={8}><span style={{ fontSize: 13, fontFamily: 'var(--b-font-family-secondary)' }}>{r.beta}</span><Tag label="Beta" variant="orange" /></Row>
                 </Col>
                 <Col gap={2}><span style={miniLabel}>Date</span><span style={{ fontSize: 13, color: T.sub }}>{r.date}</span></Col>
-                <Button variant="secondary" condensed onClick={() => notify && notify(`${r.family} — release details`)}>Show more</Button>
+                <Button variant="secondary" condensed onClick={() => notify && notify(`${r.family}, release details`)}>Show more</Button>
               </div>
             ))}
           </DetailSection>
@@ -2602,7 +2858,7 @@ function FirmwareDetail({ onBack, notify }) {
                       <td style={{ ...dtTd(last), color: T.sub }}>{r.family}</td>
                       <td style={{ ...dtTd(last), fontFamily: 'var(--b-font-family-secondary)' }}>{r.version}</td>
                       <td style={dtTd(last)}><a href="#" onClick={(e) => e.preventDefault()} style={{ color: 'var(--b-color-link-primary)', textDecoration: 'none' }}>{r.level}</a></td>
-                      <td style={{ ...dtTd(last), textAlign: 'right' }}><Button variant="secondary" condensed onClick={() => notify && notify(`Change default version — ${r.model}`)}>Change default versions</Button></td>
+                      <td style={{ ...dtTd(last), textAlign: 'right' }}><Button variant="secondary" condensed onClick={() => notify && notify(`Change default version, ${r.model}`)}>Change default versions</Button></td>
                     </tr>
                   ); })}
                 </tbody>
@@ -2649,16 +2905,16 @@ function businessGroups({ say, onOpenStores, onOpenDevices, onFirmware }) {
     {
       label: 'Revenue at risk', cards: [
         <BizCard key="idle" title="Revenue at risk" value="~€340k/mo" delta="at risk" tone="risk" info="Where am I losing sales right now?" sub="12 idle devices should be trading." action="View" onAction={onOpenDevices} />,
-        <BizCard key="decl" title="Recoverable declines" value="~€48k/mo" delta="recoverable" tone="up" info="How much is being declined, and how much is recoverable?" sub="5.8% declined (~€265k/mo)." action="Recover" onAction={say('Decline recovery — coming soon')} />,
+        <BizCard key="decl" title="Recoverable declines" value="~€48k/mo" delta="recoverable" tone="up" info="How much is being declined, and how much is recoverable?" sub="5.8% declined (~€265k/mo)." action="Recover" onAction={say('Decline recovery, coming soon')} />,
         <BizCard key="stale" title="Stale-software risk" value="~€90k/mo" delta="at risk" tone="risk" info="Is stale software costing me volume?" sub="15 devices on expired SDK." action="Update" onAction={onFirmware} />,
       ],
     },
     {
       label: 'Revenue optimization', cards: [
-        <BizCard key="dcc" title="DCC uplift" value="+~€22k/mo" delta="uplift" tone="up" info="How many terminals have DCC enabled?" sub="58% enabled · 49 eligible off." action="Enable" onAction={say('DCC roll-out — 49 eligible terminals')}>
+        <BizCard key="dcc" title="DCC uplift" value="+~€22k/mo" delta="uplift" tone="up" info="How many terminals have DCC enabled?" sub="58% enabled · 49 eligible off." action="Enable" onAction={say('DCC roll-out, 49 eligible terminals')}>
           <MiniBar pct={58} color="var(--b-color-decorative-blue)" />
         </BizCard>,
-        <BizCard key="instal" title="Installments uplift" value="+~€18k/mo" delta="uplift" tone="up" info="Are shoppers offered installments / BNPL at checkout? Common in APAC retail — lifts basket size and conversion." sub="Offered in 3 of 6 markets." action="Enable" onAction={say('Enable installments in 3 more markets')}>
+        <BizCard key="instal" title="Installments uplift" value="+~€18k/mo" delta="uplift" tone="up" info="Are shoppers offered installments / BNPL at checkout? Common in APAC retail, lifts basket size and conversion." sub="Offered in 3 of 6 markets." action="Enable" onAction={say('Enable installments in 3 more markets')}>
           <MiniBar pct={50} color="var(--b-color-decorative-blue)" />
         </BizCard>,
       ],
@@ -2666,7 +2922,7 @@ function businessGroups({ say, onOpenStores, onOpenDevices, onFirmware }) {
     {
       label: 'Benchmark & cross-channel', cards: [
         <BizCard key="bench" title="Peer benchmark" value="+~€36k/mo" delta="gap to close" tone="up" action="Compare" onAction={onOpenStores}
-          info={<span>Uniqlo APAC’s card <b>authorisation rate</b> compared with the median of similar Adyen <b>retail / unified-commerce</b> merchants — same region and size band, last 30 days, anonymised and aggregated. You sit <b>0.8pt below</b> the sector median; closing that gap is worth ~€36k/mo.</span>}
+          info={<span>Uniqlo APAC’s card <b>authorisation rate</b> compared with the median of similar Adyen <b>retail / unified-commerce</b> merchants, same region and size band, last 30 days, anonymised and aggregated. You sit <b>0.8pt below</b> the sector median; closing that gap is worth ~€36k/mo.</span>}
           sub="Auth rate · Uniqlo APAC vs retail sector median">
           <Col gap={20} style={{ marginTop: 10, flex: 1, justifyContent: 'center' }}>
             {[['Uniqlo APAC', 94.2, 'var(--b-color-decorative-blue)'], ['Retail sector median', 95.0, 'var(--b-color-label-tertiary)']].map(([lbl, rate, c]) => (
@@ -2692,7 +2948,7 @@ function businessGroups({ say, onOpenStores, onOpenDevices, onFirmware }) {
           </Col>
         </BizCard>,
         <BizCard key="next" title="Next best action" value="2 recommended" delta="+~€70k/mo total" tone="up"
-          info="A ranked to-do list — the highest-impact changes for Uniqlo APAC right now, each with estimated monthly value and effort. Apply directly, or hand the list to your Adyen contact."
+          info="A ranked to-do list, the highest-impact changes for Uniqlo APAC right now, each with estimated monthly value and effort. Apply directly, or hand the list to your Adyen contact."
           sub="Ranked by impact · one-click apply">
           <Col gap={0} style={{ marginTop: 2 }}>
             {[
@@ -2715,7 +2971,7 @@ function businessGroups({ say, onOpenStores, onOpenDevices, onFirmware }) {
   ];
 }
 
-/* Full-screen business-impact detail — trend over time + the categorised metric cards. */
+/* Full-screen business-impact detail, trend over time + the categorised metric cards. */
 function BusinessInsightDetail({ onBack, notify, onOpenStores, onOpenDevices, onFirmware }) {
   const say = (m) => () => notify && notify(m);
   const RANGES = DATA_PERIODS;
@@ -2743,16 +2999,16 @@ function BusinessInsightDetail({ onBack, notify, onOpenStores, onOpenDevices, on
           { title: 'Opportunity identified / month', value: '+~€76k', hint: 'DCC, installments and benchmark gap.' },
         ]} />
         <Alert type="critical" title="Revenue-at-risk spiked to ~€860k in Jan"
-          description="A 3-day network outage took 22 stores offline over the holiday peak, nearly tripling monthly revenue-at-risk. Connectivity is restored and it’s recovered to ~€340k — now driven by 12 idle devices and 15 terminals on expired SDKs." />
+          description="A 3-day network outage took 22 stores offline over the holiday peak, nearly tripling monthly revenue-at-risk. Connectivity is restored and it’s recovered to ~€340k, now driven by 12 idle devices and 15 terminals on expired SDKs." />
         <div style={{ ...surface, overflow: 'hidden' }}>
           <TileHeader title="Business impact over time" subtitle="Last 12 months · illustrative · Jan outage marked by the spike"
             right={<Legend series={trend.series} />} />
           <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}><LineChart data={trend} height={200} /></div>
         </div>
-        {/* Feature adoption — folded in from the former standalone tile (the opportunity side of business insight) */}
+        {/* Feature adoption, folded in from the former standalone tile (the opportunity side of business insight) */}
         <div style={{ ...surface, overflow: 'hidden' }}>
           <TileHeader title="Feature adoption" subtitle="DCC, tipping & installments · last 12 months"
-            info="Adoption of DCC, tipping and installments across your fleet over the last 12 months — the opportunity side of business insight."
+            info="Adoption of DCC, tipping and installments across your fleet over the last 12 months, the opportunity side of business insight."
             right={<Legend series={D.featureAdoption.series} />} />
           <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, height: 240 }}><LineChart data={D.featureAdoption} height={200} /></div>
         </div>
@@ -2767,7 +3023,7 @@ function BusinessInsightDetail({ onBack, notify, onOpenStores, onOpenDevices, on
   );
 }
 
-/* Getting-started onboarding steps — each linked to a doc. */
+/* Getting-started onboarding steps, each linked to a doc. */
 const ONBOARDING_STEPS = [
   { done: true, title: 'Board your first device', desc: 'At least one device is active in a location.' },
   { done: true, title: 'Add payment methods', desc: 'Visa, Mastercard, Maestro and local methods enabled.' },
@@ -2775,7 +3031,7 @@ const ONBOARDING_STEPS = [
   { done: false, title: 'Generate SDK tokens', desc: 'Generate and manage the SDK tokens required for your mobile products.' },
   { done: false, title: 'Add Google Play certificate', desc: 'Add your app certificate from the Google Play Console to verify authenticity.' },
   { done: false, title: 'Add Apple Tap to Pay certificate', desc: 'Upload the Apple entitlement certificate to go live on iPhone.' },
-  { done: false, title: 'Enable Tap to Pay on iPhone', desc: 'Accept contactless on iPhone — no separate reader.' },
+  { done: false, title: 'Enable Tap to Pay on iPhone', desc: 'Accept contactless on iPhone, no separate reader.' },
   { done: false, title: 'Configure receipts & branding', desc: 'Set your logo, receipt header and footer.' },
   { done: false, title: 'Complete PCI attestation', desc: 'Annual self-assessment questionnaire is due.' },
   { done: false, title: 'Set default software versions', desc: 'Choose the firmware/SDK new devices receive on boarding.' },
@@ -2809,7 +3065,7 @@ function ProgressPill({ done, total }) {
     </Row>
   );
 }
-/* Full-screen — all onboarding tasks. */
+/* Full-screen, all onboarding tasks. */
 function OnboardingDetail({ onBack, notify }) {
   const doc = (title) => notify && notify(`Opening guide: ${title}`);
   const done = ONBOARDING_STEPS.filter(s => s.done).length;
@@ -2825,7 +3081,7 @@ function OnboardingDetail({ onBack, notify }) {
     </FullPage>
   );
 }
-/* Getting-started tile — first 4 steps + kebab (View all tasks · View docs). */
+/* Getting-started tile, first 4 steps + kebab (View all tasks · View docs). */
 function OnboardingTasks({ notify }) {
   const [detail, setDetail] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -2848,7 +3104,7 @@ function OnboardingTasks({ notify }) {
     <>
       <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
         <TileHeader title="Getting started"
-          info="Finish setup to go live — accept payment methods, enable Tap to Pay, add certificates and stay compliant."
+          info="Finish setup to go live, accept payment methods, enable Tap to Pay, add certificates and stay compliant."
           right={<Row gap={16} align="center"><ProgressPill done={done} total={ONBOARDING_STEPS.length} />{kebab}</Row>} />
         <div style={{ padding: `0 ${T.s5}px ${T.s3}px` }}>
           <OnboardingList steps={ONBOARDING_STEPS.slice(0, 4)} onDoc={doc} />
@@ -2869,7 +3125,7 @@ function BusinessInsight({ notify, onOpenStores, onOpenDevices, onFirmware }) {
     <>
       <div style={{ ...surface, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }} className="ns-tile">
         <TileHeader title="Business insight" subtitle="Last 30 days"
-          info={<span>What your fleet is <b>costing or making</b> you — and where to act. Explore for the trend and full breakdown.</span>}
+          info={<span>What your fleet is <b>costing or making</b> you, and where to act. Explore for the trend and full breakdown.</span>}
           right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={open}>Explore</Button>} />
         <div style={{ padding: `0 ${T.s5}px ${T.s5}px`, flex: 1, minHeight: 0 }}>
           <SummaryGrid cols={2} style={{ gridAutoRows: '1fr', height: '100%' }} items={[
@@ -2888,7 +3144,7 @@ function BusinessInsight({ notify, onOpenStores, onOpenDevices, onFirmware }) {
 function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, onOpenStudio, notify }) {
   // Committed layout (drives the dashboard + persisted). Restored from the user's last save.
   const [tileIds, setTileIds] = useState(() => loadLayout() || DEFAULT_TILE_IDS);
-  // Working copy while editing — Save commits it, Cancel discards it.
+  // Working copy while editing, Save commits it, Cancel discards it.
   const [draftIds, setDraftIds] = useState(null);
   const [savedTiles, setSavedTiles] = useState([]);
   const [customize, setCustomize] = useState(false);
@@ -2932,7 +3188,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
 
   const tileActions = (t) => (t.topic ? <Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => onOpenExplore(t)}>Explore</Button> : null);
 
-  // ---- Customize homepage (Edit layout) — dedicated page: drag to re-order, add/remove ----
+  // ---- Customize homepage (Edit layout), dedicated page: drag to re-order, add/remove ----
   if (customize) {
     const Grip = () => (
       <span style={{ display: 'grid', gridTemplateColumns: '3px 3px', gap: 3, flexShrink: 0, cursor: 'grab' }}>
@@ -2980,9 +3236,9 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
         <Col gap={4} style={{ flex: 1 }}>
           <Row gap={6}>
             <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Devices Intelligence</span>
-            <InfoTip width={320} content={<span>A single, queryable view of every payment device across your fleet — <b>Terminals</b> and <b>SoftPOS</b> — covering health, adoption and compliance. Ask questions in plain language or build your own dashboard.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
+            <InfoTip width={320} content={<span>A single, queryable view of every payment device across your fleet, <b>Terminals</b> and <b>SoftPOS</b>, covering health, adoption and compliance. Ask questions in plain language or build your own dashboard.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
           </Row>
-          <span style={{ fontSize: 13, color: T.sub }}>Every payment device across your fleet — Terminals and SoftPOS · last sync 4 min ago</span>
+          <span style={{ fontSize: 13, color: T.sub }}>Every payment device across your fleet, Terminals and SoftPOS · last sync 4 min ago</span>
         </Col>
         <Row gap={T.s2}>
           <Button variant="secondary" iconLeft="download" onClick={() => notify('Exporting dashboard to CSV…')}>Export</Button>
@@ -3006,7 +3262,7 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
           </Section>
         ))}
 
-        {/* tile grid — dense flow so half-width tiles backfill gaps (no empty spots) */}
+        {/* tile grid, dense flow so half-width tiles backfill gaps (no empty spots) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: T.s6, gridAutoFlow: 'dense' }}>
           {tiles.map(t => (
             <div key={t.id} className="ns-tile-cell" style={{ gridColumn: t.w === 'full' ? 'span 2' : 'span 1' }}>
@@ -3024,6 +3280,10 @@ function DeviceIntelligence({ onOpenAllStores, onOpenAllDevices, onOpenExplore, 
                   ? <FirmwareHealthTile onExplore={() => setFwOpen(true)} />
                 : t.kind === 'connectivity'
                   ? <ConnectivityTile notify={notify} onExplore={() => setConnOpen(true)} />
+                : t.kind === 'alerts'
+                  ? <AlertRulesTile notify={notify} onExplore={() => notify('Managing alert rules, choose thresholds and where alerts are delivered (Customer Area, email, or webhook).')} />
+                : t.kind === 'fleetLoop'
+                  ? <FleetHealthLoop notify={notify} />
                 : t.kind === 'chart'
                   ? <ChartCard t={t} actions={customize ? tileActions(t) : undefined} onExplore={t.id === 'notTradingTrend' ? () => setConnOpen('failed') : undefined} />
                 : t.kind === 'grid'
@@ -3062,7 +3322,7 @@ const EXPLORE_ANALYSIS = {
       { label: 'Weakest model', value: 'e355', sub: '81% · 9,410 to swap' },
     ],
     insight: { type: 'warning', title: 'e355 handhelds are aging fastest',
-      description: 'At 81% average battery health with 9,410 units below the 80% replacement threshold, e355 handhelds are most at risk of mid-shift shutdowns — prioritise battery swaps here. Countertop (AMS1) and kiosk (NYC1) are mains-powered and unaffected.' },
+      description: 'At 81% average battery health with 9,410 units below the 80% replacement threshold, e355 handhelds are most at risk of mid-shift shutdowns, prioritise battery swaps here. Countertop (AMS1) and kiosk (NYC1) are mains-powered and unaffected.' },
   },
   transactionSpeed: {
     stats: [
@@ -3082,7 +3342,7 @@ function ExploreModal({ tile, onBack }) {
   const [sortDir, setSortDir] = useState('asc');
   const [q, setQ] = useState('');
   const [range, setRange] = useState('30d');
-  const [filters, setFilters] = useState({}); // { [colIndex]: string[] } — one facet per column
+  const [filters, setFilters] = useState({}); // { [colIndex]: string[] }, one facet per column
   const colLabel = (ci) => { const c = g.columns[ci]; return typeof c === 'string' ? c : c.label; };
   const distinctFor = (ci) => [...new Set(g.rows.map(r => r[ci]))];
   // Only offer categorical-ish columns as filters (a handful of distinct values).
@@ -3255,7 +3515,7 @@ function smBuildStores() {
   }
   return out;
 }
-// Uniqlo APAC flagship stores — the headline locations across Asia.
+// Uniqlo APAC flagship stores, the headline locations across Asia.
 const SM_FLAGSHIP = [
   ['Ginza', 'Chuo-dori 6', '104-0061', 'Tokyo', 'Japan', '+81 3 5537 1000'],
   ['Shibuya', 'Jingumae 1', '150-0001', 'Tokyo', 'Japan', '+81 3 5537 1010'],
@@ -3279,7 +3539,7 @@ const FLEET_TERMINALS = SM_STORES.reduce((n, s) => n + (s.terminals || 0), 0);
 const FLEET_MOBILES = SM_STORES.reduce((n, s) => n + smMobileCount(s.terminals), 0);
 const FLEET_DEVICES = FLEET_TERMINALS + FLEET_MOBILES;
 
-// ---- Fleet health connectivity fleet — one device per terminal/mobile across the real estate, so Fleet health
+// ---- Fleet health connectivity fleet, one device per terminal/mobile across the real estate, so Fleet health
 // reconciles with Locations / Device intelligence (same total). Tile metrics are derived from it below.
 const CONN_MODELS = ['S1F2', 'AMS1', 'V400m', 'e355'];
 const CONN_VERS = [['1.42.1', 0.46], ['1.41.0', 0.26], ['1.40.3', 0.17], ['1.39.2', 0.11]];
@@ -3320,7 +3580,7 @@ const CONN_FLEET = (() => {
   });
   return out.sort((a, b) => b.failed - a.failed);
 })();
-// Per-store and per-merchant rollups — so every metric connects to "which store / which merchant".
+// Per-store and per-merchant rollups, so every metric connects to "which store / which merchant".
 function connRollup(keyFn) {
   const m = {};
   CONN_FLEET.forEach(d => {
@@ -3367,9 +3627,9 @@ const SM_PAY_METHODS = [
 ];
 function smMethodStatus(pm, country, copiedFromStore) {
   if (SM_NON_POS.indexOf(country) !== -1) return { state: 'Not available here', variant: 'grey', reason: 'Stores in ' + country + ' are created without payment methods and configured afterwards.' };
-  if (pm.countries && pm.countries.indexOf(country) === -1) return { state: 'Not available here', variant: 'grey', reason: 'A domestic scheme for ' + pm.countries.join(', ') + ' — not supported in ' + country + '.' };
+  if (pm.countries && pm.countries.indexOf(country) === -1) return { state: 'Not available here', variant: 'grey', reason: 'A domestic scheme for ' + pm.countries.join(', ') + ', not supported in ' + country + '.' };
   if (pm.needsInput) return { state: 'Needs input', variant: 'orange', reason: 'Needs an Amex MID or Adyen M-level acquiring.' };
-  return { state: 'Available', variant: 'green', reason: (pm.viaSource && copiedFromStore) ? 'Live on the source store — copied across.' : 'Configured automatically when the store is created.' };
+  return { state: 'Available', variant: 'green', reason: (pm.viaSource && copiedFromStore) ? 'Live on the source store, copied across.' : 'Configured automatically when the store is created.' };
 }
 const SM_DIAL_BY_COUNTRY = { Netherlands: '+31', France: '+33', Germany: '+49', 'United Kingdom': '+44', Austria: '+43', Spain: '+34', 'United States': '+1', Belgium: '+32', Italy: '+39' };
 const SM_INK = 'var(--b-color-label-primary)';
@@ -3467,12 +3727,12 @@ function SMRowEl({ children, onClick, style }) {
 }
 
 /* ============================================================= STORE SETTINGS (unified modal)
-   Same anatomy as Device Studio — full-page modal · right-docked control panel · live preview —
+   Same anatomy as Device Studio, full-page modal · right-docked control panel · live preview —
    scoped to a single store, with an "About this store" section holding the store's identity,
    payment methods and terminals. Device settings are the real SCHEMA groups (editable + previewed). */
 /* A store's mixed fleet: several terminal models + SoftPOS on iOS. Selecting a device in the
-   preview dropdown decouples the settings — only the properties relevant to that device show. */
-/* The store's actual fleet — a mixed set of devices the store policy applies to.
+   preview dropdown decouples the settings, only the properties relevant to that device show. */
+/* The store's actual fleet, a mixed set of devices the store policy applies to.
    (Prototype: a representative 5-device fleet of terminals + a SoftPOS iPhone.) */
 function storeFleet(store) {
   const seed = parseInt((store.id || 'st0').slice(2), 10) || 0;
@@ -3486,7 +3746,7 @@ function storeFleet(store) {
   out.push({ id: 'ios', name: 'Manager iPhone', serial: 'iOS-' + (10 + (seed % 90)), model: 'softpos-ios', preview: 'IOS1', deviceType: 'SoftPOS' });
   return out;
 }
-/* Store detail — default insights dashboard (before switching to Settings mode). */
+/* Store detail, default insights dashboard (before switching to Settings mode). */
 function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevices, onOpenSettings, onEditStore, onOpenStudio, notify }) {
   const seed = parseInt((store.id.match(/\d+/) || ['1'])[0], 10) || 1;
   const online = store.termOnline;
@@ -3496,7 +3756,7 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
   const atv = store.terminals ? '€' + (34 + (seed % 26)) + '.' + String(10 + (seed % 80)).slice(0, 2) : '—';
   const statusBar = termRows.map(([label, value, c]) => ({ label, n: value, c }));
   const data = D.volumeTrend;
-  // Tabs — mirror the individual device page: Store info / Device signals / Settings & config.
+  // Tabs, mirror the individual device page: Store info / Device signals / Settings & config.
   const [tab, setTab] = useState('info');
   const [sRange, setSRange] = useState('7d');
   const [sShown, setSShown] = useState(null);
@@ -3513,7 +3773,7 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
   const sf = Math.max(1, store.terminals || 1);
   const sWifiShare = Math.max(20, Math.min(90, Math.round(60 + (rz() - 0.5) * 40)));
   const sWifiPct = sLabels.map(() => Math.max(0, Math.min(100, Math.round(sWifiShare + (rz() - 0.5) * 20))));
-  // Store-level telemetry (sum of its devices) — same panels as the device page.
+  // Store-level telemetry (sum of its devices), same panels as the device page.
   const sPanels = [
     { title: 'Communication Events', color: 'var(--b-color-decorative-blue)', points: sMk(220 * sf, 80 * sf, { trend: 0.6 }), min: 0 },
     { title: 'Websocket connection failed', color: 'var(--b-color-decorative-red)', points: sMk(2 * sf, 1.5 * sf, { spike: 5 * sf }), min: 0 },
@@ -3562,7 +3822,7 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
         {tab === 'info' && (<>
         {/* Same layout as the device page: info cards in a 2-column grid, data table below. */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: T.s6, alignItems: 'flex-start' }}>
-          {/* left — store information + payment methods */}
+          {/* left, store information + payment methods */}
           <Col gap={T.s6}>
             <Section title="Store information" actions={<Button variant="secondary" condensed iconLeft="edit-1" onClick={() => onEditStore && onEditStore()}>Edit</Button>}>
               {(() => {
@@ -3597,7 +3857,7 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
               </Col>
             </Section>
           </Col>
-          {/* right — device status */}
+          {/* right, device status */}
           <Section title="Device status">
             <Col gap={14}>
               <Row gap={12} align="baseline">
@@ -3616,7 +3876,7 @@ function StoreInsights({ store, fleet, methods, currency, termRows, onOpenDevice
           </Section>
         </div>
 
-        {/* devices — data table */}
+        {/* devices, data table */}
         <Col gap={12}>
           <Row style={{ minHeight: 28 }}>
             <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', flex: 1 }}>Devices</span>
@@ -3748,7 +4008,7 @@ function buildSettingsRows(store) {
   return rows;
 }
 
-/* "View all settings" — full-screen audit table (matches Adyen's All terminal settings). */
+/* "View all settings", full-screen audit table (matches Adyen's All terminal settings). */
 function AllSettingsModal({ store, onBack, notify }) {
   const [q, setQ] = useState('');
   const rows = useMemo(() => buildSettingsRows(store), [store]);
@@ -3842,7 +4102,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
     const qq = (text != null ? text : draft).trim(); if (!qq) return;
     const changes = applyFromText(qq);
     const reply = changes.length
-      ? `Done — I ${changes.join(', ')}. The preview and the change list are updated; review and apply when ready.`
+      ? `Done, I ${changes.join(', ')}. The preview and the change list are updated; review and apply when ready.`
       : "I couldn't map that to a setting yet. Try mentioning theme, tipping, DCC, contactless, language, logo, greeting, or receipt header.";
     setMessages(m => [...m, { role: 'user', text: qq }, { role: 'assistant', text: reply }]);
     setDraft('');
@@ -3875,7 +4135,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
   const tipValue = tip == null ? 0 : tip === 'custom' ? 5 : 100 * tip / 100;
 
   const fleet = storeFleet(store);
-  // Distinct device types in the store (handles many types — surfaced via a dropdown, not a wall of devices).
+  // Distinct device types in the store (handles many types, surfaced via a dropdown, not a wall of devices).
   const deviceTypes = fleet.reduce((acc, dv) => {
     const ex = acc.find(x => x.model === dv.model);
     if (ex) ex.count++;
@@ -3889,7 +4149,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
     <>
     <FullPage title={store.name} subtitle={`${store.city}, ${store.country}`} tone="store"
       badge={mode === 'settings'
-        ? <InfoTip width={300} content={<span>You're editing <b>store settings</b> — the policy that applies to <b>every device</b> in this location: receipts, payments, tax, language and branding. Device‑only settings (connectivity, hardware, passcodes) are managed on each device.</span>}><Ico name="info" size={16} color={T.ink} /></InfoTip>
+        ? <InfoTip width={300} content={<span>You're editing <b>store settings</b>, the policy that applies to <b>every device</b> in this location: receipts, payments, tax, language and branding. Device‑only settings (connectivity, hardware, passcodes) are managed on each device.</span>}><Ico name="info" size={16} color={T.ink} /></InfoTip>
         : HealthDot(store.termOff > 0 ? 'red' : store.termWeek > 0 ? 'yellow' : 'green')}
       onBack={onBack} backLabel="" backIcon={<ArrowLeftGlyph />} onClose={onBack}
       actions={mode === 'settings'
@@ -3911,7 +4171,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
           </div>
         )}
 
-        {/* control panel (docked left, drag-resizable) — nav folded in as section accordions, AI composer at bottom */}
+        {/* control panel (docked left, drag-resizable), nav folded in as section accordions, AI composer at bottom */}
         {panelOpen && (
           <div style={{ width: panelW, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <Row style={{ padding: '8px 12px 8px 20px', borderBottom: `1px solid ${T.sepFaint}`, gap: 8, flexShrink: 0 }}>
@@ -3924,7 +4184,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
                 onNewSession={() => { setMessages([{ role: 'assistant', text: "Describe the change you want and I'll configure this store's devices." }]); setDraft(''); notify && notify('Started a new session'); }} />
             ) : (<>
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 20px' }}>
-              {/* Device-related settings only — store identity lives on the overview page. */}
+              {/* Device-related settings only, store identity lives on the overview page. */}
               {SCHEMA.groups.filter(g => !g.market && g.level !== 'device').map(g => (
                 <Accordion key={g.id} open={openGroups.has(g.id)} onToggle={() => toggleGroup(g.id)}
                   title={g.title} desc={g.desc}>
@@ -3943,7 +4203,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
         )}
 
         {panelOpen && <ResizeHandle onMouseDown={startResize} />}
-        {/* canvas — screen-flow tab bar on top, device centered, device/state dropdowns on the right */}
+        {/* canvas, screen-flow tab bar on top, device centered, device/state dropdowns on the right */}
         <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: T.page }}>
           <FlowTabs value={screen} onChange={setScreen} options={PAGE_TYPES} />
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', alignItems: 'stretch', gap: 32, padding: '28px 32px 36px' }}>
@@ -3990,7 +4250,7 @@ function StoreSettingsModal({ storeId, onBack, onOpenDevices, onEditStore, onOpe
         </Col>
       </Modal>
 
-      {/* store information — view mode, with an Edit CTA that switches to edit */}
+      {/* store information, view mode, with an Edit CTA that switches to edit */}
       <Modal open={infoOpen} onClose={() => setInfoOpen(false)} title="Store information" width={520}
         description={`${store.city}, ${store.country}`}
         footer={<Row gap={8} style={{ justifyContent: 'flex-end' }}>
@@ -4215,14 +4475,14 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify, initialStore, onO
       if (s.menuRow) return setState({ menuRow: null });
       if (s.devicesStore) return backToStorePage();
       if (s.pageStore) return storeBack();
-      if (!inline) onBack(); // inline is a normal page — Escape shouldn't navigate away
+      if (!inline) onBack(); // inline is a normal page, Escape shouldn't navigate away
     };
     document.addEventListener('keydown', onEsc);
     return () => document.removeEventListener('keydown', onEsc);
   });
 
   // FullPage chrome is context-aware: back returns to the previous view. The store page mirrors the
-  // device page — store name as the title, a status badge, and Actions/Export in the top bar.
+  // device page, store name as the title, a status badge, and Actions/Export in the top bar.
   const pageStoreObj = isStorePage ? SM_STORES.find(x => x.id === s.pageStore) : null;
   const pageTitle = isDevicesPage ? 'Payment devices' : isStorePage ? ((pageStoreObj && pageStoreObj.name) || 'Store') : 'Locations';
   const pageBack = isDevicesPage ? backToStorePage : isStorePage ? storeBack : onBack;
@@ -4342,7 +4602,7 @@ function AllStoresModal({ onBack, onOpenStore, inline, notify, initialStore, onO
 
             </div>
           </div>
-          {/* pager — sticky to the bottom of the page (full width, not part of the horizontal scroll) */}
+          {/* pager, sticky to the bottom of the page (full width, not part of the horizontal scroll) */}
           <Row gap={16} style={{ position: 'sticky', bottom: 0, zIndex: 3, background: T.card, borderTop: `1px solid ${T.sep}`, padding: '12px 16px', fontSize: 14, color: T.ink }}>
             <select value={s.pageSize} onChange={(e) => setState({ pageSize: parseInt(e.target.value, 10), page: 1 })}
               style={{ height: 32, border: '1px solid var(--b-color-outline-secondary)', borderRadius: T.radiusM, background: T.card, fontFamily: 'inherit', fontSize: 14, color: T.ink, padding: '0 8px', cursor: 'pointer' }}>
@@ -4484,7 +4744,7 @@ function SMStorePage({ store, onOpenDevices, onOpenStudio, notify }) {
 
       {tab === 'info' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: T.s6, alignItems: 'flex-start' }}>
-          {/* left — identity + address */}
+          {/* left, identity + address */}
           <Col gap={T.s6}>
             <Section title="Store details" description="Identity and merchant account.">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0 32px' }}>
@@ -4505,7 +4765,7 @@ function SMStorePage({ store, onOpenDevices, onOpenStudio, notify }) {
               </div>
             </Section>
           </Col>
-          {/* right — terminal status + payment methods */}
+          {/* right, terminal status + payment methods */}
           <Col gap={T.s6}>
             <Section title="Terminal status" actions={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={onOpenDevices}>View payment devices</Button>}>
               <div>
@@ -4618,7 +4878,7 @@ function makeMobiles(count, opts) {
   return rows;
 }
 
-/* Single-select filter chip (e.g. date range) — 36px bordered button + popover, Luma filter-bar style. */
+/* Single-select filter chip (e.g. date range), 36px bordered button + popover, Luma filter-bar style. */
 function RangeChip({ value, onChange, options, icon = 'timer' }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('quick'); // quick | relative | absolute
@@ -4708,7 +4968,7 @@ function RangeChip({ value, onChange, options, icon = 'timer' }) {
   );
 }
 
-/* Multi-select facet filter — 36px bordered chip + checkbox popover, removable. Bento filter-bar style. */
+/* Multi-select facet filter, 36px bordered chip + checkbox popover, removable. Bento filter-bar style. */
 function FacetChip({ label, options, selected, onChange, onRemove }) {
   const [open, setOpen] = useState(false);
   const ref = useOutside(open, () => setOpen(false));
@@ -4735,7 +4995,7 @@ function FacetChip({ label, options, selected, onChange, onRemove }) {
   );
 }
 
-/* Bento search bar — 36px, matches b-search-bar spec (border #8C959D · radius 8 · leading icon). */
+/* Bento search bar, 36px, matches b-search-bar spec (border #8C959D · radius 8 · leading icon). */
 function SearchBar({ value, onChange, placeholder = 'Search…', width = 260 }) {
   return (
     <label className="ns-searchbar" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 36, padding: '0 12px', border: '1px solid #8C959D', borderRadius: 8, background: T.card, width, boxSizing: 'border-box', flexShrink: 0 }}>
@@ -4746,7 +5006,7 @@ function SearchBar({ value, onChange, placeholder = 'Search…', width = 260 }) 
   );
 }
 
-/* Bento filter button (b-filter-bar) — outlined when empty; dark-filled #364553 with a counter
+/* Bento filter button (b-filter-bar), outlined when empty; dark-filled #364553 with a counter
    chip (#001222) and a divided clear (×) when a value is applied. 36px to align with the search bar. */
 function FilterChip({ label, options, selected, onChange, onClear }) {
   const [open, setOpen] = useState(false);
@@ -4812,7 +5072,7 @@ function FilterChip({ label, options, selected, onChange, onClear }) {
   );
 }
 
-/* Device row actions — shared by the row 3-dots menu and the selection action bar. */
+/* Device row actions, shared by the row 3-dots menu and the selection action bar. */
 const DEVICE_ACTIONS = [
   { value: 'configure', label: 'Configure', icon: 'settings' },
   { value: 'reassign', label: 'Reassign', icon: 'store' },
@@ -4828,7 +5088,7 @@ const deviceActionMsg = (v, n) => {
     : `Replacement ordered for ${who}`;
 };
 
-/* Selectable, horizontally-scrollable data grid — Store-list table style. columns: {key,label,w,render,align} */
+/* Selectable, horizontally-scrollable data grid, Store-list table style. columns: {key,label,w,render,align} */
 function DeviceGrid({ columns, rows, notify, bordered, onReassign, onConfigure }) {
   const [sel, setSel] = useState({});
   const [page, setPage] = useState(1);
@@ -4890,7 +5150,7 @@ function DeviceGrid({ columns, rows, notify, bordered, onReassign, onConfigure }
         </div>
       </div>
 
-      {/* selection action bar — floating, matches Bento multi-select bar */}
+      {/* selection action bar, floating, matches Bento multi-select bar */}
       {selCount > 0 && (
         <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 390, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px 8px 16px', background: 'var(--b-color-background-inverse-primary)', color: 'var(--b-color-label-inverse-primary)', borderRadius: 999, boxShadow: 'var(--b-shadow-high)' }}>
           <button onClick={clearSel} title="Clear selection" style={{ display: 'inline-flex', border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: 4, lineHeight: 0 }}><Ico name="cross" size={16} color="currentColor" /></button>
@@ -5036,7 +5296,7 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, onOpenDevice, title, 
           <div style={{ marginBottom: 16 }}>
             <Tabs value={tab} onChange={setTab} tabs={[{ value: 'all', label: `All (${allList.length})` }, { value: 'terminals', label: `Terminals (${terminals.length})` }, { value: 'mobiles', label: `Mobile devices (${mobiles.length})` }]} />
           </div>
-          {/* search + Bento filters — persist across tabs */}
+          {/* search + Bento filters, persist across tabs */}
           <Row gap={8} style={{ flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
             <SearchBar value={q} onChange={setQ} placeholder="Search…" width={260} />
             <FilterChip label="Device type" options={[{ value: 'Terminal', label: 'Terminals', count: terminals.length }, { value: 'Mobile', label: 'Mobile devices', count: mobiles.length }]} selected={fType} onChange={toggle(setFType)} onClear={() => setFType([])} />
@@ -5052,7 +5312,7 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, onOpenDevice, title, 
   );
 }
 
-/* Location-first lens — each location with its device counts, health and performance;
+/* Location-first lens, each location with its device counts, health and performance;
    rows expand to reveal that location's devices. Answers "which location has which devices". */
 function LocationDeviceTable({ stores, onOpenLocation, onOpenDevice, onConfigureStore, onCloseLocation, notify, deviceTotal }) {
   const [q, setQ] = useState('');
@@ -5206,8 +5466,8 @@ const SELECTOR_QUESTIONS = [
 const SELECTOR_VISUALS = {
   country: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'We ship the right power supply & certifications for each country.' },
   industry: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Every industry has a sweet-spot device mix.' },
-  use_case: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Counter, handheld, kiosk or phone — placement drives the form factor.' },
-  card_read: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Tap, chip and swipe — pick what the client needs to accept.' },
+  use_case: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Counter, handheld, kiosk or phone, placement drives the form factor.' },
+  card_read: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Tap, chip and swipe, pick what the client needs to accept.' },
   input_type: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Physical keypad or full touchscreen?' },
   os_type: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Payments-only Linux, or all-in-one Android for business apps.' },
   offline: { bg: 'https://media.ffycdn.net/eu/adyen/BJWqxK2T2NxT9Dzrm6fd.jpg', caption: 'Keep trading even when the connection drops.' },
@@ -5233,7 +5493,7 @@ function recommendTerminals(a) {
   if (a.offline === 'yes') common.push('Store-and-forward keeps you trading if the internet drops');
   if (a.card_read === 'contactless_only') common.push('Contactless-first acceptance');
   const mk = (o) => ({ price: 0, ...o, reasons: [...(o.reasons || []), ...common] });
-  if (a.use_case === 'smartphone') return [mk({ model: 'Tap to Pay', type: 'SoftPOS', icon: 'mobile', price: 0, blurb: 'Accept contactless right on the seller’s own phone — no extra hardware.', specs: ['SoftPOS', 'Contactless', 'iOS & Android'], reasons: ['Runs on the seller’s smartphone', 'Zero hardware to ship'] })];
+  if (a.use_case === 'smartphone') return [mk({ model: 'Tap to Pay', type: 'SoftPOS', icon: 'mobile', price: 0, blurb: 'Accept contactless right on the seller’s own phone, no extra hardware.', specs: ['SoftPOS', 'Contactless', 'iOS & Android'], reasons: ['Runs on the seller’s smartphone', 'Zero hardware to ship'] })];
   if (a.use_case === 'unattended') return [mk({ model: 'NYC1', type: 'Unattended', icon: 'terminal-1', price: 249, blurb: 'Rugged contactless reader built for self-service kiosks.', specs: ['Unattended', 'Contactless', 'Vandal-resistant'], reasons: ['Designed for self-service kiosks', 'Contactless-only acceptance'] })];
   if (a.use_case === 'mobile') {
     if (a.os_type === 'all_in_one') return a.printer === 'yes'
@@ -5247,7 +5507,7 @@ function recommendTerminals(a) {
   if (a.os_type === 'all_in_one') return [mk({ model: 'AMS1', type: 'Android · countertop', icon: 'terminal-2', price: 329, blurb: 'Android countertop terminal for the checkout.', specs: ['Android', 'Countertop', 'Ethernet + Wi-Fi'], reasons: ['Android for other business apps', 'Fixed counter placement', a.input_type === 'physical' ? 'Physical PIN pad' : 'Touchscreen entry'].filter(Boolean) })];
   return [mk({ model: 'P400 Plus', type: 'Countertop', icon: 'terminal-2', price: 299, blurb: 'Reliable Linux countertop terminal with PIN pad.', specs: ['Countertop', 'Ethernet + Wi-Fi', 'PIN pad'], reasons: ['Payments-only, secure Linux OS', 'Fixed counter placement', 'Physical PIN pad'] })];
 }
-/* Ask mode — infer selector answers from a free-text description of the business. */
+/* Ask mode, infer selector answers from a free-text description of the business. */
 function inferFilters(text) {
   const t = ' ' + text.toLowerCase() + ' ';
   const has = (re) => re.test(t);
@@ -5308,7 +5568,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
   const [panelOpen, setPanelOpen] = useState(true);
   const [panelW, startResize] = useResizer(440, 320, 680); // drag-resizable control panel (same as the Configuration modal)
   const [askText, setAskText] = useState('');
-  const runAsk = (text) => { const q = (text != null ? text : askText).trim(); if (!q) return; const inferred = inferFilters(q); setAskText(q); setVals(v => ({ ...v, ...inferred })); const n = Object.keys(inferred).length; notify && notify(n ? `Applied ${n} filter${n === 1 ? '' : 's'} from your description` : 'Couldn’t detect specifics — try mentioning where you sell and your industry'); };
+  const runAsk = (text) => { const q = (text != null ? text : askText).trim(); if (!q) return; const inferred = inferFilters(q); setAskText(q); setVals(v => ({ ...v, ...inferred })); const n = Object.keys(inferred).length; notify && notify(n ? `Applied ${n} filter${n === 1 ? '' : 's'} from your description` : 'Couldn’t detect specifics, try mentioning where you sell and your industry'); };
   const ASK_EXAMPLES = ['Flagship apparel store with fixed checkout lanes and many tourists', 'Line-busting on the shop floor with handheld devices', 'Pop-up store taking payments on staff phones'];
   const answeredCount = SELECTOR_QUESTIONS.filter(q => vals[q.id]).length;
   const matches = getMatches(vals);
@@ -5319,17 +5579,17 @@ function TerminalSelector({ onBack, onOrder, notify }) {
   const addToCart = (line) => { setCart(c => [...c, line]); notify && notify(`Added ${line.name} to cart`); };
   const cartCount = cart.reduce((n, i) => n + i.qty, 0);
 
-  // AI reconciled recommendation — one answer that balances cost + technical fit, and spells out
+  // AI reconciled recommendation, one answer that balances cost + technical fit, and spells out
   // what's in the box (incl. USB-A) and how fast it ships (the merchant's real blockers).
   const [recOpen, setRecOpen] = useState(false);
   const recPick = matches[0] || ORDER_PRODUCTS.find(p => p.id === 'sfo1') || ORDER_PRODUCTS[0];
   const recIsSoftPOS = recPick && recPick.type === 'SoftPOS';
   const recIncludes = (orderIncludes(recPick) || []).concat(recIsSoftPOS ? [] : ['USB-A to USB-C cable (the USB-A end plugs into most tills / POS)']);
   const recDelivery = recIsSoftPOS
-    ? 'Available instantly — download the app, no hardware to ship'
+    ? 'Available instantly, download the app, no hardware to ship'
     : 'Ships in 2 business days · free standard delivery, or next-day for €15';
   const recReason = recIsSoftPOS
-    ? 'Zero hardware cost and instant to deploy for your setup — cheaper than any reader, with the same contactless acceptance.'
+    ? 'Zero hardware cost and instant to deploy for your setup, cheaper than any reader, with the same contactless acceptance.'
     : `Best balance of cost and fit at €${recPick.price}: covers ${(recPick.specs || []).join(', ')}. Cheaper readers drop offline/printing; pricier all-in-ones add screens you don't need here.`;
   const openRec = () => { setRecOpen(true); notify && notify('Reconciled cost, technical fit and delivery into one recommendation'); };
 
@@ -5340,13 +5600,13 @@ function TerminalSelector({ onBack, onOrder, notify }) {
         onBack={onBack} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
         actions={<Button variant="primary" iconRight="arrow-right" disabled={selected.length === 0} onClick={() => setStep('cart')}>Next{selected.length ? ` (${selected.length})` : ''}</Button>}>
         <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
-          {/* collapsed rail — click the panel icon to reopen the control panel */}
+          {/* collapsed rail, click the panel icon to reopen the control panel */}
           {!panelOpen && (
             <div style={{ width: 48, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0' }}>
               <GlyphButton title="Show control panel" onClick={() => setPanelOpen(true)}><PanelToggleIcon /></GlyphButton>
             </div>
           )}
-          {/* control panel (docked left) — header with Ask · Filters switch, body, footer */}
+          {/* control panel (docked left), header with Ask · Filters switch, body, footer */}
           {panelOpen && (
           <div style={{ width: panelW, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <Row style={{ padding: '8px 12px 8px 20px', borderBottom: `1px solid ${T.sepFaint}`, gap: 8, flexShrink: 0 }}>
@@ -5356,14 +5616,14 @@ function TerminalSelector({ onBack, onOrder, notify }) {
             </Row>
             {mode === 'ask' ? (<>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Describe the business in your own words — I’ll pick the filters and narrow the list.</span>
-                {/* AI reconciled recommendation — one answer: cost + fit + what's in the box + delivery */}
+                <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Describe the business in your own words, I’ll pick the filters and narrow the list.</span>
+                {/* AI reconciled recommendation, one answer: cost + fit + what's in the box + delivery */}
                 <button type="button" className="ns-suggest" onClick={openRec}
                   style={{ display: 'flex', alignItems: 'flex-start', gap: 10, width: '100%', padding: '12px', border: `1px solid ${T.border}`, borderRadius: T.radiusM, background: T.card, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
                   <Ico name="sparkles" size={16} color="#00A152" style={{ marginTop: 1, flexShrink: 0 }} />
                   <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>Recommend the best device for me</span>
-                    <span style={{ fontSize: 12, color: T.sub, lineHeight: '16px' }}>One answer that balances cost and technical fit — with what’s in the box and how fast it ships.</span>
+                    <span style={{ fontSize: 12, color: T.sub, lineHeight: '16px' }}>One answer that balances cost and technical fit, with what’s in the box and how fast it ships.</span>
                   </Col>
                 </button>
                 {recOpen && recPick && (
@@ -5420,12 +5680,12 @@ function TerminalSelector({ onBack, onOrder, notify }) {
                   </Col>
                 )}
               </div>
-              {/* pinned composer — same PromptBox used by Device Studio / Fleet AI */}
+              {/* pinned composer, same PromptBox used by Device Studio / Fleet AI */}
               <div style={{ flexShrink: 0, padding: T.s4, borderTop: `1px solid ${T.sep}` }}>
                 <PromptBox q={askText} setQ={setAskText} onSend={() => runAsk()} thinking={false}
                   models={ASK_CONTEXTS.devices.models} defaultMode={ASK_CONTEXTS.devices.defaultMode}
                   placeholder="e.g. Coffee shop, table service, tips, some tourists"
-                  onAdd={(v) => notify && notify((NL_ADD_ITEMS.find(i => i.value === v) || {}).label + ' — coming soon')} />
+                  onAdd={(v) => notify && notify((NL_ADD_ITEMS.find(i => i.value === v) || {}).label + ', coming soon')} />
               </div>
             </>) : (<>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -5443,7 +5703,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
           </div>
           )}
           {panelOpen && <ResizeHandle onMouseDown={startResize} />}
-          {/* canvas — matching devices grid (click to select) */}
+          {/* canvas, matching devices grid (click to select) */}
           <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 40, background: T.page }}>
             <div style={{ maxWidth: 840, margin: '0 auto' }}>
               <Row style={{ marginBottom: 24, justifyContent: 'space-between' }}>
@@ -5478,7 +5738,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
     );
   }
 
-  // ---------- Step 4: order confirmed — thank-you page ----------
+  // ---------- Step 4: order confirmed, thank-you page ----------
   if (step === 'placed') {
     const lines = cart.length ? cart : selectedProducts.map(p => ({ id: p.id, name: p.name, qty: 1, price: p.price }));
     const money = (n) => `€ ${n.toFixed(2)}`;
@@ -5492,7 +5752,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
       <FullPage title="Order confirmed" tone="nav-devices" onBack={onBack} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}>
         <div style={{ maxWidth: 520, margin: '0 auto', padding: '48px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
           <img className="ns-pop" src="assets/tx/order-success.svg" alt="" style={{ width: 208, height: 208, objectFit: 'contain', display: 'block' }} />
-          <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', marginTop: 8 }}>Thank you — your order is confirmed</span>
+          <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', marginTop: 8 }}>Thank you, your order is confirmed</span>
           <span style={{ fontSize: 14, color: T.sub, lineHeight: '21px', maxWidth: 420 }}>We’ve emailed your receipt{ship.email ? ` to ${ship.email}` : ''}. You can track fulfilment any time under Orders &amp; returns.</span>
           {/* order recap card */}
           <div style={{ ...surface, width: '100%', padding: 20, marginTop: 20, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -5558,7 +5818,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
       <FullPage title="Checkout" subtitle={`${lines.reduce((n, l) => n + l.qty, 0)} item${lines.reduce((n, l) => n + l.qty, 0) === 1 ? '' : 's'} · secure order`} tone="nav-devices"
         onBack={() => setStep('cart')} backLabel="Cart" backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}>
         <div style={{ maxWidth: 1080, margin: '0 auto', padding: `${T.s6}px 24px`, display: 'flex', gap: T.s7, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          {/* left — contact · shipping · delivery */}
+          {/* left, contact · shipping · delivery */}
           <div style={{ flex: '1 1 500px', minWidth: 320, display: 'flex', flexDirection: 'column', gap: 40 }}>
             {/* contact */}
             <Col gap={12}>
@@ -5597,7 +5857,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
               </Col>
             </Col>
           </div>
-          {/* right — sticky order summary (borderless · Stripe-style) */}
+          {/* right, sticky order summary (borderless · Stripe-style) */}
           <div style={{ flex: '1 1 340px', minWidth: 300 }}>
             <div style={{ background: '#F6F7F9', borderRadius: T.radiusL, padding: 24, display: 'flex', flexDirection: 'column', gap: 20, position: 'sticky', top: 20 }}>
               <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -5629,7 +5889,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
                   </Row>
                 ))}
               </Col>
-              {/* discount — hidden behind a link until needed (Stripe-style) */}
+              {/* discount, hidden behind a link until needed (Stripe-style) */}
               {promoOpen ? (
                 <Row gap={8} style={{ alignItems: 'center' }}>
                   <input value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="Discount code" autoFocus
@@ -5671,7 +5931,7 @@ function TerminalSelector({ onBack, onOrder, notify }) {
           {cartTab === 'accessories' && ORDER_ACCESSORIES.map(a => <CartRow key={a.id} item={a} onAdd={addToCart} notify={notify} onOpen={setDetailItem} />)}
           {cartTab === 'kits' && ORDER_KITS.map(k => <CartRow key={k.id} item={k} onAdd={addToCart} notify={notify} onOpen={setDetailItem} />)}
         </Col>
-        {/* Cross-sell — accessories that DON'T ship in the box. Surfacing them here avoids the
+        {/* Cross-sell, accessories that DON'T ship in the box. Surfacing them here avoids the
             common painpoint of terminals getting ordered alone, then a follow-up order + support ticket. */}
         {cartTab === 'devices' && selectedProducts.length > 0 && (() => {
           const inCart = new Set(cart.map(l => l.id));
@@ -5687,8 +5947,8 @@ function TerminalSelector({ onBack, onOrder, notify }) {
               <Row align="flex-start" style={{ gap: 12, marginBottom: 14 }}>
                 <Ico name="sparkles" size={18} color="#00A152" style={{ marginTop: 1, flexShrink: 0 }} />
                 <Col gap={2} style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Don’t forget — these don’t ship in the box</span>
-                  <span style={{ fontSize: 13, color: T.sub, lineHeight: '18px' }}>Add them now so your devices are ready on day one — and skip a follow-up order later.</span>
+                  <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Don’t forget, these don’t ship in the box</span>
+                  <span style={{ fontSize: 13, color: T.sub, lineHeight: '18px' }}>Add them now so your devices are ready on day one, and skip a follow-up order later.</span>
                 </Col>
                 <Button variant="secondary" condensed iconLeft="plus" onClick={addAll}>Add all</Button>
               </Row>
@@ -5727,7 +5987,7 @@ const ORDER_PRODUCTS = [
     filter: { use: ['mobile'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'no' } },
   { id: 'nyc1', name: 'NYC1', type: 'Mobile', acc: 0, price: 79, blurb: 'Designed by us, inspired by you; a card reader for businesses on the move.', specs: ['Portable', 'Bluetooth'], icon: 'terminal-1', img: 'assets/devices/nyc1.png',
     filter: { use: ['mobile', 'unattended'], card: 'contactless_only', input: 'touchscreen', os: 'payment_only', offline: 'no', print: 'no' } },
-  { id: 'sfo1', name: 'Adyen SFO1', type: 'Countertop', acc: 10, price: 329, blurb: 'Payment, branding, and customer engagement — all in one terminal.', specs: ['Countertop', 'Ethernet', 'Wi-Fi'], icon: 'terminal-2', img: 'assets/devices/sfo1.png',
+  { id: 'sfo1', name: 'Adyen SFO1', type: 'Countertop', acc: 10, price: 329, blurb: 'Payment, branding, and customer engagement, all in one terminal.', specs: ['Countertop', 'Ethernet', 'Wi-Fi'], icon: 'terminal-2', img: 'assets/devices/sfo1.png',
     filter: { use: ['countertop'], card: 'all', input: 'touchscreen', os: 'all_in_one', offline: 'yes', print: 'yes' } },
   { id: 'v400m', name: 'V400m', type: 'Mobile', acc: 6, price: 289, blurb: 'Go-to portable, with fast printing and many connections.', specs: ['Portable', 'Wi-Fi', '4G'], icon: 'mobile', img: 'assets/devices/v400m.png',
     filter: { use: ['mobile'], card: 'all', input: 'physical', os: 'payment_only', offline: 'yes', print: 'yes' } },
@@ -5754,11 +6014,11 @@ const ORDER_ACCESSORIES = [
   { id: 'battery', name: 'Spare battery pack', sku: 'BPK475-001', price: 45.00, img: 'assets/devices/acc/battery.png', variants: ['Standard capacity'], desc: 'Keep a charged battery on hand for uninterrupted all-day trading.' },
 ];
 const ORDER_KITS = [
-  { id: 'kit-retail', name: 'Retail lane kit', price: 459, img: 'assets/devices/sfo1.png', desc: 'Adyen SFO1 countertop + charging base + power cable — everything for a fixed checkout lane.' },
+  { id: 'kit-retail', name: 'Retail lane kit', price: 459, img: 'assets/devices/sfo1.png', desc: 'Adyen SFO1 countertop + charging base + power cable, everything for a fixed checkout lane.' },
   { id: 'kit-mobile', name: 'Mobile seller kit', price: 429, img: 'assets/devices/s1f2.webp', desc: 'S1F2 handheld + spare battery + charging base for floor selling and queue-busting.' },
-  { id: 'kit-hospitality', name: 'Hospitality kit', price: 349, img: 'assets/devices/v400m.png', desc: 'V400m portable + charging base — pay-at-table for restaurants, bars and cafés.' },
+  { id: 'kit-hospitality', name: 'Hospitality kit', price: 349, img: 'assets/devices/v400m.png', desc: 'V400m portable + charging base, pay-at-table for restaurants, bars and cafés.' },
 ];
-// Commonly-needed accessories that DON'T ship in the box — the internal painpoint: terminals get
+// Commonly-needed accessories that DON'T ship in the box, the internal painpoint: terminals get
 // ordered alone, then the base/cable/battery is a follow-up order + support ticket. Maps product → accessory ids.
 const BOX_EXTRAS = {
   s1f2: ['charging-base', 'battery'], ams1: ['power-cable'], sfo1: ['power-cable'], v400c: ['power-cable'],
@@ -5779,21 +6039,21 @@ function QtyStepper({ value, onChange }) {
     </Row>
   );
 }
-/* What ships in the box — used by the product detail modal. */
+/* What ships in the box, used by the product detail modal. */
 function orderIncludes(item) {
   if (item.includes) return item.includes;
-  if (item.type === 'SoftPOS') return ['App download link', 'Onboarding guide', 'No hardware — runs on your phone'];
+  if (item.type === 'SoftPOS') return ['App download link', 'Onboarding guide', 'No hardware, runs on your phone'];
   if (item.id && item.id.startsWith('kit-')) return null; // kits describe contents in their text
   if (item.type) return ['Terminal device', 'Power adapter', 'Charging / data cable', 'Quick-start guide'];
   return null;
 }
-/* Product detail modal — bigger image, full explanation, specs, variant, qty, add. */
+/* Product detail modal, bigger image, full explanation, specs, variant, qty, add. */
 function CartDetailModal({ item, onClose, onAdd }) {
   const [qty, setQty] = useState(1);
   const [variant, setVariant] = useState(item && item.variants ? item.variants[0] : null);
   if (!item) return null;
   const includes = orderIncludes(item);
-  // Accessories that DON'T ship in the box — only meaningful for physical devices.
+  // Accessories that DON'T ship in the box, only meaningful for physical devices.
   const isDevice = ORDER_PRODUCTS.some(p => p.id === item.id);
   const notIncluded = isDevice ? orderNotIncluded(item) : [];
   return (
@@ -5819,7 +6079,7 @@ function CartDetailModal({ item, onClose, onAdd }) {
             <Col gap={8} style={{ marginTop: 4, paddingTop: 12, borderTop: `1px solid ${T.sepFaint}` }}>
               <Row gap={6} align="center">
                 <Ico name="info" size={14} color="var(--b-color-decorative-orange)" />
-                <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>Not in the box — you’ll likely need</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>Not in the box, you’ll likely need</span>
               </Row>
               {notIncluded.map(a => (
                 <Row key={a.id} gap={10} align="center" style={{ padding: '8px 10px', border: `1px solid ${T.sepFaint}`, borderRadius: T.radiusM, background: T.card }}>
@@ -5840,7 +6100,7 @@ function CartDetailModal({ item, onClose, onAdd }) {
     </Modal>
   );
 }
-/* One purchasable row (device / accessory / kit) — picture · details · variant · qty · add. */
+/* One purchasable row (device / accessory / kit), picture · details · variant · qty · add. */
 function CartRow({ item, onAdd, notify, onOpen }) {
   const [qty, setQty] = useState(1);
   const [variant, setVariant] = useState(item.variants ? item.variants[0] : null);
@@ -5889,7 +6149,7 @@ function OrderProductImg({ p, size = 48, h = 140 }) {
 /* ============================================================= TERMINAL PRICES
    Standalone reference table mirroring Adyen's internal terminal price sheet:
    one-off "Terminal Package" price + monthly "Terminal Replacement Service (TRS)".
-   Prices are EUR, tax-exclusive. Display only — no cart logic. */
+   Prices are EUR, tax-exclusive. Display only, no cart logic. */
 const TERMINAL_PRICES = [
   { id: 'p400', model: 'P400 Plus', img: 'assets/devices/p630.png', icon: 'terminal-2', rows: [{ note: 'Power over ethernet', pkg: 395, trs: 2.70 }] },
   { id: 'v400c', model: 'V400c plus', img: 'assets/devices/v400c.png', icon: 'terminal-2', rows: [{ pkg: 350, trs: 2.60 }] },
@@ -5900,7 +6160,7 @@ const TERMINAL_PRICES = [
   { id: 's1f2', model: 'S1F2', img: 'assets/devices/s1f2.webp', icon: 'mobile', rows: [{ label: 'S1F2', note: 'Standard', pkg: 395, trs: 2.40 }, { label: 'S1F2L', note: 'With barcode reader', pkg: 465, trs: 2.60 }] },
   { id: 'm450', model: 'M450', img: 'assets/devices/m450.png', icon: 'terminal-2', rows: [{ pkg: 603, trs: 3.80 }] },
 ];
-/* Accessories & consumables price sheet — grouped by terminal type → model. Prices kept as the
+/* Accessories & consumables price sheet, grouped by terminal type → model. Prices kept as the
    exact strings from the source sheet (mixed decimals) so the table mirrors it faithfully. */
 const ACCESSORY_PRICES = [
   { type: 'Countertop', model: 'P630', items: [['Dongle Ethernet/RS232/USB 1.0m', '82.00'], ['Dongle PoE RS232/ETH/USB 2.5 m', '74.00'], ['Cable Powered USB 3.0 m', '37.00'], ['Cable USB-A 3.0m', '16.00'], ['Cable USB w/Inline Power 3.0 m', '34.00'], ['Privacy shield P630', '2.9'], ['P400 3,0M Dongle Ethernet', '15.5'], ['Orange dongle, GETH switch, DC jack', '64.76'], ['Orange Cable 2m', '20.55']] },
@@ -5917,7 +6177,7 @@ const ACCESSORY_PRICES = [
   { type: '', model: 'NYC1', items: [] },
   { type: '', model: 'e285p', items: [['Battery pack E285', '18.00'], ['Protective Case E285', '30.00'], ['EU USB Wall Plug', '9.9']] },
 ];
-/* Stock management — internal popup. Prices are editable by the user and saved to the catalogue;
+/* Stock management, internal popup. Prices are editable by the user and saved to the catalogue;
    stock levels are read-only and synced automatically from the warehouse system (mocked here with a
    deterministic hash + a sync seed so "Sync now" shifts the numbers). */
 function stockStatus(q) {
@@ -6041,7 +6301,7 @@ function StockManagement({ notify }) {
       })}
     </div>
   );
-  // Inline page (Devices → Pricing & catalogue) — same layout as Devices Intelligence / Fleet health:
+  // Inline page (Devices → Pricing & catalogue), same layout as Devices Intelligence / Fleet health:
   // left title + info + subtitle, actions right. No full-modal chrome.
   return (
     <div style={{ padding: `${T.s7}px ${T.s7}px ${T.s7}px`, maxWidth: T.maxW, margin: '0 auto' }}>
@@ -6059,10 +6319,10 @@ function StockManagement({ notify }) {
           <Button variant="primary" iconLeft="checkmark" onClick={() => notify && notify('Catalogue prices saved')}>Save changes</Button>
         </Row>
       </Row>
-      {/* warehouse sync status — clarifies that "sync" pulls STOCK only, never prices */}
+      {/* warehouse sync status, clarifies that "sync" pulls STOCK only, never prices */}
       <Row align="center" gap={10} style={{ ...surface, padding: '10px 16px', marginBottom: T.s4 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--b-color-decorative-green)', flexShrink: 0 }} />
-        <span style={{ fontSize: 13, color: T.ink }}>Stock counts update automatically from the warehouse. Syncing refreshes stock only — never prices.</span>
+        <span style={{ fontSize: 13, color: T.ink }}>Stock counts update automatically from the warehouse. Syncing refreshes stock only, never prices.</span>
         <span style={{ display: 'inline-flex', flexShrink: 0, lineHeight: 0 }}>
           <InfoTip width={320} content={<span><b>Sync = stock only.</b> It refreshes on-hand unit counts from the warehouse and never changes prices. You edit prices here, then press <b>Save changes</b> to apply them.</span>} placement="right"><Ico name="info" size={16} color={T.sub} /></InfoTip>
         </span>
@@ -6106,7 +6366,7 @@ function OrderFlow({ onBack, notify }) {
       <Row align="flex-start" style={{ marginBottom: T.s5 }}>
         <span style={{ flex: 1, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em' }}>Products in {region}</span>
         <Row gap={8}>
-          <Button variant="secondary" iconLeft="settings" onClick={() => notify && notify('Spare parts catalogue — coming soon')}>I need a spare part</Button>
+          <Button variant="secondary" iconLeft="settings" onClick={() => notify && notify('Spare parts catalogue, coming soon')}>I need a spare part</Button>
           {cartBtn}
         </Row>
       </Row>
@@ -6139,7 +6399,7 @@ function OrderFlow({ onBack, notify }) {
       <Row style={{ marginBottom: T.s5 }}>
         <div style={{ flex: 1 }} />
         <Row gap={8}>
-          <Button variant="secondary" iconLeft="settings" onClick={() => notify && notify('Replacement parts — coming soon')}>I need a replacement part</Button>
+          <Button variant="secondary" iconLeft="settings" onClick={() => notify && notify('Replacement parts, coming soon')}>I need a replacement part</Button>
           {cartBtn}
         </Row>
       </Row>
@@ -6180,7 +6440,7 @@ function OrderFlow({ onBack, notify }) {
             <span style={{ fontSize: 18, fontWeight: 600 }}>Order reference <span style={{ fontSize: 13, color: T.faint, fontWeight: 400 }}>(optional)</span></span>
           </Col>
           <InputField placeholder="Add a reference for your records" />
-          <div><Button variant="primary" onClick={() => { setCart(0); onBack(); notify && notify('Order placed — you\u2019ll get a confirmation email'); }}>Place order</Button></div>
+          <div><Button variant="primary" onClick={() => { setCart(0); onBack(); notify && notify('Order placed, you\u2019ll get a confirmation email'); }}>Place order</Button></div>
         </Col>
         <div style={{ ...surface, padding: 20, flex: '1 1 320px', minWidth: 300, background: 'var(--b-color-background-secondary)' }}>
           <Row style={{ marginBottom: 4 }}><span style={{ flex: 1, fontSize: 15, fontWeight: 600 }}>Order summary</span><Button variant="secondary" condensed onClick={() => setStep('detail')}>Edit</Button></Row>
@@ -6208,7 +6468,7 @@ function OrderFlow({ onBack, notify }) {
   );
 }
 
-/* Location creation flow — a focused form that adds a new location to the fleet. */
+/* Location creation flow, a focused form that adds a new location to the fleet. */
 function AddLocationModal({ onClose, onCreate }) {
   const [name, setName] = useState('');
   const [merchant, setMerchant] = useState(SM_MERCHANTS[0]);
@@ -6254,17 +6514,20 @@ function AddLocationModal({ onClose, onCreate }) {
   );
 }
 
-/* Holistic device detail — identity, live state, final resolved config, terminal logs, event
+/* Holistic device detail, identity, live state, final resolved config, terminal logs, event
    timeline and problem history. "Config" opens the Device Studio preview scoped to this device. */
 function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify }) {
   const [devTab, setDevTab] = useState('info'); // Device info | Device events | Settings & config
-  const [devRange, setDevRange] = useState('7d'); // event/activity period — default last 7 days
-  const [logFilter, setLogFilter] = useState('all'); // event log — All | Problems
-  const [devShown, setDevShown] = useState(() => { try { const s = JSON.parse(localStorage.getItem('ns_dev_signals') || 'null'); return Array.isArray(s) ? s : null; } catch (e) { return null; } }); // which signal graphs show — null = default top 4
+  const [devRange, setDevRange] = useState('7d'); // event/activity period, default last 7 days
+  const [logFilter, setLogFilter] = useState('all'); // event log, All | Problems
+  const [devShown, setDevShown] = useState(() => { try { const s = JSON.parse(localStorage.getItem('ns_dev_signals') || 'null'); return Array.isArray(s) ? s : null; } catch (e) { return null; } }); // which signal graphs show, null = default top 4
   const [devCustomize, setDevCustomize] = useState(false);
   const [drillSignal, setDrillSignal] = useState(null); // a signal graph opened full-size
+  const [txQuery, setTxQuery] = useState(''); // transaction-flow lookup by payment reference
+  const [txOpen, setTxOpen] = useState(null); // a transaction opened to show its full request/response flow
+  const [recOpen, setRecOpen] = useState(false); // recommended-action detail modal (opened from the alert CTA)
   useEffect(() => { try { localStorage.setItem('ns_dev_signals', JSON.stringify(devShown)); } catch (e) { /* ignore */ } }, [devShown]);
-  useEffect(() => { setDevTab('info'); setDevRange('7d'); setLogFilter('all'); setDevCustomize(false); setDrillSignal(null); }, [row && row.id]); // reset when a different device opens
+  useEffect(() => { setDevTab('info'); setDevRange('7d'); setLogFilter('all'); setDevCustomize(false); setDrillSignal(null); setTxQuery(''); setTxOpen(null); setRecOpen(false); }, [row && row.id]); // reset when a different device opens
   if (!row) return null;
   const isMobile = row._type === 'Mobile';
   const serial = row.serial || row.install || '—';
@@ -6294,6 +6557,37 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
   const events = deviceEvents(dv);
   const problems = events.filter(e => /failure|signal|Cellular|Offline|error/i.test(e.type));
   const isProblem = (e) => problems.includes(e); // highlight these inline in the merged event log
+  const transactions = deviceTransactions(dv); // full request/response flow per payment attempt
+
+  // Plain-language recommended action, the fix, not just the cause (reuses the store fix-step library).
+  const recKey = deviceReason(dv).key;
+  const recText = health === 'Healthy' ? null : ({
+    ws: 'Payments are failing because the terminal keeps losing its connection to Adyen (WebSocket drops/timeouts). Check the store’s internet and router, spread terminals across access points, and enable cellular fallback so payments keep working when Wi‑Fi drops.',
+    weak: 'This terminal is on a weak signal and has fallen back to cellular. Move it closer to the access point (or onto the store Wi‑Fi), clear obstructions between it and the AP, and keep cellular fallback enabled as a backup.',
+    notboarded: 'This terminal is offline / not boarded, so it can’t reach Adyen. Confirm it’s powered on and in Wi‑Fi or cellular range, check the store router is reachable, then power‑cycle it.',
+  }[recKey] || 'Review the connectivity signals and recent events below, then troubleshoot the most frequent issue.');
+  const recSteps = (health !== 'Healthy' && ['ws', 'weak', 'notboarded'].includes(recKey)) ? storeFixSteps(recKey, { offline: 1 }).steps : [];
+
+  // Lifecycle, hardware age, time in service and battery health, so replacements can be planned proactively.
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const ageYears = 1 + rnd(5); // 1–5 years old
+  const mfgMonth = rnd(12);
+  const mfgDate = `${MONTHS[mfgMonth]} ${2026 - ageYears}`;
+  const inSvcDate = `${MONTHS[(mfgMonth + 1) % 12]} ${2026 - ageYears}`;
+  const svcMonths = Math.max(1, ageYears * 12 - rnd(4));
+  const svcLabel = svcMonths >= 12 ? `${Math.floor(svcMonths / 12)}y ${svcMonths % 12}m` : `${svcMonths}m`;
+  const battHealth = isMobile ? null : (72 + rnd(27)); // battery capacity vs new, 72–98%
+  const replaceSoon = !isMobile && (ageYears >= 4 || (battHealth != null && battHealth < 80));
+  // Concrete, actionable replacement window, tighter when the battery is weaker / the unit is older
+  // (assumes a ~5-year service life). Also resolved to a target month for a clear "replace by" date.
+  const replaceWindowMonths = !replaceSoon ? null
+    : (battHealth != null && battHealth < 80)
+      ? (battHealth < 75 ? 1 : 2)
+      : Math.min(6, Math.max(1, (5 * 12) - svcMonths));
+  const replaceWindowLabel = replaceWindowMonths == null ? null : (replaceWindowMonths <= 1 ? 'within 1 month' : `within ${replaceWindowMonths} months`);
+  const replaceByDate = replaceWindowMonths == null ? null : `${MONTHS[(9 + replaceWindowMonths) % 12]} ${2026 + (9 + replaceWindowMonths >= 12 ? 1 : 0)}`; // from an Oct 2026 "today"
+  // Honest blind spots + retention, set expectations about what telemetry can and can't show.
+  const blindSpotNote = 'Some activity can’t be shown here: settings pushed from Adyen to the terminal aren’t logged, and a tampered or frozen terminal can’t report. History is retained for about 30 days.';
 
   // final resolved configuration (schema defaults + inheritance source)
   const cfg = buildSettingsRows(store || { code: locName, id: row.storeId || 'x' });
@@ -6309,7 +6603,7 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
   );
   const dotEl = <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot || 'var(--b-color-decorative-grey)', flexShrink: 0 }} />;
 
-  // Per-device telemetry (Core Terminal Dashboard) — stable per device + granular range.
+  // Per-device telemetry (Core Terminal Dashboard), stable per device + granular range.
   const RANGE_OPTIONS = [{ value: '1h', label: 'Last 1 hour' }, { value: '24h', label: 'Last 24 hours' }, { value: '7d', label: 'Last 7 days' }, { value: '30d', label: 'Last 30 days' }, { value: '90d', label: 'Last 90 days' }];
   const dMeta = ({ '1h': { n: 12, u: 'm', s: 5 }, '24h': { n: 24, u: 'h', s: 1 }, '7d': { n: 7, u: 'd', s: 1 }, '30d': { n: 30, u: 'd', s: 1 }, '90d': { n: 30, u: 'd', s: 3 } })[devRange] || { n: 7, u: 'd', s: 1 };
   const dN = dMeta.n;
@@ -6350,21 +6644,53 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
         <MenuButton variant="secondary" condensed={false} icon="options-vertical" label="Actions" items={[
           { value: 'restart', label: 'Restart', icon: 'refresh' }, { value: 'replace', label: 'Replace device', icon: 'refresh' }, { value: 'return', label: 'Return device', icon: 'arrow-right' },
         ]} onSelect={(v) => notify && notify(v === 'restart' ? 'Restart command sent' : v === 'replace' ? 'Replacement ordered' : 'Return label generated')} />
-        <Button variant="secondary" iconLeft="download" onClick={() => { downloadCSV(`device-${termId}-events.csv`, ['Time', 'Type', 'Detail', 'Reference'], events.map(e => [e.ts, e.type, e.detail, e.ref || ''])); notify && notify('Exported device events to CSV'); }}>Export</Button>
+        <MenuButton variant="secondary" condensed={false} icon="download" label="Export" align="right" items={[
+          { value: 'events', label: 'Export events (CSV)', icon: 'download' },
+          { value: 'tx', label: 'Export transactions (CSV)', icon: 'download' },
+          { value: 'webhook', label: 'Stream to data feed / webhook', icon: 'arrow-right' },
+        ]} onSelect={(v) => {
+          if (v === 'events') { downloadCSV(`device-${termId}-events.csv`, ['Time', 'Type', 'Detail', 'Reference'], events.map(e => [e.ts, e.type, e.detail, e.ref || ''])); notify && notify('Exported device events to CSV'); }
+          else if (v === 'tx') { downloadCSV(`device-${termId}-transactions.csv`, ['Time', 'Reference', 'Method', 'Amount', 'Outcome'], transactions.map(t => [t.when, t.ref, `${t.brand} ${t.pan}`, t.amount, t.outcome])); notify && notify('Exported transactions to CSV'); }
+          else notify && notify('Streaming this device’s telemetry to your data feed (Splunk, webhook)…');
+        }} />
       </>}>
       <div style={{ maxWidth: T.maxW, margin: '0 auto', padding: `${T.s7}px ${T.s7}px ${T.s7}px`, display: 'flex', flexDirection: 'column', gap: T.s5 }}>
         {health !== 'Healthy' && (
           <Alert type={health === 'Offline' ? 'warning' : 'critical'} variant="default"
             title={health === 'Offline' ? 'This device is offline' : 'This device is at risk of failing payments'}
-            description={dv.cause ? `${dv.cause}. ${dv.failed} connectivity-linked failed transactions recently.` : 'Check connectivity and recent events below.'} />
+            description={dv.cause ? `${dv.cause}. ${dv.failed} connectivity-linked failed transactions recently.` : 'Check connectivity and recent events below.'}
+            actions={<Button variant="secondary" condensed iconRight="arrow-right" onClick={() => setRecOpen(true)}>View recommended action</Button>} />
         )}
-        <UnderlineTabs value={devTab} onChange={setDevTab} tabs={[{ value: 'info', label: 'Device info' }, { value: 'signals', label: 'Device signals' }, { value: 'settings', label: 'Settings & config' }]} />
+        {recOpen && (
+          <Modal open onClose={() => setRecOpen(false)} width={520} title="Recommended action"
+            description={dv.cause || 'Connectivity issue detected'}
+            footer={<Row gap={8} style={{ justifyContent: 'flex-end', width: '100%' }}>
+              <Button variant="tertiary" condensed iconLeft="settings" onClick={() => { setRecOpen(false); openStudio(); }}>Configuration</Button>
+              <Button variant="primary" condensed iconLeft="refresh" onClick={() => { notify && notify('Restart command sent'); setRecOpen(false); }}>Restart terminal</Button>
+            </Row>}>
+            <Col gap={14}>
+              <span style={{ fontSize: 13, color: T.sub, lineHeight: 1.5 }}>{recText}</span>
+              {recSteps.length > 0 && (
+                <Col gap={10}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Steps to fix</span>
+                  {recSteps.map((t, i) => (
+                    <Row key={i} gap={10} align="flex-start">
+                      <span style={{ flexShrink: 0, width: 20, height: 20, borderRadius: '50%', background: 'var(--b-color-background-secondary)', color: T.ink, fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--b-font-family-secondary)' }}>{i + 1}</span>
+                      <span style={{ fontSize: 13, color: T.ink, lineHeight: 1.5 }}>{t}</span>
+                    </Row>
+                  ))}
+                </Col>
+              )}
+            </Col>
+          </Modal>
+        )}
+        <UnderlineTabs value={devTab} onChange={setDevTab} tabs={[{ value: 'info', label: 'Device info' }, { value: 'transactions', label: 'Transactions' }, { value: 'signals', label: 'Device signals' }, { value: 'settings', label: 'Settings & config' }]} />
 
         {devTab === 'info' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: T.s6, alignItems: 'flex-start' }}>
-            {/* left column — identity, network, location */}
+            {/* left column, identity, network, location */}
             <Col gap={T.s6}>
-              <Section title="Device info" description="Identity and live state — all identifiers linked.">
+              <Section title="Device info" description="Identity and live state, all identifiers linked.">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0 32px' }}>
                   {fact('Status', <Row gap={6} style={{ justifyContent: 'flex-end' }}>{dotEl}<span>{statusWord}</span></Row>)}
                   {fact('Model', `${row.model} (${isMobile ? 'SoftPOS' : 'Terminal'})`)}
@@ -6386,6 +6712,23 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
                   {fact('Connection status', health === 'Offline' ? 'Disconnected' : 'Connected')}
                 </div>
               </Section>
+              <Section title="Lifecycle" info="Hardware age and battery health, so you can plan replacements before devices fail mid-shift. “Plan replacement” is a proactive prompt, the terminal still works today; it just flags that it’s aging or its battery is degrading. Manufacturing date and time in service come from the device register."
+                actions={replaceSoon ? <Tag label="Replacement required" variant="orange" /> : <Tag label="Healthy for its age" variant="green" />}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0 32px' }}>
+                  {fact('Manufacturing date', mfgDate)}
+                  {fact('In service since', inSvcDate)}
+                  {fact('Time in service', svcLabel)}
+                  {battHealth != null && fact('Battery health', `${battHealth}%`)}
+                  {fact('Replacement', replaceSoon ? `Replace ${replaceWindowLabel} (by ${replaceByDate})` : 'Not needed yet')}
+                </div>
+                <span style={{ display: 'block', marginTop: 10, fontSize: 12, color: T.sub, lineHeight: 1.5 }}>
+                  {replaceSoon
+                    ? (battHealth != null && battHealth < 80
+                        ? `It still works today, but battery health has dropped to ${battHealth}%, below the 80% threshold, so it can shut down mid‑shift. Order a replacement ${replaceWindowLabel} (by ${replaceByDate}); it isn’t urgent right now.`
+                        : `It still works today, but it has been in service ${svcLabel}, approaching the ~5‑year service life, so failures get more likely. Order a replacement ${replaceWindowLabel} (by ${replaceByDate}); it isn’t urgent right now.`)
+                    : `No replacement needed. We’ll flag this device when its battery health drops below 80% or it approaches ~5 years in service.`}
+                </span>
+              </Section>
               <Section title="Location" actions={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => onOpenStore && row.storeId && onOpenStore(row.storeId)}>Open location</Button>}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: '0 32px' }}>
                   {fact('Location', locName)}
@@ -6395,7 +6738,7 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
                 </div>
               </Section>
             </Col>
-            {/* right column — event log (merged from the old Device events tab) */}
+            {/* right column, event log (merged from the old Device events tab) */}
             {(() => {
               const logList = (logFilter === 'problems' ? problems : events).slice(0, 24);
               return (
@@ -6422,11 +6765,82 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
                           );
                         })}
                       </Col>}
+                  <span style={{ display: 'block', marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.sepFaint}`, fontSize: 11, color: T.faint, lineHeight: 1.5 }}>{blindSpotNote}</span>
                 </Section>
               );
             })()}
           </div>
         )}
+
+        {devTab === 'transactions' && (() => {
+          const q = txQuery.trim().toLowerCase();
+          const list = q ? transactions.filter(t => t.ref.toLowerCase().includes(q)) : transactions;
+          const outVar = { Approved: 'green', Refused: 'orange', Failed: 'red', Reversed: 'grey' };
+          const th = { textAlign: 'left', padding: '10px 14px', fontSize: 12, color: T.sub, fontWeight: 600, borderBottom: `1px solid ${T.sep}`, whiteSpace: 'nowrap', background: 'var(--b-color-background-secondary)' };
+          const td = { padding: '11px 14px', fontSize: 13, color: T.ink, borderBottom: `1px solid ${T.sepFaint}`, whiteSpace: 'nowrap' };
+          const resultDot = { ok: 'var(--b-color-decorative-green)', warn: 'var(--b-color-decorative-orange)', fail: 'var(--b-color-decorative-red)' };
+          const openTx = txOpen ? transactions.find(t => t.ref === txOpen) : null;
+          return (
+            <Section title="Transaction flow" description="Every payment attempt on this terminal, the full request/response trail and outcome, not just completed sales. Look one up by payment reference.">
+              <Col gap={12}>
+                <Row gap={8} style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+                  <SearchBar value={txQuery} onChange={setTxQuery} placeholder="Look up a payment reference…" width={320} />
+                  <span style={{ marginLeft: 'auto', fontSize: 13, color: T.sub }}>{list.length} of {transactions.length} attempts</span>
+                </Row>
+                <div style={{ ...surface, overflow: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+                    <thead><tr>
+                      <th style={th}>Time</th><th style={th}>Reference</th><th style={th}>Card / method</th>
+                      <th style={{ ...th, textAlign: 'right' }}>Amount</th><th style={th}>Outcome</th><th style={{ ...th, width: 1 }}></th>
+                    </tr></thead>
+                    <tbody>
+                      {list.map(t => (
+                        <tr key={t.ref} className="ns-row" style={{ cursor: 'pointer' }} onClick={() => setTxOpen(t.ref)}>
+                          <td style={td}>{t.when}</td>
+                          <td style={{ ...td, fontFamily: 'var(--b-font-family-secondary)' }}>{t.ref}</td>
+                          <td style={td}>{t.brand} <span style={{ color: T.faint, fontFamily: 'var(--b-font-family-secondary)' }}>{t.pan}</span></td>
+                          <td style={{ ...td, textAlign: 'right', fontFamily: 'var(--b-font-family-secondary)' }}>{t.amount}</td>
+                          <td style={td}><Tag label={t.outcome} variant={outVar[t.outcome]} /></td>
+                          <td style={{ ...td, textAlign: 'right', width: 1 }}><Ico name="chevron-right" size={18} color={T.faint} /></td>
+                        </tr>
+                      ))}
+                      {list.length === 0 && <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: T.faint, borderBottom: 'none' }}>No attempt matches that reference.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <span style={{ fontSize: 11, color: T.faint, lineHeight: 1.5 }}>{blindSpotNote} Card numbers are masked and sensitive fields redacted.</span>
+              </Col>
+              {openTx && (
+                <Modal open onClose={() => setTxOpen(null)} width={620}
+                  title="Transaction flow"
+                  description={`${openTx.ref} · ${openTx.amount} · ${openTx.brand} ${openTx.pan} · ${openTx.when}`}
+                  footer={<Row gap={8} style={{ justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                    <Tag label={openTx.outcome} variant={outVar[openTx.outcome]} />
+                    <Button variant="secondary" onClick={() => setTxOpen(null)}>Close</Button>
+                  </Row>}>
+                  <Col gap={0}>
+                    {openTx.flow.map((st, i) => (
+                      <Row key={i} gap={12} align="flex-start" style={{ padding: '12px 2px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none' }}>
+                        <Col align="center" gap={0} style={{ width: 10, flexShrink: 0, alignSelf: 'stretch' }}>
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: resultDot[st.result], flexShrink: 0, marginTop: 4 }} />
+                          {i < openTx.flow.length - 1 && <span style={{ flex: 1, width: 2, background: T.sepFaint, marginTop: 2 }} />}
+                        </Col>
+                        <Col gap={1} style={{ flex: 1, minWidth: 0 }}>
+                          <Row style={{ justifyContent: 'space-between', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>{st.label}</span>
+                            <span style={{ fontSize: 11, color: T.faint, fontFamily: 'var(--b-font-family-secondary)', flexShrink: 0 }}>{st.t}</span>
+                          </Row>
+                          <span style={{ fontSize: 12, color: T.sub }}>{st.detail}</span>
+                          <span style={{ fontSize: 11, color: T.faint }}>{st.dir}</span>
+                        </Col>
+                      </Row>
+                    ))}
+                  </Col>
+                </Modal>
+              )}
+            </Section>
+          );
+        })()}
 
         {devTab === 'signals' && (
           <>
@@ -6531,7 +6945,7 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
   );
 }
 
-/* Device-first "Device locations" page — the full device list with Location as a column.
+/* Device-first "Device locations" page, the full device list with Location as a column.
    "View all locations" flips to the store (location) list. */
 function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
   const [locations, setLocations] = useState(null); // null = closed; { store: id|undefined } opens the Locations modal
@@ -6578,7 +6992,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
         locationView={<LocationDeviceTable key={ver} stores={SM_STORES.slice()} deviceTotal={terminals.length + mobiles.length} onOpenLocation={openLocation} onOpenDevice={openDeviceDetail} onConfigureStore={configureStore} onCloseLocation={(s) => notify && notify(`Closing ${s.name}…`)} notify={notify} />}
         onOpenDevice={openDeviceDetail}
         title="Devices & locations" subtitle="Set up locations and order, replace and return devices."
-        info={<span>“<b>Location</b>” replaces the old “Store” concept so it can represent any level of your Adyen account structure — a <b>business line</b>, a <b>merchant account</b> acting as a single shop, or a physical store. One umbrella term for wherever a device operates.</span>}
+        info={<span>“<b>Location</b>” replaces the old “Store” concept so it can represent any level of your Adyen account structure, a <b>business line</b>, a <b>merchant account</b> acting as a single shop, or a physical store. One umbrella term for wherever a device operates.</span>}
         actions={<>
           {view === 'byLocation'
             ? <Button variant="primary" iconLeft="store" onClick={() => setAddLocOpen(true)}>Add location</Button>
@@ -6597,7 +7011,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
             <Button variant="primary" disabled={!rt} onClick={() => { const n = reassign.rows.length; setReassign(null); notify && notify(`Reassigned ${n} device${n === 1 ? '' : 's'} to ${rt ? rt.name : 'location'}`); }}>Reassign</Button>
           </Row>}>
           <Col gap={6}><span style={{ fontSize: 13, color: T.sub }}>Move to location</span>
-            {/* Native select — its option list is drawn by the browser, so it isn't clipped by the modal's overflow */}
+            {/* Native select, its option list is drawn by the browser, so it isn't clipped by the modal's overflow */}
             <select value={reassignTarget} onChange={(e) => setReassignTarget(e.target.value)}
               style={{ height: 40, width: '100%', boxSizing: 'border-box', border: `1px solid ${T.sep}`, borderRadius: T.radiusM, padding: '0 34px 0 12px', fontFamily: 'inherit', fontSize: 14, color: T.ink, cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none', backgroundColor: T.card, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundImage: 'url(data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2216%22%20height=%2216%22%20fill=%22none%22%3E%3Cpath%20fill=%22%235C6670%22%20d=%22M2.99988%204.43923L7.99988%209.43923L12.9999%204.43923L14.0605%205.49989L7.99988%2011.5605L1.93922%205.49989L2.99988%204.43923Z%22/%3E%3C/svg%3E)' }}>
               {SM_STORES.map(x => <option key={x.id} value={x.id}>{`${x.name} · ${x.city}, ${x.country}`}</option>)}
@@ -6765,7 +7179,7 @@ function SMBulkModal({ s, setState, closeBulk, bulkNext, targets, target, eligib
               {skipped.length > 0 && (
                 <div style={{ padding: '16px 20px', border: `1px solid ${T.sep}`, borderRadius: T.radiusL, background: 'var(--b-color-background-secondary)' }}>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{skipped.length + (skipped.length === 1 ? ' store is not eligible' : ' stores are not eligible')}</div>
-                  <div style={{ fontSize: 13, color: T.sub }}>These are excluded from this action — the rest will still be applied.</div>
+                  <div style={{ fontSize: 13, color: T.sub }}>These are excluded from this action, the rest will still be applied.</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
                     {skipped.map(st => <span key={st.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, padding: '0 8px', borderRadius: T.radiusM, background: T.card, border: `1px solid ${T.sep}`, fontSize: 12 }}><span style={{ fontFamily: 'var(--b-font-family-secondary)' }}>{st.name}</span>· already closed</span>)}
                   </div>
@@ -6899,7 +7313,7 @@ function SMAddWizard({ s, setState, single, addLabels, addStep, d, zipBad, noPro
   const detailFields = [
     { label: 'Description', key: 'name', span: 'span 2', ph: 'Uniqlo Ginza' },
     { label: 'Store reference', key: 'ref', span: 'auto', ph: 'Uniqlo_Ginza' },
-    { label: 'Phone number', key: 'phone', span: 'auto', ph: '+81 3 5537 1000', hint: 'Any international format — we validate against the country dial code.' },
+    { label: 'Phone number', key: 'phone', span: 'auto', ph: '+81 3 5537 1000', hint: 'Any international format, we validate against the country dial code.' },
     { label: 'Street and number', key: 'street', span: 'span 2', ph: 'Chuo-dori 6' },
     { label: 'Postal code', key: 'zip', span: 'auto', ph: '150-0002' },
     { label: 'City', key: 'city', span: 'auto', ph: 'Tokyo' },
@@ -6917,7 +7331,7 @@ function SMAddWizard({ s, setState, single, addLabels, addStep, d, zipBad, noPro
   ];
   const reviewGroups = single ? [
     { title: 'Account and region', step: 0, items: [['Merchant account', SM_MERCHANTS[0]], ['Country/Region', s.newCountry]] },
-    { title: 'Payment methods', step: 1, items: [['Setup', s.payMode === 'copy' ? 'Copied from an existing store' : (s.payMode === 'skip' ? 'Skipped — finish later' : 'Configured manually')], ['Methods', selectedMethodCount + ' selected']] },
+    { title: 'Payment methods', step: 1, items: [['Setup', s.payMode === 'copy' ? 'Copied from an existing store' : (s.payMode === 'skip' ? 'Skipped, finish later' : 'Configured manually')], ['Methods', selectedMethodCount + ' selected']] },
     { title: 'Store details', step: 2, items: [['Description', d.name || dash], ['Store reference', d.ref || dash], ['Address', (d.street || dash) + ', ' + (d.zip || '') + ' ' + (d.city || '')], ['Phone', d.phone || dash]] },
   ] : [
     { title: 'Upload', step: 0, items: [['File', 'stores.csv'], ['Rows', '24 stores']] },
@@ -6928,7 +7342,7 @@ function SMAddWizard({ s, setState, single, addLabels, addStep, d, zipBad, noPro
     : 'Continue';
   const addDoneTitle = single ? (pending.length > 1 ? pending.length + ' stores created' : 'Store created') : '24 stores created';
   const addDoneBody = s.payMode === 'skip'
-    ? 'Payment-method setup is still pending — you can finish it any time from the store’s Payment methods tab.'
+    ? 'Payment-method setup is still pending, you can finish it any time from the store’s Payment methods tab.'
     : 'Payment methods were copied across. Anything that needs input is waiting on the store’s Payment methods tab.';
   const ddToggle = (name) => setState({ dd: s.dd === name ? null : name });
 
@@ -7048,14 +7462,14 @@ function SMAddWizard({ s, setState, single, addLabels, addStep, d, zipBad, noPro
                         <div style={{ marginTop: 16 }}>
                           <span style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Your Amex MID</span>
                           <input type="text" value={s.amexMidValue} onChange={(e) => setState({ amexMidValue: e.target.value })} placeholder="e.g. 3412345678" style={{ width: '100%', height: 40, border: '1px solid var(--b-color-outline-secondary)', borderRadius: T.radiusM, padding: '0 12px', fontFamily: 'var(--b-font-family-secondary)', fontSize: 14, background: T.card, boxSizing: 'border-box' }} />
-                          {amexLevelKnown && <Row gap={8} style={{ marginTop: 10, fontSize: 13 }}><Tag label={cLevel ? 'C-level' : 'R-level'} variant={cLevel ? 'green' : 'orange'} /><span style={{ color: T.sub }}>{cLevel ? 'Added directly — no escalation needed.' : 'Routed to the R-level path. Amex setup pending — we’ll confirm when active.'}</span></Row>}
+                          {amexLevelKnown && <Row gap={8} style={{ marginTop: 10, fontSize: 13 }}><Tag label={cLevel ? 'C-level' : 'R-level'} variant={cLevel ? 'green' : 'orange'} /><span style={{ color: T.sub }}>{cLevel ? 'Added directly, no escalation needed.' : 'Routed to the R-level path. Amex setup pending, we’ll confirm when active.'}</span></Row>}
                         </div>
                       )}
                     </div>
                   )}
 
                   <div style={{ marginTop: 16 }}>
-                    <Button variant="tertiary" onClick={() => setState({ payMode: 'skip', addStep: Math.min(addStep + 1, addLabels.length - 1) })}>Skip for now — finish later</Button>
+                    <Button variant="tertiary" onClick={() => setState({ payMode: 'skip', addStep: Math.min(addStep + 1, addLabels.length - 1) })}>Skip for now, finish later</Button>
                   </div>
                 </div>
               )}
@@ -7064,7 +7478,7 @@ function SMAddWizard({ s, setState, single, addLabels, addStep, d, zipBad, noPro
               {single && addStep === 2 && (
                 <div>
                   <h2 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 600 }}>Store details</h2>
-                  <p style={{ margin: '0 0 26px', fontSize: 14, color: T.sub }}>Fields are checked as you go — we tell you the exact rule instead of failing at the end.</p>
+                  <p style={{ margin: '0 0 26px', fontSize: 14, color: T.sub }}>Fields are checked as you go, we tell you the exact rule instead of failing at the end.</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                     {detailFields.map(f => (
                       <SMField key={f.key} style={{ gridColumn: f.span }} label={f.label} placeholder={f.ph} value={d[f.key] !== undefined ? d[f.key] : ''} onChange={setDetail(f.key)}
@@ -7089,7 +7503,7 @@ function SMAddWizard({ s, setState, single, addLabels, addStep, d, zipBad, noPro
                     </Row>
                   </Row>
                   <div style={{ border: `1px solid ${T.sep}`, borderRadius: T.radiusL, background: T.card }}>
-                    {pending.length === 0 && <div style={{ padding: 24, fontSize: 14, color: T.sub }}>No stores added yet. Fill in the details above and select Add store — each one is listed here before you create them.</div>}
+                    {pending.length === 0 && <div style={{ padding: 24, fontSize: 14, color: T.sub }}>No stores added yet. Fill in the details above and select Add store, each one is listed here before you create them.</div>}
                     {pending.map((p, i) => (
                       <Row key={i} align="flex-start" gap={16} style={{ padding: '16px 24px', borderTop: i === 0 ? '0' : `1px solid ${T.sep}` }}>
                         <span style={{ width: 20, flexShrink: 0, fontFamily: 'var(--b-font-family-secondary)', fontSize: 13, color: T.faint, lineHeight: '20px' }}>{i + 1}</span>
@@ -7109,7 +7523,7 @@ function SMAddWizard({ s, setState, single, addLabels, addStep, d, zipBad, noPro
               {addStep === addLabels.length - 1 && (
                 <div>
                   <h2 style={{ margin: '0 0 8px', fontSize: 24, fontWeight: 600 }}>Review and create</h2>
-                  <p style={{ margin: '0 0 26px', fontSize: 14, color: T.sub }}>{single ? 'Check the details, then create the store. Payment-method setup can continue afterwards.' : '24 stores from stores.csv are ready. Rows that fail validation are reported afterwards — the rest still get created.'}</p>
+                  <p style={{ margin: '0 0 26px', fontSize: 14, color: T.sub }}>{single ? 'Check the details, then create the store. Payment-method setup can continue afterwards.' : '24 stores from stores.csv are ready. Rows that fail validation are reported afterwards, the rest still get created.'}</p>
                   {reviewGroups.map(g => (
                     <div key={g.title} style={{ border: `1px solid ${T.sep}`, borderRadius: T.radiusL, padding: 16, marginBottom: 16 }}>
                       <Row style={{ marginBottom: 16 }}><span style={{ fontWeight: 600 }}>{g.title}</span><span style={{ marginLeft: 'auto' }}><Button variant="tertiary" condensed onClick={() => setState({ addStep: g.step })}>Edit</Button></span></Row>
@@ -7160,7 +7574,7 @@ function SMAddWizard({ s, setState, single, addLabels, addStep, d, zipBad, noPro
 }
 
 /* ============================================================= ALL DEVICES
-   Fleet Intelligence › All devices — the same device list as the "Devices & locations"
+   Fleet Intelligence › All devices, the same device list as the "Devices & locations"
    page (same data tied to SM_STORES, same columns, Location links + Add devices). */
 function AllDevicesModal({ onBack, onOpenDevice, onOpenStore, onOpenStudio, notify }) {
   const [locations, setLocations] = useState(null); // null = closed; { store: id|undefined } opens the Locations modal
@@ -7455,7 +7869,7 @@ function MultiDropdown({ values = [], options, onChange, placeholder = 'Select',
 
   return (
     <div style={{ position: 'relative' }}>
-      {/* trigger — chips (default) or a subtle text summary (ghost, used in chart headers) */}
+      {/* trigger, chips (default) or a subtle text summary (ghost, used in chart headers) */}
       <div ref={triggerRef} role="button" tabIndex={0} onClick={() => setOpen(o => !o)}
         style={ghost
           ? { display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 14, fontWeight: 600, maxWidth: '100%' }
@@ -7476,7 +7890,7 @@ function MultiDropdown({ values = [], options, onChange, placeholder = 'Select',
       </div>
       {open && popStyle && ReactDOM.createPortal(
         <div ref={popRef} style={popStyle}>
-          {/* search — keeps the list scalable */}
+          {/* search, keeps the list scalable */}
           {opts.length > 6 && (
             <div style={{ padding: 6, borderBottom: `1px solid ${T.sepFaint}`, flexShrink: 0 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 8px', border: `1px solid ${T.border}`, borderRadius: 6, background: T.page }}>
@@ -7574,7 +7988,7 @@ const PAGE_TYPES = [
   { value: 'receipt', label: 'Receipt', icon: 'receipt' },
 ];
 
-/* Fun, one-tap selector — a row of icon chips (active = filled inverse pill). */
+/* Fun, one-tap selector, a row of icon chips (active = filled inverse pill). */
 function ChipPicker({ value, onChange, options, style }) {
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', ...style }}>
@@ -7610,7 +8024,7 @@ function useResizer(initial, min, max) {
   };
   return [w, start];
 }
-/* Drag strip between the control panel and the canvas — hover shows an accent line. */
+/* Drag strip between the control panel and the canvas, hover shows an accent line. */
 function ResizeHandle({ onMouseDown }) {
   const [hov, setHov] = useState(false);
   return (
@@ -7621,7 +8035,7 @@ function ResizeHandle({ onMouseDown }) {
   );
 }
 
-/* Top screen-flow tab bar (builder/Figma style) — active = dark pill, hover = soft bg, horizontally scrollable. */
+/* Top screen-flow tab bar (builder/Figma style), active = dark pill, hover = soft bg, horizontally scrollable. */
 function FlowTabs({ value, onChange, options }) {
   const [hov, setHov] = useState(null);
   return (
@@ -7774,7 +8188,7 @@ function TipScreen({ device, vals }) {
     </div>
   );
 
-  // A single preset tile: "10%  |  €10.00" — Figma tile-button: min-h 60, px16 py12, radius 8, gap 8
+  // A single preset tile: "10%  |  €10.00", Figma tile-button: min-h 60, px16 py12, radius 8, gap 8
   const presetTile = (pc, i) => (
     <div key={i} style={F({ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: tileMinH, padding: '12px 16px', borderRadius: 8, background: p.scanBg, color: p.scanOn, width: '100%' })}>
       <span style={{ fontSize: r.btnText, fontWeight: 600 }}>{pc}%</span>
@@ -7943,7 +8357,7 @@ function ResultScreen({ device, vals }) {
   );
 }
 
-/* Non-transactional preview screens (home / receipt) — filled to the frame. */
+/* Non-transactional preview screens (home / receipt), filled to the frame. */
 function LegacyScreen({ screen, vals, printable }) {
   const home = vals.homeScreen || {}, grat = vals.gratuities || {}, rec = vals.receiptPrinting || {}, loc = vals.localization || {};
   const lang = SCHEMA.i18n[loc.language] || SCHEMA.i18n.English;
@@ -7953,7 +8367,7 @@ function LegacyScreen({ screen, vals, printable }) {
   const fg = theme === 'Light' ? '#070707' : '#ffffff';
   const subFg = theme === 'Light' ? '#6f6f6f' : 'rgba(255,255,255,0.72)';
   if (screen === 'home') {
-    // Idle screen — clean & minimal: a single centred brand logo tile on a dark canvas.
+    // Idle screen, clean & minimal: a single centred brand logo tile on a dark canvas.
     const idleBg = theme === 'Light' ? '#f2f3f4' : '#0a0a0a';
     const logo = (home.showLogo && home.logoSrc) ? home.logoSrc : 'assets/tx/adyen.svg';
     return (
@@ -7983,7 +8397,7 @@ function LegacyScreen({ screen, vals, printable }) {
     );
   }
   if (screen === 'receipt') {
-    if (!printable) return <Col style={{ height: '100%', alignItems: 'center', justifyContent: 'center', color: subFg, background: bg, padding: 20, textAlign: 'center' }}><Ico name="printer" size={28} color={subFg} /><div style={{ fontSize: 13, marginTop: 10, fontFamily: TX_FONT }}>Printer unavailable — digital receipt only</div></Col>;
+    if (!printable) return <Col style={{ height: '100%', alignItems: 'center', justifyContent: 'center', color: subFg, background: bg, padding: 20, textAlign: 'center' }}><Ico name="printer" size={28} color={subFg} /><div style={{ fontSize: 13, marginTop: 10, fontFamily: TX_FONT }}>Printer unavailable, digital receipt only</div></Col>;
     return (
       <Col style={{ height: '100%', background: theme === 'Light' ? '#e9ebed' : '#111', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
         <div style={{ width: '84%', background: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.2)', padding: 16, fontFamily: 'var(--b-font-family-secondary)', fontSize: 11, color: '#070707' }}>
@@ -8007,14 +8421,14 @@ function LegacyScreen({ screen, vals, printable }) {
   if (screen === 'loyalty') {
     const loy = vals.loyalty || {};
     if (!loy.enabled) return <Col style={{ height: '100%', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.6)', background: '#0a0a0a', padding: 20, textAlign: 'center' }}><Ico name="star-fill" size={28} color="rgba(255,255,255,0.6)" /><div style={{ fontSize: 13, marginTop: 10, fontFamily: TX_FONT }}>Loyalty is turned off</div></Col>;
-    // Branded Uniqlo loyalty theme (dark) — mirrors the retailer reference.
+    // Branded Uniqlo loyalty theme (dark), mirrors the retailer reference.
     const BG = '#0a0a0a', FG = '#ffffff', SUB = 'rgba(255,255,255,0.6)', CARD = '#1a1a1a', TRACK = 'rgba(255,255,255,0.18)';
     const member = { name: 'Sofie', tier: loy.showTier ? 'UNIQLO member' : (loy.programName || 'Rewards'), points: 820, next: 1250 };
     const pct = Math.min(100, Math.round(member.points / member.next * 100));
     const rewards = [{ t: '10% off birthday reward', d: 'Click to redeem' }, { t: '¥500 off purchase', d: 'Redeem for 1,250 points' }];
     return (
       <Col style={{ height: '100%', background: BG, color: FG, fontFamily: TX_FONT, padding: '14px 16px 16px', overflow: 'hidden' }}>
-        {/* terminal chrome — accessibility · brand logo · close */}
+        {/* terminal chrome, accessibility · brand logo · close */}
         <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <TxGlyph src="assets/tx/accessibility.svg" w={16} h={16} color="rgba(255,255,255,0.85)" />
           <img src={(home.showLogo && home.logoSrc) ? home.logoSrc : 'assets/tx/uniqlo.svg'} alt="" style={{ height: 18, objectFit: 'contain' }} />
@@ -8091,8 +8505,8 @@ function Accordion({ open, onToggle, title, desc, icon, right, disabled, childre
   );
 }
 
-/* One chat bubble. Assistant replies can be structured — intro/text + a bulleted list of
-   changes + "Learn more" doc links — so long answers stay scannable. */
+/* One chat bubble. Assistant replies can be structured, intro/text + a bulleted list of
+   changes + "Learn more" doc links, so long answers stay scannable. */
 function ChatBubble({ m, notify }) {
   const isUser = m.role === 'user';
   const bubble = {
@@ -8146,8 +8560,8 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onReve
   const [search, setSearch] = useState('');
   const [moreOpen, setMoreOpen] = useState(false);
   // Featured one-card prompt (mirrors Fleet Intelligence) + secondary prompts under "See more".
-  const featuredPrompt = { cat: 'Market setup', q: 'Create a configuration for devices for international clients in Japan', desc: 'I\u2019ll enable DCC, offline payments, JCB & e-money and Japanese localisation — then update the preview.' };
-  const featuredPrompt2 = { cat: 'Region compliance', q: 'Set up this configuration for Australia', desc: 'Australia doesn\u2019t allow surcharging, so I\u2019ll remove it automatically and apply AU-compliant defaults — explaining what changed.' };
+  const featuredPrompt = { cat: 'Market setup', q: 'Create a configuration for devices for international clients in Japan', desc: 'I\u2019ll enable DCC, offline payments, JCB & e-money and Japanese localisation, then update the preview.' };
+  const featuredPrompt2 = { cat: 'Region compliance', q: 'Set up this configuration for Australia', desc: 'Australia doesn\u2019t allow surcharging, so I\u2019ll remove it automatically and apply AU-compliant defaults, explaining what changed.' };
   const morePrompts = [
     { icon: 'settings', q: 'Install an Android app on these devices' },
     { icon: 'image', q: 'Upload a media asset to the home screen' },
@@ -8168,15 +8582,15 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onReve
     </div>
   );
 
-  // Agent mode — mirrors the Fleet Intelligence "Ask" panel: header, scrollable
+  // Agent mode, mirrors the Fleet Intelligence "Ask" panel: header, scrollable
   // conversation (suggestion list when empty), and the PromptBox composer pinned below.
   if (expanded) {
     return (
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: T.card }}>
-        {/* AI chat nav — New session (revert to a fresh chat) + Search */}
+        {/* AI chat nav, New session (revert to a fresh chat) + Search */}
         <Row style={{ flexShrink: 0, padding: '6px 8px', borderBottom: `1px solid ${T.sepFaint}`, gap: 2, alignItems: 'center' }}>
           {onNewSession && (
-            <button onClick={() => { setSearch(''); setSearchOpen(false); onNewSession(); }} title="Start a new session — clears this chat"
+            <button onClick={() => { setSearch(''); setSearchOpen(false); onNewSession(); }} title="Start a new session, clears this chat"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 0, background: 'transparent', borderRadius: 8, padding: '5px 8px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: T.ink }} className="ns-suggest">
               <Ico name="plus" size={16} color={T.sub} />New session
             </button>
@@ -8193,8 +8607,8 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onReve
         <div ref={threadRef} className="ns-chat-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s4 }}>
           {firstTurn ? (
             <Col gap={T.s4}>
-              <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Ask in plain language — I'll change the settings and update the preview.</span>
-              {/* Featured prompt cards — same card design as Fleet Intelligence */}
+              <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>Ask in plain language, I'll change the settings and update the preview.</span>
+              {/* Featured prompt cards, same card design as Fleet Intelligence */}
               <AskPromptCard item={featuredPrompt} onClick={() => onSend(featuredPrompt.q)} />
               <AskPromptCard item={featuredPrompt2} onClick={() => onSend(featuredPrompt2.q)} />
               {/* See more insights → the remaining prompts as insight rows */}
@@ -8265,7 +8679,7 @@ function DockedAsk({ messages, draft, setDraft, onSend, expanded, notify, onReve
   );
 }
 
-/* Edit · Ask switch — icon pill; the AI ("Ask") side lights up with the accent when active. */
+/* Edit · Ask switch, icon pill; the AI ("Ask") side lights up with the accent when active. */
 function ModeSwitch({ mode, setMode, opts }) {
   opts = opts || [
     { v: 'agent', label: 'Ask', icon: 'sparkles' },
@@ -8392,7 +8806,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
     if (previewGroup) setScreen(previewGroup);
     return changes;
   };
-  // Scripted "market setup" scenario — AI enables the right settings, then asks for the
+  // Scripted "market setup" scenario, AI enables the right settings, then asks for the
   // inputs it needs (profile name · devices · logo · app · updates) as an interactive chat.
   // ---- reversible chat: snapshot the full editable state before each turn, restore on revert ----
   const snapshot = () => ({
@@ -8425,7 +8839,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
     applySnap(snap);
     setMessages(prev => prev.slice(0, keepTo));
     setDraft('');
-    notify && notify('Reverted — changes after this point were undone');
+    notify && notify('Reverted, changes after this point were undone');
   };
   const newSession = () => {
     setMessages([{ role: 'assistant', text: "Describe the change you want and I'll configure the selected devices." }]);
@@ -8466,13 +8880,13 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
     const t = q.toLowerCase();
     const step = flow && flow.step;
 
-    // Region fit — Australia: auto-remove disallowed settings (surcharging) and explain why.
+    // Region fit, Australia: auto-remove disallowed settings (surcharging) and explain why.
     if (!step && /australia|\baus\b|\bau\b/.test(t)) {
       startAustraliaScenario();
       reply({
         text: 'Set this configuration up for Australia and applied the regional compliance rules:',
         bullets: [
-          'Removed surcharging — it isn’t allowed in Australia, so I turned it off and locked it for this market',
+          'Removed surcharging, it isn’t allowed in Australia, so I turned it off and locked it for this market',
           'Kept contactless and confirm-amount on (allowed)',
           'Set the primary language to English',
         ],
@@ -8545,7 +8959,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
       const name = (flow && flow.name) || scopeName;
       setFlow(null);
       reply({
-        text: `All set — I've prepared “${name}”:`,
+        text: `All set, I've prepared “${name}”:`,
         bullets: [
           'DCC, tipping and offline payments',
           'Japanese localization',
@@ -8561,7 +8975,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
     // free-form fallback
     const changes = applyFromText(q);
     reply(changes.length
-      ? `Done — I ${changes.join(', ')}. The preview and the change list are updated; review and apply when ready.`
+      ? `Done, I ${changes.join(', ')}. The preview and the change list are updated; review and apply when ready.`
       : "I couldn't map that to a setting yet. Try the “Enable devices for international clients in Japan” scenario, or mention theme, tipping, DCC, contactless, language, logo, greeting, or receipt header.");
   };
 
@@ -8583,7 +8997,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
     return out;
   }, [vals, initial]);
 
-  // scope diff — a scope change is a reviewable change too
+  // scope diff, a scope change is a reviewable change too
   const scopeDiff = useMemo(() => {
     const out = [];
     const list = (x) => (x && x.length ? x.join(', ') : '—');
@@ -8666,13 +9080,13 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
         <Button variant="primary" iconLeft="checkmark" disabled={diff.length === 0} onClick={() => setReviewOpen(true)}>Review{diff.length ? ` (${diff.length})` : ''}</Button>
       </>}>
       <div style={{ display: 'flex', flexDirection: 'row', height: '100%' }}>
-        {/* collapsed rail — click the panel icon to reopen the control panel */}
+        {/* collapsed rail, click the panel icon to reopen the control panel */}
         {!panelOpen && (
           <div style={{ width: 48, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0' }}>
             <GlyphButton title="Show control panel" onClick={() => setPanelOpen(true)}><PanelToggleIcon /></GlyphButton>
           </div>
         )}
-        {/* control panel (docked left, drag-resizable) — settings always visible, AI composer at the bottom */}
+        {/* control panel (docked left, drag-resizable), settings always visible, AI composer at the bottom */}
         {panelOpen && (
         <div style={{ width: panelW, flexShrink: 0, borderRight: `1px solid ${T.sep}`, background: T.card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Row style={{ padding: '8px 12px 8px 20px', borderBottom: `1px solid ${T.sepFaint}`, gap: 8, flexShrink: 0 }}>
@@ -8684,7 +9098,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
           {chatMode === 'agent' ? (
             <DockedAsk expanded messages={messages} draft={draft} setDraft={setDraft} onSend={sendChat} notify={notify} onRevert={revertTo} onNewSession={newSession} />
           ) : (<>
-          {/* persistent scope — editable when defining a configuration; read-only (inherited)
+          {/* persistent scope, editable when defining a configuration; read-only (inherited)
               for a device inside a configuration; hidden for a standalone device */}
           {showScope && (
           <div style={{ flexShrink: 0, padding: '12px 16px', borderBottom: `1px solid ${T.sep}`, display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--b-color-background-secondary)' }}>
@@ -8721,7 +9135,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
           )}
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 20px 20px' }}>
-            {/* setting groups — grouped by owning level per the scoping rule; market-specific
+            {/* setting groups, grouped by owning level per the scoping rule; market-specific
                groups appear only for a selected market */}
             {(() => {
               const visibleGroups = SCHEMA.groups.filter(g => !g.market || scope.markets.includes(g.market));
@@ -8752,7 +9166,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
                   <Col gap={16}>
                     {inherited && (
                       <Alert type="highlight" variant="tip" description={
-                        <span>Set at Store level — read-only. <button type="button" onClick={() => toggleOverride(g.id)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 600, color: 'var(--b-color-link-primary)', textDecoration: 'underline', textUnderlineOffset: 2 }}>Override for {scope.type === 'device' ? 'this device' : 'these devices'}</button>.</span>
+                        <span>Set at Store level, read-only. <button type="button" onClick={() => toggleOverride(g.id)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', fontWeight: 600, color: 'var(--b-color-link-primary)', textDecoration: 'underline', textUnderlineOffset: 2 }}>Override for {scope.type === 'device' ? 'this device' : 'these devices'}</button>.</span>
                       } />
                     )}
                     {isDeviceScreen && isPolicy && overrides.has(g.id) && (
@@ -8781,7 +9195,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
         )}
 
         {panelOpen && <ResizeHandle onMouseDown={startResize} />}
-        {/* simulator — screen-flow tab bar on top, device centered, device/state dropdowns on the right */}
+        {/* simulator, screen-flow tab bar on top, device centered, device/state dropdowns on the right */}
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: T.page }}>
           <FlowTabs value={screen} onChange={setScreen} options={previewScreens} />
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', alignItems: 'stretch', gap: 32, padding: '28px 32px 36px' }}>
@@ -8860,7 +9274,7 @@ function DeviceStudio({ scope: initialScope, onBack, notify, onApply }) {
 }
 
 /* ============================================================= TOAST
-   Bento b-toast-1 — dark surface (#001222), white bold message, close X. */
+   Bento b-toast-1, dark surface (#001222), white bold message, close X. */
 function ToastHost({ toast, onClose }) {
   useEffect(() => { if (toast) { const t = setTimeout(onClose, 3600); return () => clearTimeout(t); } }, [toast]);
   if (!toast) return null;
@@ -8877,7 +9291,7 @@ function ToastHost({ toast, onClose }) {
 }
 
 /* ============================================================= ROOT */
-/* ============================================================= DEVICE STUDIO — SAVED PREVIEW */
+/* ============================================================= DEVICE STUDIO, SAVED PREVIEW */
 const PREVIEW_SCREENS = [
   { value: 'home', label: 'Home' },
   { value: 'transaction', label: 'Payment' },
@@ -8898,16 +9312,16 @@ function settingValueNode(field, val) {
   return <span style={isNone ? muted : undefined}>{isNone ? 'Not set' : String(val)}</span>;
 }
 
-/* Merchant's configuration library — reusable, mutually-exclusive device configurations.
+/* Merchant's configuration library, reusable, mutually-exclusive device configurations.
    Each device follows exactly one (assignment is scoped by model / lane so they never overlap). */
 const CONFIGURATIONS = [
   { id: 'cfg-fnb', name: 'Uniqlo APAC', appliesTo: 'Terminals · S1F2, AMS1', deviceType: 'Terminal', stores: 6, devices: 84, status: 'Published', statusV: 'green', updated: '2 days ago' },
   { id: 'cfg-retail', name: 'Retail counter', appliesTo: 'Terminals · SFO1 (countertop)', deviceType: 'Terminal', stores: 4, devices: 42, status: 'Published', statusV: 'green', updated: '1 week ago' },
   { id: 'cfg-kiosk', name: 'Self-service kiosk', appliesTo: 'Terminals · e355', deviceType: 'Terminal', stores: 2, devices: 12, status: 'Draft', statusV: 'orange', updated: '3 hours ago' },
-  { id: 'cfg-softpos', name: 'SoftPOS — iOS', appliesTo: 'SoftPOS · iPhone (Tap to Pay)', deviceType: 'SoftPOS (Mobile devices)', market: 'Japan', stores: 3, devices: 18, status: 'Published', statusV: 'green', updated: 'yesterday' },
+  { id: 'cfg-softpos', name: 'SoftPOS, iOS', appliesTo: 'SoftPOS · iPhone (Tap to Pay)', deviceType: 'SoftPOS (Mobile devices)', market: 'Japan', stores: 3, devices: 18, status: 'Published', statusV: 'green', updated: 'yesterday' },
 ];
 
-/* Device studio home — the merchant's configuration library. */
+/* Device studio home, the merchant's configuration library. */
 function ConfigLibrary({ onOpen, onNew, configs = CONFIGURATIONS }) {
   const th = (align) => ({ textAlign: align, padding: '12px 16px', fontSize: 14, color: T.ink, fontWeight: 600, background: T.card, borderTop: `1px solid ${T.sep}`, borderBottom: `1px solid ${T.sep}`, whiteSpace: 'nowrap' });
   const td = { padding: '14px 16px', borderBottom: `1px solid ${T.sep}`, whiteSpace: 'nowrap' };
@@ -8917,9 +9331,9 @@ function ConfigLibrary({ onOpen, onNew, configs = CONFIGURATIONS }) {
         <Col gap={4} style={{ flex: 1 }}>
           <Row gap={6}>
             <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}>Device studio</span>
-            <InfoTip width={320} content={<span>A guided <b>wizard with a live simulator</b> to configure device properties — receipts, payments, branding and more — for a single device or in bulk, previewed before you publish.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
+            <InfoTip width={320} content={<span>A guided <b>wizard with a live simulator</b> to configure device properties, receipts, payments, branding and more, for a single device or in bulk, previewed before you publish.</span>} placement="right"><Ico name="info" size={16} color={T.ink} /></InfoTip>
           </Row>
-          <span style={{ fontSize: 13, color: T.sub }}>A wizard with a live simulator to configure device properties — by device or in bulk.</span>
+          <span style={{ fontSize: 13, color: T.sub }}>A wizard with a live simulator to configure device properties, by device or in bulk.</span>
         </Col>
         <Button variant="primary" iconLeft="plus" onClick={onNew}>Add configuration</Button>
       </Row>
@@ -8983,7 +9397,7 @@ function StudioPreview({ config, onBack, onEdit }) {
       </Row>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: T.s4, alignItems: 'stretch' }}>
-        {/* live preview — full height */}
+        {/* live preview, full height */}
         <div style={{ ...surface, flex: '1.4 1 380px', minWidth: 320, overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className="ns-tile">
           <Row gap={6} style={{ padding: `${T.s3}px ${T.s4}px`, borderBottom: `1px solid ${T.sepFaint}`, flexShrink: 0 }}>
             <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>Live preview</span>
@@ -8991,14 +9405,14 @@ function StudioPreview({ config, onBack, onEdit }) {
               <Ico name="info" size={16} color={T.ink} />
             </InfoTip>
           </Row>
-          {/* Screen-flow tab bar — same as the Device Studio editor */}
+          {/* Screen-flow tab bar, same as the Device Studio editor */}
           <FlowTabs value={screen} onChange={setScreen} options={PREVIEW_SCREENS} />
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: T.s6, display: 'flex', justifyContent: 'center', alignItems: 'center', background: T.card }}>
             <Simulator vals={vals} screen={screen} deviceId={previewId} txAmount deviceType={deviceType} tx={tx} />
           </div>
         </div>
 
-        {/* saved settings summary — Bento structured list, independent scroll */}
+        {/* saved settings summary, Bento structured list, independent scroll */}
         <div style={{ ...surface, flex: '1 1 300px', minWidth: 280, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <Col gap={1} style={{ padding: `${T.s3}px ${T.s4}px`, borderBottom: `1px solid ${T.sepFaint}`, flexShrink: 0 }}>
             <span style={{ fontSize: 12, fontWeight: 500, color: T.faint }}>Configuration</span>
@@ -9028,7 +9442,7 @@ function App() {
   const [navOpen, setNavOpen] = useState(true);
   const [studioCfg, setStudioCfg] = useState(null); // selected configuration in Device studio
   const [configs, setConfigs] = useState(CONFIGURATIONS); // configuration library (new profiles prepend)
-  const [env, setEnv] = useState('Test');
+  const [env, setEnv] = useState('Live');
   const [stack, setStack] = useState([]); // overlay stack
   const [toast, setToast] = useState(null);
   const notify = useCallback((m) => setToast(m), []);
@@ -9036,7 +9450,7 @@ function App() {
   const pop = () => setStack(s => s.slice(0, -1));
   const reset = () => setStack([]);
 
-  // Fleet health is a Test-only page — if you leave Test while on it, fall back to Devices Intelligence.
+  // Fleet health is a Test-only page, if you leave Test while on it, fall back to Devices Intelligence.
   useEffect(() => { if ((nav === 'fleet-health' || nav === 'pricing-catalogue') && env !== 'Test') setNav('device-intelligence'); }, [env, nav]);
 
   const crumb = nav === 'device-studio' ? ['Devices', 'Device studio'] : nav === 'stores' ? ['Devices', 'Devices & locations'] : nav === 'fleet-health' ? ['Devices', 'Fleet health'] : nav === 'pricing-catalogue' ? ['Devices', 'Pricing & catalogue'] : ['Devices', 'Devices Intelligence'];
@@ -9084,7 +9498,7 @@ function App() {
         onApply={(cfg) => { setConfigs(c => [cfg, ...c.map(x => ({ ...x, isNew: false }))]); setStudioCfg(null); setNav('device-studio'); }} />}
       {top && top.type === 'explore' && <ExploreModal tile={top.tile} onBack={pop} />}
 
-      {/* Global Ask — available on every main page (Fleet Intelligence has its own with Save-as-tile).
+      {/* Global Ask, available on every main page (Fleet Intelligence has its own with Save-as-tile).
           Hidden while a full-page modal is open (those carry their own docked AI). */}
       {!top && nav !== 'device-intelligence' && nav !== 'fleet-health' && (
         <FloatingAsk notify={notify} context={nav === 'stores' ? 'devices' : nav === 'device-studio' ? 'studio' : nav === 'pricing-catalogue' ? 'pricing' : 'fleet'} />

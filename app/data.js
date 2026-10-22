@@ -1,4 +1,4 @@
-/* Device North Star — mock data layer.
+/* Device North Star, mock data layer.
    Attaches everything to window.DATA. Grounded in the PRD's baseline signals. */
 (function () {
   const fmt = (n) => n.toLocaleString('en-US');
@@ -7,7 +7,7 @@
   const kpis = [
     { id: 'active', title: 'Active terminals', value: '656,720', raw: 656720, trend: 2.1, dir: 'positive', hint: 'Terminals seen online in the last 30 days.' },
     { id: 'transacting', title: 'Transacting terminals', value: '419,559', raw: 419559, trend: 1.4, dir: 'positive', hint: 'Terminals that processed at least one payment.' },
-    { id: 'gap', title: 'Active, not trading', value: '36.1%', raw: 36.1, trend: 1.2, dir: 'negative', hint: 'Active terminals with zero transactions — the reliability gap.' },
+    { id: 'gap', title: 'Active, not trading', value: '36.1%', raw: 36.1, trend: 1.2, dir: 'negative', hint: 'Active terminals with zero transactions, the reliability gap.' },
     { id: 'auth', title: 'Authorisation rate', value: '94.2%', raw: 94.2, trend: 0.3, dir: 'positive', hint: 'Approved / total authorisation attempts.' },
     { id: 'atv', title: 'Avg. transaction value', value: '€48.10', raw: 48.1, trend: 0.8, dir: 'positive', hint: 'Average transaction value across the fleet.' },
     { id: 'dcc', title: 'DCC acceptance rate', value: '41.0%', raw: 41, trend: 3.6, dir: 'positive', hint: 'DCC offers accepted by cardholders. Enabled on ~126k terminals.' },
@@ -65,14 +65,14 @@
   const storesAttention = {
     columns: ['Store', 'Location', 'Issue', 'Devices affected'],
     rows: [
-      ['Berlin Mitte Flagship', 'Berlin, DE', 'Config error — DCC', '6'],
+      ['Berlin Mitte Flagship', 'Berlin, DE', 'Config error, DCC', '6'],
       ['Paris Rivoli', 'Paris, FR', 'Firmware out of date', '11'],
       ['London Oxford St', 'London, GB', '4 terminals offline', '4'],
       ['Amsterdam Kalverstr.', 'Amsterdam, NL', 'PCI attestation due', '9'],
       ['Tokyo Shibuya', 'Tokyo, JP', 'Not boarded', '3'],
     ],
   };
-  // Uniqlo APAC scenario — ~240 of ~3,723 terminals active-but-not-ready (~6%).
+  // Uniqlo APAC scenario, ~240 of ~3,723 terminals active-but-not-ready (~6%).
   const notTransacting = {
     columns: ['Reason', 'Terminals', 'Share'],
     rows: [
@@ -120,7 +120,7 @@
       'Terminal model',
       'Devices',
       { label: 'Median time', info: 'Median time from card presented to approval shown, in seconds.' },
-      { label: 'P95 time', info: '95th-percentile transaction time — the slow tail 1 in 20 shoppers experience.' },
+      { label: 'P95 time', info: '95th-percentile transaction time, the slow tail 1 in 20 shoppers experience.' },
       { label: 'Slow (>5s)', info: 'Share of transactions slower than 5 seconds, usually driven by connectivity or online-auth latency.' },
     ],
     rows: [
@@ -132,11 +132,11 @@
       ['NYC1 (kiosk)', '12,406', '1.9s', '3.5s', '1.3%'],
     ],
   };
-  /* Connectivity & health — fleet rollup of the per-terminal "Core Terminal Dashboard" signals
+  /* Connectivity & health, fleet rollup of the per-terminal "Core Terminal Dashboard" signals
      (websocket failures/latency, primary interface, signal strength, battery, firmware installs). */
   const connectivity = {
     period: 'Last 30 days',
-    iface: { wifi: 67, cellular: 33 },        // primary connected interface split (WLAN0 vs Cellular) — matches the Core Terminal Dashboard
+    iface: { wifi: 67, cellular: 33 },        // primary connected interface split (WLAN0 vs Cellular), matches the Core Terminal Dashboard
     // Counts scaled to the ~3,723-terminal fleet (weak-signal/battery are terminal counts = pct × fleet).
     wsFailures: { count: 2410, pct: 1.9, trend: -0.4, dir: 'positive' },  // websocket connection failed (events)
     avgLatencyMs: 318,                        // websocket connection latency (avg)
@@ -161,7 +161,7 @@
     ],
   };
 
-  // ---- Fleet device dataset (Level 2 reporting) — a representative estate for filtering, aggregation & the device list.
+  // ---- Fleet device dataset (Level 2 reporting), a representative estate for filtering, aggregation & the device list.
   const FH_COUNTRIES = [['Japan', 0.6], ['South Korea', 0.2], ['Taiwan', 0.12], ['Singapore', 0.08]];
   const FH_STORES = {
     'Japan': ['Uniqlo Ginza', 'Uniqlo Shibuya', 'Uniqlo Shinjuku', 'Uniqlo Osaka Umeda', 'Uniqlo Kyoto', 'Uniqlo Nagoya', 'Uniqlo Fukuoka'],
@@ -170,7 +170,7 @@
     'Singapore': ['Uniqlo Orchard', 'Uniqlo Marina Bay'],
   };
   const FH_MODELS = ['S1F2', 'AMS1', 'V400m', 'e355'];
-  // Older app versions skew toward at-risk — gives the version filter / proactive layer something to find.
+  // Older app versions skew toward at-risk, gives the version filter / proactive layer something to find.
   const FH_VERSIONS = [['1.42.1', 0.46], ['1.41.0', 0.26], ['1.40.3', 0.17], ['1.39.2', 0.11]];
   const FH_CAUSES = ['Wi-Fi drops · weak signal', 'WebSocket timeouts · high latency', 'Cellular fallback · weak signal', 'Offline windows · not boarded', 'WebSocket reconnect loop'];
   // Realistic small estate: each store has 4–10 payment devices (one store maxes out at 10 POS).
@@ -300,7 +300,7 @@
     {
       match: ['dcc', 'germany', 'de', 'retail'],
       question: 'How many DCC-enabled terminals in Retail stores in DE?',
-      answer: 'You have 3,912 DCC-enabled terminals across 41 Retail stores in Germany — 46% of the German Retail fleet.',
+      answer: 'You have 3,912 DCC-enabled terminals across 41 Retail stores in Germany, 46% of the German Retail fleet.',
       metric: { value: '3,912', label: 'DCC-enabled · DE Retail', trend: 4.1, dir: 'positive' },
       grid: { columns: [
         'Store',
@@ -325,7 +325,7 @@
         { label: 'Devices', info: 'Total terminals of this model in your fleet.' },
         { label: 'Tipping on', info: 'Share of this model’s terminals that have the tipping prompt enabled.' },
         { label: 'Avg tip', info: 'Average tip left, as a % of the transaction amount, on terminals where tipping is enabled.' },
-        { label: 'Status', info: 'Tipping performance vs the fleet benchmark. “Underperforming” = attach rate or average tip well below peers — usually because the tipping prompt is off by default or the staff-facing flow lets it be skipped.' },
+        { label: 'Status', info: 'Tipping performance vs the fleet benchmark. “Underperforming” = attach rate or average tip well below peers, usually because the tipping prompt is off by default or the staff-facing flow lets it be skipped.' },
       ], rows: [
         ['S1F2', '184,203', '44%', '11.4%', 'Healthy'],
         ['AMS1', '96,540', '31%', '9.1%', 'OK'],
@@ -343,14 +343,14 @@
     {
       match: ['revenue', 'optimis', 'optimiz'],
       question: 'Where can I optimise revenue across the fleet?',
-      answer: 'Your biggest payments-revenue levers are DCC and authorisation-rate features. DCC is eligible-but-off on 49 terminals (~€22k/mo). Tipping raises in-store ticket size (+~€18k/mo) — a complementary, point-of-sale revenue feature rather than a payments-optimisation lever.',
+      answer: 'Your biggest payments-revenue levers are DCC and authorisation-rate features. DCC is eligible-but-off on 49 terminals (~€22k/mo). Tipping raises in-store ticket size (+~€18k/mo), a complementary, point-of-sale revenue feature rather than a payments-optimisation lever.',
       metric: { value: '+~€58k/mo', label: 'Identified revenue opportunity', trend: 6.0, dir: 'positive' },
       grid: { columns: ['Lever', 'Type', 'Opportunity', 'Status'], rows: [
         ['DCC', 'Payments revenue optimisation', '+~€22k/mo', '49 eligible off'],
         ['Auth-rate (tokens, retries)', 'Payments revenue optimisation', '+~€18k/mo', 'Review'],
         ['Tipping', 'In-store revenue (ticket size)', '+~€18k/mo', '2 models off'],
       ] },
-      note: '“Revenue optimisation” at Adyen refers to payments-side levers — DCC, network tokens, auto-retries and routing. Tipping is a point-of-sale feature that raises ticket size; it complements revenue optimisation but is tracked separately.',
+      note: '“Revenue optimisation” at Adyen refers to payments-side levers, DCC, network tokens, auto-retries and routing. Tipping is a point-of-sale feature that raises ticket size; it complements revenue optimisation but is tracked separately.',
     },
     {
       match: ['firmware', 'update', 'compliance', 'pci'],
@@ -362,7 +362,7 @@
     {
       match: ['expiring', 'expire', 'expiry', 'sdk', 'firmware expir'],
       question: 'How many SDKs / firmware are expiring?',
-      answer: '312 devices are on an SDK or firmware version that expires within 90 days — 84 of them within 30 days. When a version expires the device can no longer take payments, so plan updates before the cut-off. You can upgrade manually, or stage a scoped rollout from Firmware health.',
+      answer: '312 devices are on an SDK or firmware version that expires within 90 days, 84 of them within 30 days. When a version expires the device can no longer take payments, so plan updates before the cut-off. You can upgrade manually, or stage a scoped rollout from Firmware health.',
       metric: { value: '312', label: 'Devices expiring within 90 days · 84 within 30', trend: 3.0, dir: 'negative' },
       grid: { columns: [
         'Version',
@@ -377,7 +377,7 @@
         ['Firmware 1.121', 'Firmware', '73', 'in 61 days', 'Expiring'],
         ['Android SDK 1.8.0', 'SDK', '63', 'in 88 days', 'Expiring'],
       ] },
-      note: 'Upgrading is disruptive if it risks breaking a custom integration — which is why many merchants upgrade manually. Preview compatibility and stage the rollout to one store first from Firmware health, then expand fleet-wide.',
+      note: 'Upgrading is disruptive if it risks breaking a custom integration, which is why many merchants upgrade manually. Preview compatibility and stage the rollout to one store first from Firmware health, then expand fleet-wide.',
       actions: [
         { label: 'Open Firmware health', icon: 'arrow-right', msg: 'Opening Firmware health…' },
         { label: 'Preview compatibility', icon: 'checkmark', msg: 'Checking compatibility for expiring versions…' },
@@ -386,7 +386,7 @@
     {
       match: ['locked firmware', 'lock reason', 'unlock', 'locked', 'safely unlocked'],
       question: 'Show only terminals with locked firmware. Group them by lock reason and flag which ones can be safely unlocked and updated.',
-      answer: '128 terminals have firmware locked. Most are locked to protect a custom integration (61) or a certified peripheral (34). 45 of the 128 can be safely unlocked and updated now — they passed the compatibility preview; the rest need an integration or certification check first.',
+      answer: '128 terminals have firmware locked. Most are locked to protect a custom integration (61) or a certified peripheral (34). 45 of the 128 can be safely unlocked and updated now, they passed the compatibility preview; the rest need an integration or certification check first.',
       metric: { value: '128', label: 'Terminals with locked firmware · 45 safe to update', trend: 0, dir: 'neutral' },
       grid: { columns: [
         { label: 'Lock reason', info: 'Why the firmware is locked. A lock stops an automatic update from changing behaviour the merchant depends on.' },
@@ -395,11 +395,11 @@
         { label: 'Recommended action', info: 'The suggested next step for this group.' },
       ], rows: [
         ['Custom integration', '61', '30 safe', 'Preview & unlock 30'],
-        ['Certified peripheral', '34', 'No — recertify first', 'Schedule recertification'],
-        ['Pending compliance test', '18', 'No — awaiting PCI', 'Wait for result'],
-        ['Manual lock (merchant)', '15', 'Yes — all 15', 'Unlock & update'],
+        ['Certified peripheral', '34', 'No, recertify first', 'Schedule recertification'],
+        ['Pending compliance test', '18', 'No, awaiting PCI', 'Wait for result'],
+        ['Manual lock (merchant)', '15', 'Yes, all 15', 'Unlock & update'],
       ] },
-      note: 'A lock exists so an automatic update can’t break a working integration — that’s exactly why many merchants upgrade manually. The 45 flagged “safe” passed the compatibility preview; unlock those, stage them to one store first from Firmware health, then expand fleet-wide.',
+      note: 'A lock exists so an automatic update can’t break a working integration, that’s exactly why many merchants upgrade manually. The 45 flagged “safe” passed the compatibility preview; unlock those, stage them to one store first from Firmware health, then expand fleet-wide.',
       actions: [
         { label: 'Unlock & update the 45 safe terminals', icon: 'checkmark', msg: 'Staging update for 45 safe-to-unlock terminals…' },
         { label: 'Open Firmware health', icon: 'arrow-right', msg: 'Opening Firmware health…' },
@@ -408,7 +408,7 @@
     {
       match: ['apps installed', 'android apps', 'installed per device', 'apps per device', 'without sending me to reports'],
       question: 'List Android apps installed per device across the fleet in one view, without sending me to Reports.',
-      answer: 'Across 117 Android-capable devices you have 9 distinct apps installed — 4.2 per device on average. This is the single source, so there’s no need to open Reports. Adyen Payments and the launcher are on every device; third-party apps vary by store.',
+      answer: 'Across 117 Android-capable devices you have 9 distinct apps installed, 4.2 per device on average. This is the single source, so there’s no need to open Reports. Adyen Payments and the launcher are on every device; third-party apps vary by store.',
       metric: { value: '4.2', label: 'Avg Android apps per device · 9 distinct apps · 117 devices', trend: 0.3, dir: 'neutral' },
       grid: { columns: [
         'App',
@@ -425,7 +425,7 @@
         ['Stock Lookup', 'com.retail.stock', '2.0.5', '33', '28%'],
         ['Staff Clock-in', 'com.retail.clockin', '1.2.0', '22', '19%'],
       ] },
-      note: '“Apps installed per device” used to be split between the live view and Reports. This is now the single source of truth — the number here matches the dashboard tile exactly, so you never have to cross-check Reports for one answer.',
+      note: '“Apps installed per device” used to be split between the live view and Reports. This is now the single source of truth, the number here matches the dashboard tile exactly, so you never have to cross-check Reports for one answer.',
       actions: [
         { label: 'Export app inventory', icon: 'download', msg: 'Exporting Android app inventory to CSV…' },
       ],
@@ -456,7 +456,7 @@
     {
       match: ['stuck', 'mid-move', 'reassign', 'in transit', 'stuck in reassignment'],
       question: 'Which devices are stuck mid-move?',
-      answer: '9 devices are stuck between locations — 4 boarded-but-not-trading, 3 over 48h in transit, and 2 unassigned-but-online. Smart routing suggests the best destination store for each.',
+      answer: '9 devices are stuck between locations, 4 boarded-but-not-trading, 3 over 48h in transit, and 2 unassigned-but-online. Smart routing suggests the best destination store for each.',
       metric: { value: '9', label: 'Devices stuck in reassignment', trend: 3.0, dir: 'negative' },
       grid: { columns: [
         'Device ID',
@@ -481,7 +481,7 @@
       diag: true,
       match: ['sfo1-0544000067', 'diagnose'],
       question: 'Diagnose terminal SFO1-0544000067',
-      answer: 'SFO1-0544000067 (Adyen SFO1 · Amsterdam Centrum) has been offline for 3h 12m. Root cause: it dropped off Wi-Fi during last night’s firmware update and failed to re-board — so it’s active but not trading.',
+      answer: 'SFO1-0544000067 (Adyen SFO1 · Amsterdam Centrum) has been offline for 3h 12m. Root cause: it dropped off Wi-Fi during last night’s firmware update and failed to re-board, so it’s active but not trading.',
       metric: { value: 'Offline · 3h 12m', label: 'SFO1-0544000067 · Amsterdam Centrum', trend: null, dir: 'negative' },
       grid: { columns: [
         'Check',
@@ -501,14 +501,14 @@
         { label: 'Re-sync config', icon: 'settings', msg: 'Re-syncing configuration to SFO1-0544000067…' },
         { label: 'Reassign to Amsterdam Centrum', icon: 'store', msg: 'Reassigning SFO1-0544000067…' },
       ],
-      deepDive: { prompt: 'Want me to fix this now — re-sync config and reconnect to Wi-Fi?', label: 'Fix this terminal', q: 'resolve SFO1-0544000067' },
+      deepDive: { prompt: 'Want me to fix this now, re-sync config and reconnect to Wi-Fi?', label: 'Fix this terminal', q: 'resolve SFO1-0544000067' },
     },
     // ---- Location AI · resolution (after user confirms the fix) ----
     {
       resolve: true,
       match: ['resolve', 'fix', 'solve'],
       question: 'Fix terminal SFO1-0544000067',
-      answer: '✓ Re-synced the config and reconnected SFO1-0544000067 to Wi-Fi. The terminal is back online and boarded — it processed a €12.40 test authorisation successfully.',
+      answer: '✓ Re-synced the config and reconnected SFO1-0544000067 to Wi-Fi. The terminal is back online and boarded, it processed a €12.40 test authorisation successfully.',
       metric: { value: 'Online · trading', label: 'SFO1-0544000067 · resolved', trend: null, dir: 'positive' },
       grid: { columns: ['Step', 'Result'], rows: [
         ['Reconnect Wi-Fi', 'Connected · signal good'],
@@ -537,10 +537,10 @@
         ['SFO1-0544000067', 'Uniqlo Shinjuku', 'Uniqlo Osaka Umeda', 'Offline'],
         ['P630-0345990871', 'Uniqlo Shinjuku', 'Uniqlo Osaka Umeda', 'Ready'],
       ] },
-      note: '12 of 14 terminals are ready to move. 2 are flagged as stuck mid-move (1 in transit, 1 offline) — they’ll be skipped unless you include them. Reassigning writes a reason code and logs who moved what, when.',
+      note: '12 of 14 terminals are ready to move. 2 are flagged as stuck mid-move (1 in transit, 1 offline), they’ll be skipped unless you include them. Reassigning writes a reason code and logs who moved what, when.',
       actions: [
         { label: 'Confirm reassignment (12 ready)', icon: 'checkmark', msg: 'Reassigning 12 terminals from Tokyo to Osaka…' },
-        { label: 'Include the 2 stuck devices', icon: 'refresh', msg: 'Including 2 stuck devices — retrying the move on next sync…' },
+        { label: 'Include the 2 stuck devices', icon: 'refresh', msg: 'Including 2 stuck devices, retrying the move on next sync…' },
       ],
       deepDive: { prompt: 'Review the 2 stuck-mid-move terminals first?', label: 'Review stuck devices', q: 'which terminals are stuck mid-move between Tokyo and Osaka?' },
     },
@@ -563,7 +563,7 @@
         ['SFO1-0544000067', 'Uniqlo Osaka Umeda', 'Adyen SFO1', 'Device override'],
         ['P630-0345990871', 'Uniqlo Taipei', 'P630', 'Inherited · Company'],
       ] },
-      note: 'Standalone lets a terminal take payments without a connected POS. 12 of the 18 inherit it from a store/company configuration; 6 were overridden on the device — review those overrides if Standalone shouldn’t be fleet-wide.',
+      note: 'Standalone lets a terminal take payments without a connected POS. 12 of the 18 inherit it from a store/company configuration; 6 were overridden on the device, review those overrides if Standalone shouldn’t be fleet-wide.',
       actions: [
         { label: 'Open settings-inheritance report', icon: 'list', msg: 'Opening the settings-inheritance report (device.enableStandalone)…' },
         { label: 'Export list (CSV)', icon: 'download', msg: 'Exporting 18 Standalone terminals to CSV…' },
@@ -591,7 +591,7 @@
     },
   ];
 
-  /* SDK & OS Health — Tap to Pay & card readers (PRD addendum, single 25-device fleet). */
+  /* SDK & OS Health, Tap to Pay & card readers (PRD addendum, single 25-device fleet). */
   const sdkHealth = {
     asOf: '2026-08-16',
     totalDevices: 25,
@@ -634,16 +634,16 @@
     },
   };
 
-  /* Firmware / Terminal software health — modelled on the "Terminal software" pages
+  /* Firmware / Terminal software health, modelled on the "Terminal software" pages
      (Updates / Releases / Default versions). Same 25-device fleet as SDK health. */
   const firmwareHealth = {
     asOf: '2026-08-16',
     totalDevices: 25,
     summary: {
       onLatest: { count: 17, pct: 68 },
-      behind: { count: 8, pct: 32 },      // update available — action required
+      behind: { count: 8, pct: 32 },      // update available, action required
       scheduled: 2,                        // pending scheduled updates
-      failed: 1,                           // failed updates — urgent
+      failed: 1,                           // failed updates, urgent
       nextUpdate: { version: 'Castles Android 1.126.5', date: 'Mar 26' },
     },
     updates: [
