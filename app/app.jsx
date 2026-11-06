@@ -1503,8 +1503,6 @@ const LOOP_DATES = (() => { const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun
 function FleetHealthLoop({ notify }) {
   const [shownIds, setShownIds] = useState(['offline', 'ws']); // which alert reasons are plotted on the graph
   const [hover, setHover] = useState(null);                    // hovered bucket index (tooltip)
-  const [menuOpen, setMenuOpen] = useState(false);             // reasons dropdown
-  const mref = useOutside(menuOpen, () => setMenuOpen(false));
   const series = useMemo(() => Object.fromEntries(LOOP_RULES.map(r => [r.id, loopSeries(r)])), []);
   const shownRules = LOOP_RULES.filter(r => shownIds.includes(r.id));
   const maxVal = Math.max(1, ...shownRules.flatMap(r => series[r.id]));
@@ -1512,68 +1510,52 @@ function FleetHealthLoop({ notify }) {
   const affected = breaching.reduce((s, r) => s + r.count, 0);
   const toggle = (id) => { setShownIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]); setHover(null); };
 
-  // Inner cards are frameless, only the outer tile keeps an outline.
+  // Inner cards are frameless, only the outer tile keeps an outline. Both columns stretch to one height.
   const card = { display: 'flex', flexDirection: 'column', minWidth: 0 };
 
-  // Reasons dropdown (top-right), pick which reasons to plot.
-  const reasonsMenu = (
-    <div ref={mref} style={{ position: 'relative' }}>
-      <button type="button" onClick={() => setMenuOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px', border: `1px solid #8C959D`, borderRadius: 8, background: T.card, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: T.ink }}>
-        {shownIds.length} reason{shownIds.length === 1 ? '' : 's'}<Ico name="chevron-down-small" size={16} color={T.faint} />
-      </button>
-      {menuOpen && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 600, minWidth: 260, background: '#fff', boxShadow: '0px 6px 12px rgba(0,18,34,0.08), 0px 0px 0px 1px #DADDDF', borderRadius: 8, padding: 4 }}>
-          {LOOP_RULES.map(r => (
-            <button key={r.id} className="b-menu-item" onClick={() => toggle(r.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 12px', border: 0, background: 'transparent', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, color: T.ink, textAlign: 'left' }}>
-              <span style={{ width: 16, height: 16, boxSizing: 'border-box', borderRadius: 4, border: `1px solid ${shownIds.includes(r.id) ? 'var(--b-color-label-primary)' : '#8C959D'}`, background: shownIds.includes(r.id) ? 'var(--b-color-label-primary)' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{shownIds.includes(r.id) && <Ico name="checkmark-small" size={16} color="#fff" />}</span>
-              <span style={{ width: 9, height: 9, borderRadius: 2, background: r.color, flexShrink: 0 }} />
-              <span style={{ flex: 1 }}>{r.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  // ---- Reasons list (left), breach counts + swatch legend; click a row to plot/hide it ----
+  // ---- Reasons (left) — insight-style rows: reason + live breach count; click to plot/hide ----
   const cardB = (
     <div style={card}>
-      <Col gap={0} style={{ flex: 1 }}>
-        {LOOP_RULES.map((r, i) => {
+      <Col gap={2} style={{ flex: 1, justifyContent: 'space-between' }}>
+        {LOOP_RULES.map((r) => {
           const isShown = shownIds.includes(r.id);
-          const tag = r.count > 0 ? { label: `${D.fmt(r.count)} device${r.count === 1 ? '' : 's'}`, variant: r.sev === 'red' ? 'red' : 'orange' } : { label: 'OK', variant: 'green' };
+          const sevColor = r.count > 0 ? (r.sev === 'red' ? 'var(--b-color-decorative-red)' : 'var(--b-color-decorative-orange)') : 'var(--b-color-decorative-green)';
           return (
-            <div key={r.id} className="b-menu-item" onClick={() => toggle(r.id)} title={isShown ? 'Hide from graph' : 'Plot on graph'}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderTop: i ? `1px solid ${T.sepFaint}` : 'none', cursor: 'pointer', borderRadius: 6 }}>
-              <span style={{ width: 10, height: 10, borderRadius: 3, flexShrink: 0, background: isShown ? r.color : 'transparent', border: isShown ? 'none' : `1px solid ${T.faint}` }} />
+            <div key={r.id} onClick={() => toggle(r.id)} className="b-menu-item" title={isShown ? 'Hide from graph' : 'Plot on graph'}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', borderRadius: 6, cursor: 'pointer' }}>
+              <span style={{ width: 16, height: 16, boxSizing: 'border-box', borderRadius: 4, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: isShown ? '1px solid transparent' : '1px solid #8C959D', background: isShown ? 'var(--b-color-label-primary)' : 'transparent' }}>{isShown && <Ico name="checkmark-small" size={16} color="#fff" />}</span>
+              <span style={{ width: 9, height: 9, borderRadius: 2, flexShrink: 0, background: r.color }} />
               <Col gap={1} style={{ minWidth: 0, flex: 1 }}>
                 <span style={{ fontSize: 13, color: T.ink, fontWeight: 500 }}>{r.name}</span>
                 <span style={{ fontSize: 12, color: T.faint }}>{r.cond}</span>
               </Col>
-              <Tag label={tag.label} variant={tag.variant} />
+              <Col gap={0} style={{ flexShrink: 0, alignItems: 'flex-end' }}>
+                <span className="ns-num" style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em', color: sevColor }}>{r.count > 0 ? D.fmt(r.count) : 'OK'}</span>
+                {r.count > 0 && <span style={{ fontSize: 11, color: T.faint }}>devices</span>}
+              </Col>
             </div>
           );
         })}
       </Col>
-      <div style={{ height: 1, background: T.sepFaint, margin: '8px 0' }} />
+      <div style={{ height: 1, background: T.sepFaint, margin: '10px 0 8px' }} />
       <span style={{ fontSize: 12, color: T.sub, lineHeight: '17px' }}>Breach counts are live. Alerts are delivered in the Customer Area or streamed to your tools (Splunk, webhook).</span>
     </div>
   );
 
-  // ---- Trends chart (right), plots whatever reasons are selected ----
+  // ---- Trends chart (right) — fills the column height so both sides balance ----
   const cardA = (
     <div style={card}>
       {shownRules.length === 0 ? (
-        <div style={{ height: 172, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px dashed ${T.border}`, borderRadius: T.radiusM }}>
+        <div style={{ flex: 1, minHeight: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px dashed ${T.border}`, borderRadius: T.radiusM }}>
           <span style={{ fontSize: 13, color: T.faint }}>Pick a reason to plot its trend.</span>
         </div>
       ) : (
-        <div className="ns-refocus" key={shownIds.join('|')} style={{ position: 'relative', height: 172 }}>
+        <div className="ns-refocus" key={shownIds.join('|')} style={{ position: 'relative', flex: 1, minHeight: 180, display: 'flex', flexDirection: 'column' }}>
           {/* recent breach window, where thresholds are evaluated */}
           <div style={{ position: 'absolute', top: 0, bottom: 18, left: `${(LOOP_N - LOOP_BREACH) / LOOP_N * 100}%`, width: `${LOOP_BREACH / LOOP_N * 100}%`, background: 'rgba(37,99,235,0.07)', borderLeft: '1px dashed #2563EB', borderRadius: '0 4px 4px 0', pointerEvents: 'none' }}>
             <span style={{ position: 'absolute', top: 2, left: 6, fontSize: 10, fontWeight: 600, color: '#2563EB' }}>Breach window</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 154 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, flex: 1 }}>
             {LOOP_DATES.map((d, i) => (
               <div key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(h => h === i ? null : h)}
                 style={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 1, height: '100%', background: hover === i ? 'rgba(0,18,34,0.03)' : 'transparent', borderRadius: 4 }}>
@@ -1604,9 +1586,9 @@ function FleetHealthLoop({ notify }) {
   return (
     <div style={{ ...surface, overflow: 'hidden' }} className="ns-tile">
       <TileHeader title="Fleet trends" subtitle={`${breaching.length} of ${LOOP_RULES.length} reasons breaching · ${D.fmt(affected)} devices affected`}
-        info={<span><b>Fleet trends.</b> Each failed reason shows its current breach count. Pick reasons from the menu (or click a row) to plot their signals over the last 90 days; the recent breach window is highlighted.</span>}
-        right={<Row gap={8}>{reasonsMenu}<Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => notify && notify('Opening full Fleet trends explorer…')}>Explore</Button></Row>} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: T.s5, padding: `0 ${T.s5}px ${T.s5}px` }}>
+        info={<span><b>Fleet trends.</b> Each failed reason shows its current breach count. Click a reason to plot its signal over the last 90 days; the recent breach window is highlighted.</span>}
+        right={<Button variant="tertiary" condensed iconRight="arrow-right" onClick={() => notify && notify('Opening full Fleet trends explorer…')}>Explore</Button>} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 300px) minmax(0, 1fr)', gap: T.s6, padding: `0 ${T.s5}px ${T.s5}px`, alignItems: 'stretch' }}>
         {cardB}
         {cardA}
       </div>
@@ -4824,6 +4806,9 @@ function SMStorePage({ store, onOpenDevices, onOpenStudio, notify }) {
 const DEV_TERM_MODELS = ['AMS1', 'S1F2', 'V400m', 'e355', 'S1E2', 'SFO1', 'NYC1'];
 const DEV_MOBILE_MODELS = ['iPhone13,2', 'iPhone14,2', 'iPhone15,4', 'SM-A536B', 'SM-F766B', 'SM-S731B', 'PPG-AN00'];
 const DEV_ASSIGN = [{ label: 'Boarded', variant: 'green' }, { label: 'Inventory', variant: 'grey' }, { label: 'Deployed', variant: 'blue' }, { label: 'Reassigning', variant: 'orange' }, { label: 'Assigned', variant: 'orange' }];
+// End-of-lifecycle RMA states — a minority of terminals are mid-return/replacement so the
+// Lifecycle status filter always offers a full view of the device lifecycle.
+const DEV_RMA_ASSIGN = [{ label: 'Return requested', variant: 'orange' }, { label: 'Returned', variant: 'grey' }, { label: 'Replacement shipped', variant: 'blue' }, { label: 'Replaced', variant: 'green' }];
 const DEV_COUNTRIES = ['Japan', 'South Korea', 'China', 'Singapore', 'Taiwan', 'Hong Kong', 'Thailand', 'Malaysia'];
 const DEV_DATES = ['Oct 18, 2025, 09:07', 'May 7, 2026, 15:17', 'Aug 4, 2026, 02:01', 'Jul 25, 2024, 06:07', 'Nov 25, 2025, 19:19', 'Aug 13, 2026, 07:31', 'Apr 1, 2025, 12:59', 'Feb 9, 2024, 23:45', 'Mar 17, 2026, 00:12', '—'];
 const DEV_DOTS = ['var(--b-color-decorative-green)', 'var(--b-color-decorative-orange)', 'var(--b-color-decorative-red)'];
@@ -4833,7 +4818,8 @@ function makeTerminals(count, opts) {
   const o = opts || {}; const rows = [];
   for (let i = 0; i < count; i++) {
     const s = ((o.seed || 1) * 13 + i * 7);
-    const a = DEV_ASSIGN[s % DEV_ASSIGN.length];
+    // Most terminals sit in the assignment lifecycle; a minority are mid-RMA (return/replacement).
+    const a = (s % 12 === 0) ? DEV_RMA_ASSIGN[Math.floor(s / 12) % DEV_RMA_ASSIGN.length] : DEV_ASSIGN[s % DEV_ASSIGN.length];
     const loc = o.stores ? o.stores[i % o.stores.length] : null;
     rows.push({
       id: 't' + (o.seed || 0) + '_' + i, model: DEV_TERM_MODELS[s % DEV_TERM_MODELS.length],
@@ -5221,14 +5207,14 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, onOpenDevice, title, 
     ? <button type="button" onClick={() => onOpenDevice(r)} style={{ border: 0, background: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500, color: 'var(--b-color-label-primary)', textDecoration: 'underline', textUnderlineOffset: 2 }}>{r.model}</button>
     : <span style={{ fontWeight: 500 }}>{r.model}</span>;
   const ACT_INFO = 'When the device last processed a transaction. The dot shows online (green), idle (orange) or offline (red).';
-  const ASSIGN_INFO = 'Where the device is in its lifecycle: Inventory (not yet assigned), Deployed (assigned to a store), Boarded (live and transacting) or Reassigning (moving to another store).';
+  const ASSIGN_INFO = 'Where the device is in its lifecycle: Inventory (not yet assigned), Deployed (assigned to a store), Boarded (live and transacting), Reassigning (moving to another store), or in an RMA — Return requested, Returned, Replacement shipped, Replaced.';
   const assignCell = (r) => r.assign ? <Tag label={r.assign} variant={r.assignV} /> : <span style={{ color: T.faint }}>—</span>;
   const allCols = [
     { key: 'model', label: 'Device model', w: 130, render: modelCell },
     { key: 'type', label: 'Type', w: 110, sortField: '_type', render: r => <Tag label={r._type === 'Mobile' ? 'Mobile' : 'Terminal'} variant={r._type === 'Mobile' ? 'blue' : 'grey'} /> },
     { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', info: ACT_INFO, render: dot },
     { key: 'tx', label: 'Last transaction', w: 160, sortField: 'lastTx', render: r => sub(r.lastTx) },
-    { key: 'assign', label: 'Assignment status', w: 150, padRight: 16, sortField: 'assign', info: ASSIGN_INFO, render: assignCell },
+    { key: 'assign', label: 'Lifecycle status', w: 170, padRight: 16, sortField: 'assign', info: ASSIGN_INFO, render: assignCell },
     { key: 'store', label: storeLabel, w: 170, render: storeCell },
     { key: 'country', label: 'Country/Region', w: 150, render: r => sub(r.country) },
     { key: 'merchant', label: 'Merchant', w: 180, render: r => sub(r.merchant) },
@@ -5238,7 +5224,7 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, onOpenDevice, title, 
     { key: 'serial', label: 'Serial number', w: 150, render: r => mono(r.serial) },
     { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', info: ACT_INFO, render: dot },
     { key: 'tx', label: 'Last transaction', w: 160, sortField: 'lastTx', render: r => sub(r.lastTx) },
-    { key: 'assign', label: 'Assignment status', w: 150, padRight: 16, sortField: 'assign', info: ASSIGN_INFO, render: assignCell },
+    { key: 'assign', label: 'Lifecycle status', w: 170, padRight: 16, sortField: 'assign', info: ASSIGN_INFO, render: assignCell },
     { key: 'store', label: storeLabel, w: 160, render: storeCell },
     { key: 'country', label: 'Country/Region', w: 140, render: r => sub(r.country) },
     { key: 'addr', label: 'Location address', w: 200, sortField: 'address', render: r => sub(r.address) },
@@ -5248,7 +5234,7 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, onOpenDevice, title, 
     { key: 'model', label: 'Device model', w: 120, render: modelCell },
     { key: 'install', label: 'Installation ID', w: 240, render: r => mono(r.install) },
     { key: 'act', label: 'Last activity', w: 170, sortField: 'lastActivity', info: ACT_INFO, render: dot },
-    { key: 'assign', label: 'Assignment status', w: 150, padRight: 16, sortField: 'assign', info: ASSIGN_INFO, render: assignCell },
+    { key: 'assign', label: 'Lifecycle status', w: 170, padRight: 16, sortField: 'assign', info: ASSIGN_INFO, render: assignCell },
     { key: 'store', label: storeLabel, w: 160, render: storeCell },
     { key: 'country', label: 'Country/Region', w: 140, render: r => sub(r.country) },
     { key: 'sdkv', label: 'SDK version', w: 110, sortField: 'sdkVersion', render: r => mono(r.sdkVersion) },
@@ -5301,7 +5287,7 @@ function DeviceExplorer({ terminals, mobiles, onOpenStore, onOpenDevice, title, 
             <SearchBar value={q} onChange={setQ} placeholder="Search…" width={260} />
             <FilterChip label="Device type" options={[{ value: 'Terminal', label: 'Terminals', count: terminals.length }, { value: 'Mobile', label: 'Mobile devices', count: mobiles.length }]} selected={fType} onChange={toggle(setFType)} onClear={() => setFType([])} />
             <FilterChip label="Location" options={locOpts} selected={fLoc} onChange={toggle(setFLoc)} onClear={() => setFLoc([])} />
-            <FilterChip label="Assignment status" options={assignOpts} selected={fAssign} onChange={toggle(setFAssign)} onClear={() => setFAssign([])} />
+            <FilterChip label="Lifecycle status" options={assignOpts} selected={fAssign} onChange={toggle(setFAssign)} onClear={() => setFAssign([])} />
             <FilterChip label="Merchant" options={merchOpts} selected={fMerch} onChange={toggle(setFMerch)} onClear={() => setFMerch([])} />
             {hasFilters && <button onClick={() => { setFType([]); setFLoc([]); setFMerch([]); setFAssign([]); setQ(''); }} style={{ border: 0, background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, color: '#0F75DC', padding: '0 4px' }}>Clear filters</button>}
           </Row>
@@ -6516,7 +6502,7 @@ function AddLocationModal({ onClose, onCreate }) {
 
 /* Holistic device detail, identity, live state, final resolved config, terminal logs, event
    timeline and problem history. "Config" opens the Device Studio preview scoped to this device. */
-function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify }) {
+function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, onReturnReplace, notify }) {
   const [devTab, setDevTab] = useState('info'); // Device info | Device events | Settings & config
   const [devRange, setDevRange] = useState('7d'); // event/activity period, default last 7 days
   const [logFilter, setLogFilter] = useState('all'); // event log, All | Problems
@@ -6643,7 +6629,7 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
       actions={<>
         <MenuButton variant="secondary" condensed={false} icon="options-vertical" label="Actions" items={[
           { value: 'restart', label: 'Restart', icon: 'refresh' }, { value: 'replace', label: 'Replace device', icon: 'refresh' }, { value: 'return', label: 'Return device', icon: 'arrow-right' },
-        ]} onSelect={(v) => notify && notify(v === 'restart' ? 'Restart command sent' : v === 'replace' ? 'Replacement ordered' : 'Return label generated')} />
+        ]} onSelect={(v) => { if ((v === 'replace' || v === 'return') && onReturnReplace) onReturnReplace(v === 'replace' ? 'replace' : 'return'); else notify && notify('Restart command sent'); }} />
         <MenuButton variant="secondary" condensed={false} icon="download" label="Export" align="right" items={[
           { value: 'events', label: 'Export events (CSV)', icon: 'download' },
           { value: 'tx', label: 'Export transactions (CSV)', icon: 'download' },
@@ -6945,6 +6931,284 @@ function DeviceDetail({ row, store, onBack, onOpenStudio, onOpenStore, notify })
   );
 }
 
+/* ============================================================= RETURN & REPLACE (RMA)
+   Shared-wizard RMA flow (PRD §8): Request type → Devices → Shipping → Summary → Confirmation.
+   One stepper + sticky footer; eligibility shown upfront; inline + bulk problem entry. Mock data. */
+const RMA_PROBLEMS = ["Won't power on", 'Screen / display fault', 'Card reader / chip fault', 'Contactless fault', 'Printer fault', 'Connectivity / network fault', 'Battery fault', 'Buttons / keypad fault', 'Physical damage', 'Other'];
+const RMA_PROBLEM_WARN = { 'Physical damage': 'Physical damage may fall outside TRS/warranty and could be invoiced after inspection.' };
+// Replace exclusions by model (mock): discontinued or no Terminal Replacement Service.
+const RMA_REPLACE_EXCLUDED = { e355: 'Model discontinued — no replacement available', NYC1: 'Terminal Replacement Service not available for this model' };
+const RMA_MAX_REPLACE = 50;
+function ReturnReplaceFlow({ onBack, notify, devices, preset }) {
+  const notifyFn = notify || (() => {});
+  const presetType = preset && preset.type; // 'replace' | 'return'
+  const [type, setType] = useState(presetType || null);
+  const [step, setStep] = useState(presetType ? 'devices' : 'type'); // type · devices · shipping · summary · confirmed
+  const [rows, setRows] = useState(() => (preset && preset.devices ? preset.devices.map(d => ({ id: d.id, model: d.model, serial: d.serial, store: d.store, country: d.country, cat: '', desc: '' })) : []));
+  const [sel, setSel] = useState({});
+  const [query, setQuery] = useState('');
+  const [bulkCat, setBulkCat] = useState('');
+  const [defaultCat, setDefaultCat] = useState(''); // "Reported problem" applied to every terminal you add
+  const [addr, setAddr] = useState({ name: '', company: '', addr1: '', city: '', zip: '', country: 'Japan', po: '' });
+  const [ref, setRef] = useState(null);
+  const isReplace = type === 'replace';
+  const pool = devices || [];
+  const setA = (k, v) => setAddr(a => ({ ...a, [k]: v }));
+  const excludedReason = (m) => (isReplace ? RMA_REPLACE_EXCLUDED[m] : null);
+  const added = new Set(rows.map(r => r.id));
+  const q = query.trim().toLowerCase();
+  const searchMatches = q ? pool.filter(d => !added.has(d.id) && ((d.serial || '').toLowerCase().includes(q) || (d.model || '').toLowerCase().includes(q))) : [];
+  const eligibleMatches = searchMatches.filter(d => !excludedReason(d.model)).slice(0, 6);
+  const excludedMatches = searchMatches.filter(d => excludedReason(d.model)).slice(0, 4);
+  const addRow = (d) => {
+    if (added.has(d.id)) { notifyFn(`${d.model} is already in this request`); return; }
+    if (isReplace && rows.length >= RMA_MAX_REPLACE) { notifyFn(`Replacements have a maximum of ${RMA_MAX_REPLACE} terminals per request`); return; }
+    setRows(rs => [...rs, { id: d.id, model: d.model, serial: d.serial, store: d.store, country: d.country, cat: defaultCat || '', desc: '' }]);
+  };
+  const importCsv = () => {
+    const avail = pool.filter(d => !added.has(d.id) && !excludedReason(d.model)).slice(0, 5);
+    if (!avail.length) { notifyFn('No more eligible terminals to import'); return; }
+    const room = isReplace ? Math.max(0, RMA_MAX_REPLACE - rows.length) : avail.length;
+    const take = avail.slice(0, room);
+    setRows(rs => [...rs, ...take.map(d => ({ id: d.id, model: d.model, serial: d.serial, store: d.store, country: d.country, cat: defaultCat || '', desc: '' }))]);
+    notifyFn(`Imported ${take.length} terminal${take.length === 1 ? '' : 's'} from CSV`);
+  };
+  // Pick the reason once: set the default AND back-fill any terminals that don't have one yet.
+  const applyDefaultCat = (v) => { setDefaultCat(v); setRows(rs => rs.map(r => r.cat ? r : { ...r, cat: v })); };
+  const setRowField = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r));
+  const removeRow = (id) => { setRows(rs => rs.filter(r => r.id !== id)); setSel(s => { const n = { ...s }; delete n[id]; return n; }); };
+  const selIds = Object.keys(sel).filter(k => sel[k]);
+  const selModels = new Set(rows.filter(r => sel[r.id]).map(r => r.model));
+  const bulkSameModel = selIds.length > 1 && selModels.size === 1;
+  const applyBulk = () => { if (!bulkCat) return; setRows(rs => rs.map(r => sel[r.id] ? { ...r, cat: bulkCat } : r)); notifyFn(`Set “${bulkCat}” on ${selIds.length} terminals`); setSel({}); setBulkCat(''); };
+  const needCat = rows.filter(r => !r.cat).length;
+  const over = isReplace && rows.length > RMA_MAX_REPLACE;
+
+  const steps = [
+    ...(presetType ? [] : [{ key: 'type', label: 'Request type' }]),
+    { key: 'devices', label: 'Devices' }, { key: 'shipping', label: 'Shipping' }, { key: 'summary', label: 'Summary' },
+  ];
+  const order = steps.map(s => s.key);
+  const idx = order.indexOf(step);
+  const typeLabel = isReplace ? 'Replacement' : 'Return';
+
+  // ---- step validation (drives the header Next button) ----
+  const nextByStep = {
+    type: { label: 'Continue to devices', disabled: !type, reason: 'Choose a request type to continue', onNext: () => setStep('devices') },
+    devices: { label: 'Continue to shipping', disabled: rows.length === 0 || needCat > 0 || over, reason: over ? `Remove ${rows.length - RMA_MAX_REPLACE} terminals — max ${RMA_MAX_REPLACE} per replacement` : rows.length === 0 ? 'Add at least one terminal' : needCat > 0 ? `Add a problem category for ${needCat} terminal${needCat === 1 ? '' : 's'}` : '', onNext: () => setStep('shipping') },
+    shipping: { label: 'Review request', disabled: !addr.addr1 || !addr.city, reason: 'Enter a shipping address', onNext: () => setStep('summary') },
+    summary: { label: 'Submit request', disabled: false, reason: '', onNext: () => { setRef('RMA-' + String(Date.now()).slice(-8)); setStep('confirmed'); notifyFn('Request submitted'); } },
+  };
+  const nx = nextByStep[step];
+
+  // ---- step content ----
+  const typeCard = (val, title, desc, reason) => {
+    const on = type === val;
+    const disabled = !!reason;
+    return (
+      <button type="button" disabled={disabled} onClick={() => !disabled && setType(val)}
+        style={{ textAlign: 'left', border: `1px solid ${on ? 'var(--b-color-label-primary)' : T.border}`, boxShadow: on ? 'inset 0 0 0 1px var(--b-color-label-primary)' : 'none', borderRadius: T.radiusL, background: disabled ? 'var(--b-color-background-secondary)' : T.card, padding: 20, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: disabled ? 0.8 : 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Row gap={10} align="center">
+          <span style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${on ? 'var(--b-color-label-primary)' : '#8C959D'}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{on && <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--b-color-label-primary)' }} />}</span>
+          <span style={{ fontSize: 16, fontWeight: 600 }}>{title}</span>
+        </Row>
+        <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{desc}</span>
+        {reason && <span style={{ fontSize: 12, color: 'var(--b-color-decorative-red)', marginTop: 2 }}>{reason}</span>}
+      </button>
+    );
+  };
+
+  const content = (() => {
+    if (step === 'type') return (
+      <Col gap={T.s6} style={{ maxWidth: 760, margin: '0 auto', width: '100%' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: T.s4 }}>
+          {typeCard('replace', 'Replace', 'You\u2019ll receive replacement devices when covered by the Terminal Replacement Service or warranty. Send back your faulty devices.')}
+          {typeCard('return', 'Return', 'You won\u2019t receive replacement devices. Send back your devices.')}
+        </div>
+        <div style={{ ...surface, padding: 16, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <Ico name="info" size={18} color={T.sub} style={{ flexShrink: 0, marginTop: 1 }} />
+          <Col gap={4} style={{ flex: 1 }}>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Try troubleshooting first</span>
+            <span style={{ fontSize: 13, color: T.sub, lineHeight: '18px' }}>Many faults are fixed by a restart or reconnecting. Check the guide before sending a device back.</span>
+            <Row gap={8} style={{ marginTop: 6 }}>
+              <Button variant="secondary" condensed onClick={() => notifyFn('Opening troubleshooting guide…')}>Troubleshooting guide</Button>
+              <Button variant="tertiary" condensed onClick={() => notifyFn('Contacting support…')}>Contact support</Button>
+            </Row>
+          </Col>
+        </div>
+      </Col>
+    );
+    if (step === 'devices') return (
+      <Col gap={T.s5} style={{ maxWidth: 1000, margin: '0 auto', width: '100%' }}>
+        {isReplace
+          ? <Alert type="warning" variant="default" title="About replacements" description={`Replacing terminals outside TRS or warranty terms may be invoiced — your reported problem is compared with repair-center findings. Max ${RMA_MAX_REPLACE} terminals per request.`} />
+          : <Alert type="info" variant="default" title="About returns" description="You won\u2019t receive replacements. We\u2019ll send a return box to the address you choose." />}
+        {/* add by serial search + CSV — both always available. Reason is chosen once and inherited. */}
+        <div style={{ ...surface, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* 1 — reported problem, chosen once */}
+          <Col gap={6}>
+            <Row gap={8} align="baseline" style={{ flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Reported problem</span>
+              <span style={{ fontSize: 12, color: T.faint }}>Applied to every terminal you add — change individual ones below.</span>
+            </Row>
+            <Row gap={10} align="center" style={{ flexWrap: 'wrap' }}>
+              <div style={{ width: 320, maxWidth: '100%' }}><Dropdown value={defaultCat} placeholder="Select the fault…" options={RMA_PROBLEMS.map(p => ({ value: p, label: p }))} onChange={applyDefaultCat} /></div>
+              {defaultCat && RMA_PROBLEM_WARN[defaultCat] && <span style={{ fontSize: 12, color: 'var(--b-color-decorative-orange)', maxWidth: 360 }}>{RMA_PROBLEM_WARN[defaultCat]}</span>}
+            </Row>
+          </Col>
+          <div style={{ borderTop: `1px solid ${T.sepFaint}` }} />
+          {/* 2 — add terminals */}
+          <Row gap={10} align="center" style={{ flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 240 }}><SearchBar value={query} onChange={setQuery} placeholder="Add terminals by serial number or model…" width="100%" /></div>
+            <Button variant="secondary" iconLeft="download" onClick={importCsv}>Upload CSV</Button>
+            <a href="#" onClick={(e) => { e.preventDefault(); notifyFn('The serial number is printed on the back of the terminal.'); }} style={{ fontSize: 13, color: 'var(--b-color-link-primary)', whiteSpace: 'nowrap' }}>Where\u2019s the serial number?</a>
+          </Row>
+          {q && (
+            <Col gap={6}>
+              {eligibleMatches.map(d => (
+                <Row key={d.id} gap={10} align="center" style={{ padding: '8px 10px', border: `1px solid ${T.sepFaint}`, borderRadius: T.radiusM }}>
+                  <Col gap={1} style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 600 }}>{d.model}</span><span className="ns-num" style={{ fontSize: 12, color: T.faint }}>{d.serial} · {d.store}</span></Col>
+                  <Button variant="secondary" condensed iconLeft="plus" onClick={() => addRow(d)}>Add</Button>
+                </Row>
+              ))}
+              {eligibleMatches.length === 0 && excludedMatches.length === 0 && <span style={{ fontSize: 13, color: T.faint, padding: '4px 2px' }}>No matching terminals.</span>}
+              {excludedMatches.length > 0 && (
+                <Col gap={4} style={{ marginTop: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>Not eligible for replacement</span>
+                  {excludedMatches.map(d => (
+                    <Row key={d.id} gap={10} align="center" style={{ padding: '6px 10px' }}>
+                      <Col gap={1} style={{ flex: 1, minWidth: 0 }}><span style={{ fontSize: 13, color: T.sub }}>{d.model} · <span className="ns-num">{d.serial}</span></span><span style={{ fontSize: 12, color: 'var(--b-color-decorative-red)' }}>{excludedReason(d.model)}</span></Col>
+                    </Row>
+                  ))}
+                </Col>
+              )}
+            </Col>
+          )}
+        </div>
+        {/* bulk bar */}
+        {selIds.length > 0 && (
+          <Row gap={10} align="center" style={{ padding: '10px 14px', background: 'var(--b-color-background-secondary)', borderRadius: T.radiusM, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{selIds.length} selected</span>
+            {bulkSameModel
+              ? <><div style={{ width: 240 }}><Dropdown value={bulkCat} placeholder="Set problem category" options={RMA_PROBLEMS.map(p => ({ value: p, label: p }))} onChange={setBulkCat} condensed /></div>
+                  <Button variant="secondary" condensed disabled={!bulkCat} onClick={applyBulk}>Apply to {selIds.length}</Button></>
+              : <span style={{ fontSize: 12, color: T.faint }}>Select terminals of the same model to set a problem in bulk</span>}
+            <span style={{ flex: 1 }} />
+            <Button variant="tertiary" condensed onClick={() => { selIds.forEach(removeRow); }}>Remove</Button>
+            <Button variant="tertiary" condensed onClick={() => setSel({})}>Clear</Button>
+          </Row>
+        )}
+        {/* devices table */}
+        {rows.length === 0
+          ? <EmptyState icon="package" title="No terminals added" description="Search by serial number or upload a CSV to add the terminals you want to send back." />
+          : <div style={{ ...surface, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '32px 120px 1fr 150px 1.3fr 120px 60px', gap: 12, padding: '10px 14px', borderBottom: `1px solid ${T.sep}`, fontSize: 12, fontWeight: 600, color: T.sub }}>
+                <span><Checkbox checked={rows.length > 0 && rows.every(r => sel[r.id])} onChange={() => { const all = rows.every(r => sel[r.id]); const n = {}; if (!all) rows.forEach(r => n[r.id] = true); setSel(n); }} /></span>
+                <span>Status</span><span>Model · serial</span><span>Store</span><span>Problem category</span><span>Description</span><span />
+              </div>
+              {rows.map(r => {
+                const warn = RMA_PROBLEM_WARN[r.cat];
+                return (
+                  <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '32px 120px 1fr 150px 1.3fr 120px 60px', gap: 12, padding: '10px 14px', borderBottom: `1px solid ${T.sepFaint}`, alignItems: 'center' }}>
+                    <span><Checkbox checked={!!sel[r.id]} onChange={() => setSel(s => ({ ...s, [r.id]: !s[r.id] }))} /></span>
+                    <span><Tag label={r.cat ? 'Complete' : 'Needs details'} variant={r.cat ? 'green' : 'orange'} /></span>
+                    <Col gap={0} style={{ minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 600 }}>{r.model}</span><span className="ns-num" style={{ fontSize: 12, color: T.faint, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.serial}</span></Col>
+                    <span style={{ fontSize: 13, color: T.sub, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.store}</span>
+                    <Col gap={2} style={{ minWidth: 0 }}>
+                      <Dropdown value={r.cat} placeholder="Select" options={RMA_PROBLEMS.map(p => ({ value: p, label: p }))} onChange={(v) => setRowField(r.id, 'cat', v)} condensed />
+                      {warn && <span style={{ fontSize: 11, color: 'var(--b-color-decorative-orange)', lineHeight: '14px' }}>{warn}</span>}
+                    </Col>
+                    <input value={r.desc} onChange={(e) => setRowField(r.id, 'desc', e.target.value)} placeholder="Optional" style={{ height: 32, border: `1px solid ${T.border}`, borderRadius: 6, padding: '0 8px', fontFamily: 'inherit', fontSize: 13, background: T.card, color: T.ink, outline: 'none', boxSizing: 'border-box', width: '100%' }} />
+                    <button onClick={() => removeRow(r.id)} title="Remove" style={{ border: 0, background: 'none', cursor: 'pointer', color: T.faint, justifySelf: 'end' }}><Ico name="cross" size={16} color={T.faint} /></button>
+                  </div>
+                );
+              })}
+            </div>}
+      </Col>
+    );
+    if (step === 'shipping') return (
+      <div style={{ maxWidth: 1000, margin: '0 auto', width: '100%', display: 'flex', gap: T.s7, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <Col gap={T.s5} style={{ flex: '1 1 440px', minWidth: 320 }}>
+          <Col gap={4}><span style={{ fontSize: 18, fontWeight: 600 }}>{isReplace ? 'Where should we send the replacements?' : 'Where should we send the return box?'}</span><span style={{ fontSize: 13, color: T.sub }}>{isReplace ? 'Replacements ship to this address; send your faulty devices back in the box provided.' : 'We\u2019ll send a return box to this address.'}</span></Col>
+          {[['Full name', 'name', 'e.g. Eva Hansen'], ['Company (optional)', 'company', 'Uniqlo APAC'], ['Address', 'addr1', 'Street and number'], ['City', 'city', 'Tokyo'], ['Postal code', 'zip', '150-0002']].map(([label, k, ph]) => (
+            <Col key={k} gap={6}><span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
+              <input value={addr[k]} onChange={(e) => setA(k, e.target.value)} placeholder={ph} style={{ height: 36, border: '1px solid #8C959D', borderRadius: 8, padding: '0 12px', fontFamily: 'inherit', fontSize: 14, background: T.card, color: T.ink, outline: 'none', boxSizing: 'border-box' }} /></Col>
+          ))}
+          <Col gap={6}><span style={{ fontSize: 13, fontWeight: 500 }}>Country/Region</span><Dropdown value={addr.country} options={ORDER_COUNTRIES.map(c => ({ value: c, label: c }))} onChange={(v) => setA('country', v)} /></Col>
+          <Col gap={6}><span style={{ fontSize: 13, fontWeight: 500 }}>Purchase order number (optional)</span>
+            <input value={addr.po} onChange={(e) => setA('po', e.target.value)} placeholder="Printed on the packing list" style={{ height: 36, border: '1px solid #8C959D', borderRadius: 8, padding: '0 12px', fontFamily: 'inherit', fontSize: 14, background: T.card, color: T.ink, outline: 'none', boxSizing: 'border-box' }} /></Col>
+        </Col>
+        <div style={{ flex: '1 1 300px', minWidth: 280, background: '#F6F7F9', borderRadius: T.radiusL, padding: 20 }}>
+          <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}><span style={{ fontSize: 15, fontWeight: 600 }}>{rows.length} device{rows.length === 1 ? '' : 's'}</span><button onClick={() => setStep('devices')} style={{ border: 0, background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--b-color-link-primary)' }}>Edit</button></Row>
+          <Col gap={10}>{rows.map(r => <Row key={r.id} style={{ justifyContent: 'space-between', gap: 10 }}><Col gap={0} style={{ minWidth: 0 }}><span style={{ fontSize: 13, fontWeight: 500 }}>{r.model}</span><span className="ns-num" style={{ fontSize: 12, color: T.faint }}>{r.serial}</span></Col><span style={{ fontSize: 12, color: T.sub, textAlign: 'right', maxWidth: 130 }}>{r.cat || '—'}</span></Row>)}</Col>
+        </div>
+      </div>
+    );
+    if (step === 'summary') {
+      const sectionEdit = (title, s, node) => (
+        <div style={{ ...surface, padding: 18 }}>
+          <Row style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}><span style={{ fontSize: 15, fontWeight: 600 }}>{title}</span><button onClick={() => setStep(s)} style={{ border: 0, background: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--b-color-link-primary)' }}>Edit</button></Row>
+          {node}
+        </div>
+      );
+      return (
+        <Col gap={T.s4} style={{ maxWidth: 760, margin: '0 auto', width: '100%' }}>
+          {!presetType && sectionEdit('Request type', 'type', <Row gap={8} align="center"><Tag label={typeLabel} variant={isReplace ? 'blue' : 'grey'} /></Row>)}
+          {sectionEdit('Devices', 'devices', <Col gap={8}>{rows.map(r => <Row key={r.id} style={{ justifyContent: 'space-between', gap: 10 }}><span style={{ fontSize: 13 }}>{r.model} · <span className="ns-num" style={{ color: T.faint }}>{r.serial}</span></span><span style={{ fontSize: 13, color: T.sub }}>{r.cat}</span></Row>)}</Col>)}
+          {sectionEdit('Shipping address', 'shipping', <span style={{ fontSize: 13, color: T.sub, lineHeight: '19px' }}>{[addr.name, addr.company, addr.addr1, [addr.zip, addr.city].filter(Boolean).join(' '), addr.country].filter(Boolean).join(', ') || 'Not set'}{addr.po ? ` · PO ${addr.po}` : ''}</span>)}
+        </Col>
+      );
+    }
+    // confirmed
+    const brazil = addr.country === 'Brazil';
+    const instructions = brazil
+      ? ['A FedEx courier visits your address', 'They check the serial numbers and collect the devices', isReplace ? 'Replacements are delivered at the same visit' : 'No replacements are sent for a return']
+      : [isReplace ? 'Your replacement ships to the address above' : 'A return box with seal bags arrives at the address above', 'Pack the faulty devices and seal the box', 'Attach the prepaid label', 'Drop off at a carrier point or schedule a pickup'];
+    return (
+      <div style={{ maxWidth: 520, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
+        <span className="ns-pop" style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--b-color-background-success-weak)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Ico name="checkmark" size={34} color="var(--b-color-decorative-green)" /></span>
+        <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em', marginTop: 8 }}>Your request has been submitted</span>
+        <span style={{ fontSize: 14, color: T.sub, lineHeight: '21px', maxWidth: 420 }}>We\u2019ll email you status updates. Track it any time under Orders &amp; returns.</span>
+        <div style={{ ...surface, width: '100%', padding: 18, marginTop: 16, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}><Col gap={2}><span style={{ fontSize: 12, color: T.faint }}>Request reference</span><span className="ns-num" style={{ fontSize: 15, fontWeight: 600 }}>{ref}</span></Col><Tag label={typeLabel} variant={isReplace ? 'blue' : 'grey'} /></Row>
+          <div style={{ borderTop: `1px solid ${T.sepFaint}` }} />
+          <Row style={{ justifyContent: 'space-between' }}><span style={{ fontSize: 13, color: T.sub }}>Devices</span><span style={{ fontSize: 13 }}>{rows.length}</span></Row>
+          <Col gap={6} style={{ marginTop: 2 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: T.faint }}>What happens next</span>
+            {instructions.map((x, i) => <Row key={i} gap={8} align="flex-start"><span className="ns-num" style={{ fontSize: 12, color: T.faint, width: 16, flexShrink: 0 }}>{i + 1}.</span><span style={{ fontSize: 13, color: T.sub, lineHeight: '18px' }}>{x}</span></Row>)}
+          </Col>
+        </div>
+        <Row gap={10} style={{ marginTop: 20 }}>
+          <Button variant="secondary" onClick={() => notifyFn('Opening Orders & returns…')}>View request</Button>
+          <Button variant="primary" onClick={onBack}>Back to devices</Button>
+        </Row>
+      </div>
+    );
+  })();
+
+  const title = presetType ? (isReplace ? 'Replace terminals' : 'Return terminals') : 'Return & replace';
+  // Seamless stepping (matches the Order flow): no visible stepper — progress lives in the subtitle,
+  // Back is labeled with the previous step, and the named Next (with its reason) sits in the header.
+  const atFirst = idx <= 0;
+  const headerBack = () => (step !== 'confirmed' && !atFirst) ? setStep(order[idx - 1]) : onBack();
+  const headerBackLabel = (step !== 'confirmed' && !atFirst) ? steps[idx - 1].label : 'Devices & locations';
+  const subtitle = step === 'confirmed' ? 'Request submitted' : `Step ${idx + 1} of ${steps.length} · ${steps[idx].label}`;
+  return (
+    <FullPage title={title} subtitle={subtitle} tone="nav-devices"
+      onBack={headerBack} backLabel={headerBackLabel} backIcon={<ArrowLeftGlyph />} onClose={onBack} bodyBg={T.page}
+      actions={step === 'confirmed' ? undefined : (
+        <Row gap={12} align="center">
+          {nx.disabled && nx.reason && <span style={{ fontSize: 12, color: T.faint, maxWidth: 280, textAlign: 'right', lineHeight: '15px' }}>{nx.reason}</span>}
+          <Button variant="primary" iconRight="arrow-right" disabled={nx.disabled} onClick={nx.onNext}>{nx.label}</Button>
+        </Row>
+      )}>
+      <div style={{ padding: `${T.s6}px 24px ${T.s7}px` }}>
+        {content}
+      </div>
+    </FullPage>
+  );
+}
+
 /* Device-first "Device locations" page, the full device list with Location as a column.
    "View all locations" flips to the store (location) list. */
 function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
@@ -6955,6 +7219,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
   const [addQty, setAddQty] = useState('1');
   const [selectorOpen, setSelectorOpen] = useState(false); // "Add devices" (By location) → terminal selector
   const [orderOpen, setOrderOpen] = useState(false); // recommendation → full-page order flow
+  const [rmaOpen, setRmaOpen] = useState(null); // null | {} | { type, devices } — Return & replace (RMA) flow
   const [view, setView] = useState('devices'); // devices | byLocation
   const [reassign, setReassign] = useState(null); // { rows } while the reassign modal is open
   const [reassignTarget, setReassignTarget] = useState((SM_STORES[0] || {}).id);
@@ -6997,12 +7262,14 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
           {view === 'byLocation'
             ? <Button variant="primary" iconLeft="store" onClick={() => setAddLocOpen(true)}>Add location</Button>
             : <>
+                <Button variant="secondary" iconLeft="refresh" onClick={() => setRmaOpen({})}>Return & replace</Button>
                 <Button variant="secondary" iconLeft="checkmark-circle" onClick={() => setAddOpen(true)}>Activate devices</Button>
                 <Button variant="primary" iconLeft="plus" onClick={() => setSelectorOpen(true)}>Order devices</Button>
               </>}
         </>} />
       {addLocOpen && <AddLocationModal onClose={() => setAddLocOpen(false)} onCreate={createLocation} />}
-      {detailRow && <DeviceDetail row={detailRow} store={SM_STORES.find(x => x.id === detailRow.storeId)} onBack={() => setDetailRow(null)} onOpenStudio={onOpenStudio} onOpenStore={openLocation} notify={notify} />}
+      {detailRow && <DeviceDetail row={detailRow} store={SM_STORES.find(x => x.id === detailRow.storeId)} onBack={() => setDetailRow(null)} onOpenStudio={onOpenStudio} onOpenStore={openLocation}
+        onReturnReplace={(type) => { const r = detailRow; setDetailRow(null); setRmaOpen({ type, devices: [{ id: r.id, model: r.model, serial: r.serial || r.install, store: r.store, country: r.country }] }); }} notify={notify} />}
       {reassign && (
         <Modal open onClose={() => setReassign(null)} title="Reassign devices" width={460}
           description={`Move ${reassign.rows.length} device${reassign.rows.length === 1 ? '' : 's'} to a different location. Each device always belongs to exactly one location.`}
@@ -7022,6 +7289,7 @@ function DeviceLocationsPage({ notify, onOpenStore, onOpenStudio }) {
       {locations && <AllStoresModal key={locations.store || 'list'} initialStore={locations.store} notify={notify} onBack={() => setLocations(null)} onOpenStore={onOpenStore} onOpenStudio={onOpenStudio} />}
       {selectorOpen && <TerminalSelector onBack={() => setSelectorOpen(false)} notify={notify} onOrder={() => { setSelectorOpen(false); setOrderOpen(true); }} />}
       {orderOpen && <OrderFlow onBack={() => setOrderOpen(false)} notify={notify} />}
+      {rmaOpen && <ReturnReplaceFlow onBack={() => setRmaOpen(null)} notify={notify} devices={terminals} preset={rmaOpen.type ? rmaOpen : null} />}
       {addOpen && (
         <FullPage title="Activate devices" subtitle="Two steps: first assign each delivered device to a location, then activate it to go live and start accepting payments."
           onBack={() => setAddOpen(false)} backLabel="Devices & locations" backIcon={<ArrowLeftGlyph />} onClose={() => setAddOpen(false)} bodyBg={T.page}
